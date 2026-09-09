@@ -170,12 +170,12 @@ class SessionService {
     return count;
   }
 
-  public checkSession(sessionId: string): { isValid: boolean; session?: DeviceSession } {
+  public checkSession(sessionId: string): { isValid: boolean; isRevoked?: boolean; session?: DeviceSession } {
     const found = this.sessions.find((s) => s.sessionId === sessionId);
-    if (!found || found.status === 'REVOKED' || found.status === 'EXPIRED') {
-      return { isValid: false, session: found };
+    if (found && (found.status === 'REVOKED' || found.status === 'EXPIRED')) {
+      return { isValid: false, isRevoked: true, session: found };
     }
-    return { isValid: true, session: found };
+    return { isValid: true, isRevoked: false, session: found };
   }
 }
 

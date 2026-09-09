@@ -30,7 +30,7 @@ export const env = {
   PORT: parseInt(process.env.PORT || '8080', 10),
   CORS_ORIGIN: process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '',
   JWT_SECRET: process.env.JWT_SECRET || 'kkv_gold_finance_rbac_secure_jwt_secret_2026_super_key_512',
-  JWT_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '24h',
+  JWT_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '15m',
   ADMIN_NAME: (process.env.ADMIN_NAME || 'KKV Master Admin').trim(),
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || 'admin@kkvgoldfinance.com').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'Admin@123456',

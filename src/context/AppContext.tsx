@@ -1018,9 +1018,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const interval = setInterval(async () => {
       try {
         const check = await apiService.checkSessionStatus(currentSessionId);
-        if (check.success && check.data && !check.data.isValid) {
+        if (check.success && check.data && check.data.isRevoked) {
           setUserRole(null);
-          showToast('Your session was revoked by the Master Admin.', 'error');
+          setCurrentUser(null);
+          setStoredAuthToken(null);
+          showToast('Your session is no longer valid. Please sign in again.', 'error');
         } else {
           // Send periodic heartbeat
           registerCurrentDeviceSession();

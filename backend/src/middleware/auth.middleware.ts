@@ -68,12 +68,18 @@ export const authenticateUser = async (
     try {
       decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
     } catch (err: any) {
+      if (err.name === 'TokenExpiredError') {
+        res.status(401).json({
+          success: false,
+          error: 'TOKEN_EXPIRED',
+          message: 'Your session has expired. Please sign in again.'
+        });
+        return;
+      }
       res.status(401).json({
         success: false,
-        error: 'UNAUTHORIZED',
-        message: err.name === 'TokenExpiredError'
-          ? 'Your session has expired. Please sign in again.'
-          : 'Invalid authentication token.'
+        error: 'TOKEN_INVALID',
+        message: 'Invalid authentication token.'
       });
       return;
     }

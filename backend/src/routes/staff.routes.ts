@@ -25,6 +25,7 @@ router.post('/create', authenticateUser, authorizeRoles('ADMIN'), createStaff);
 router.post('/', authenticateUser, authorizeRoles('ADMIN'), createStaff);
 
 router.get('/audit', authenticateUser, authorizeRoles('ADMIN'), getAuditLogs);
+router.get('/audit-logs', authenticateUser, authorizeRoles('ADMIN'), getAuditLogs);
 router.get('/search', authenticateUser, authorizeRoles('ADMIN'), searchStaff);
 router.get('/:uid', authenticateUser, authorizeRoles('ADMIN'), getStaffProfile);
 router.put('/:uid/password', authenticateUser, authorizeRoles('ADMIN'), updateStaffPassword);

@@ -18,6 +18,8 @@ import sessionRoutes from './session.routes.js';
 import staffRoutes from './staff.routes.js';
 import configRoutes from './config.routes.js';
 import rentalRoutes from '../modules/rental/routes/rental.routes.js';
+import { getRentalSummary } from '../controllers/admin.controller.js';
+import { authenticateUser, authorizeRoles } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
@@ -44,6 +46,7 @@ router.use('/staff', staffRoutes);
 router.use('/config', configRoutes);
 router.use('/loan-types', configRoutes);
 router.use('/rental', rentalRoutes);
+router.get('/rental-summary', authenticateUser, authorizeRoles('ADMIN'), getRentalSummary);
 router.use('/search', searchRoutes);
 router.use('/location', locationRoutes);
 router.use('/sessions', sessionRoutes);

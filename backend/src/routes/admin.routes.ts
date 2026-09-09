@@ -31,6 +31,7 @@ import {
   migrateToAtlas
 } from '../controllers/admin.controller.js';
 import staffRoutes from './staff.routes.js';
+import { getAuditLogs } from '../controllers/staff.controller.js';
 import { authenticateUser, authorizeRoles } from '../middleware/auth.middleware.js';
 
 const upload = multer({
@@ -46,6 +47,10 @@ router.use(authorizeRoles('ADMIN'));
 
 // Staff Management subrouter mounted under /api/admin/staff
 router.use('/staff', staffRoutes);
+
+// Staff Audit Logs
+router.get('/audit-logs', getAuditLogs);
+router.get('/audit', getAuditLogs);
 
 // Master Settings
 router.get('/settings', getMasterSettings);

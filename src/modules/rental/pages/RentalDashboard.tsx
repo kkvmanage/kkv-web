@@ -8,7 +8,8 @@ import {
   PiggyBank,
   Plus,
   ArrowUpRight,
-  Receipt
+  Receipt,
+  BookOpen
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import { rentalApi } from '../services/rentalApi';
@@ -146,6 +147,15 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
             >
               <Receipt size={14} />
               <span>Record Expense</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => setCurrentPage('rental-daybook')}
+            >
+              <BookOpen size={14} />
+              <span>Day Book</span>
             </button>
           </div>
         }

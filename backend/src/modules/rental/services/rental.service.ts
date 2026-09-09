@@ -1,4 +1,5 @@
 import { rentalRepository } from '../repositories/rental.repository.js';
+import { rentalDayBookRepository } from '../repositories/rentalDayBook.repository.js';
 import { syncService } from './sync.service.js';
 import {
   RentalComplex,
@@ -10,7 +11,8 @@ import {
   AdminRentalSummary,
   PaymentMode,
   ExpenseCategory,
-  RentalStatus
+  RentalStatus,
+  RentalDayBookEntry
 } from '../types/rental.types.js';
 
 export class RentalService {
@@ -1034,6 +1036,329 @@ export class RentalService {
       totalAmount: totalCash + totalGPay,
       totalTransactions: payments.length
     };
+  }
+
+  // ── Rental Day Book Module ──────────────────────────────────────────────────
+  public async getDayBook(filter: {
+    from?: string;
+    to?: string;
+    date?: string;
+    complexId?: string;
+    paymentMode?: string;
+    transactionType?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const complexes = rentalRepository.getComplexes();
+    const complexMap = new Map<string, string>();
+    complexes.forEach(c => complexMap.set(c.complexId, c.complexName));
+
+    const allPayments = rentalRepository.getPayments();
+    const allExpenses = rentalRepository.getExpenses();
+    const manualEntries = await rentalDayBookRepository.getManualEntries();
+
+    // 1. Convert Payments to Day Book Credit Entries
+    const paymentEntries: RentalDayBookEntry[] = allPayments.map(p => {
+      const cName = p.complexName || complexMap.get(p.complexId) || p.complexId;
+      return {
+        id: `rdb_pay_${p.paymentId || p.id}`,
+        voucherNo: p.paymentId || `PAY-${p.id}`,
+        date: p.paymentDate || p.createdAt?.slice(0, 10) || this.getTodayDate(),
+        transactionType: 'RENT_COLLECTION',
+        category: 'Income',
+        description: `Rent Collection - ${p.tenantName || 'Tenant'} (${p.shopNumber || p.shopName || 'Shop'})`,
+        complexId: p.complexId,
+        complexName: cName,
+        shopId: p.shopId,
+        shopNumber: p.shopNumber,
+        shopName: p.shopName,
+        tenantName: p.tenantName,
+        paymentMode: p.paymentMode,
+        debit: 0,
+        credit: Math.round(Number(p.amountReceived || 0)),
+        referenceType: 'RENT_PAYMENT',
+        referenceId: p.paymentId || p.id,
+        entrySource: 'SYSTEM',
+        notes: p.notes,
+        createdAt: p.createdAt || new Date().toISOString(),
+        updatedAt: p.updatedAt || new Date().toISOString()
+      };
+    });
+
+    // 2. Convert Expenses to Day Book Debit Entries
+    const expenseEntries: RentalDayBookEntry[] = allExpenses.map(e => {
+      const cName = e.complexName || complexMap.get(e.complexId) || e.complexId;
+      return {
+        id: `rdb_exp_${e.expenseId || e.id}`,
+        voucherNo: e.expenseId || `EXP-${e.id}`,
+        date: e.expenseDate || e.createdAt?.slice(0, 10) || this.getTodayDate(),
+        transactionType: 'MAINTENANCE_EXPENSE',
+        category: e.category || 'Expense',
+        description: e.expenseReason || `${e.category || 'Rental'} Expense`,
+        complexId: e.complexId,
+        complexName: cName,
+        shopId: e.shopId,
+        shopNumber: e.shopNumber,
+        paymentMode: e.paymentMode,
+        debit: Math.round(Number(e.expenseAmount || 0)),
+        credit: 0,
+        referenceType: 'RENTAL_EXPENSE',
+        referenceId: e.expenseId || e.id,
+        entrySource: 'SYSTEM',
+        notes: e.notes,
+        createdAt: e.createdAt || new Date().toISOString(),
+        updatedAt: e.updatedAt || new Date().toISOString()
+      };
+    });
+
+    // 3. Combine All Transactions
+    const allUnifiedEntries: RentalDayBookEntry[] = [
+      ...paymentEntries,
+      ...expenseEntries,
+      ...manualEntries
+    ].sort((a, b) => {
+      const dateCmp = a.date.localeCompare(b.date);
+      if (dateCmp !== 0) return dateCmp;
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    });
+
+    // Date range resolution
+    const today = this.getTodayDate();
+    const fromDate = (filter.from || filter.date || today).trim();
+    const toDate = (filter.to || filter.date || fromDate || today).trim();
+
+    // 4. Authoritative Opening Balance Calculation (all historical records before fromDate)
+    let openingBalance = 0;
+    allUnifiedEntries.forEach(entry => {
+      if (entry.date < fromDate) {
+        if (!filter.complexId || entry.complexId === filter.complexId) {
+          openingBalance += (entry.credit || 0) - (entry.debit || 0);
+        }
+      }
+    });
+
+    // 5. Filter for the selected range
+    let inRangeEntries = allUnifiedEntries.filter(entry => {
+      if (entry.date < fromDate || entry.date > toDate) return false;
+      if (filter.complexId && filter.complexId !== 'ALL' && entry.complexId !== filter.complexId) return false;
+
+      if (filter.paymentMode && filter.paymentMode !== 'ALL') {
+        const mode = (entry.paymentMode || '').toUpperCase();
+        const filterMode = filter.paymentMode.toUpperCase();
+        if (mode !== filterMode && mode !== 'BOTH') return false;
+      }
+
+      if (filter.transactionType && filter.transactionType !== 'ALL') {
+        const tt = filter.transactionType.toUpperCase();
+        if (tt === 'INCOME' && entry.credit <= 0) return false;
+        if (tt === 'EXPENSE' && entry.debit <= 0) return false;
+        if (tt !== 'INCOME' && tt !== 'EXPENSE' && entry.transactionType.toUpperCase() !== tt) return false;
+      }
+
+      if (filter.search && filter.search.trim()) {
+        const q = filter.search.trim().toLowerCase();
+        const match =
+          (entry.voucherNo && entry.voucherNo.toLowerCase().includes(q)) ||
+          (entry.description && entry.description.toLowerCase().includes(q)) ||
+          (entry.tenantName && entry.tenantName.toLowerCase().includes(q)) ||
+          (entry.shopNumber && entry.shopNumber.toLowerCase().includes(q)) ||
+          (entry.shopName && entry.shopName.toLowerCase().includes(q)) ||
+          (entry.complexName && entry.complexName.toLowerCase().includes(q)) ||
+          (entry.category && entry.category.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+
+      return true;
+    });
+
+    // 6. Compute Running Balance & Totals
+    let runningBal = openingBalance;
+    let totalCredit = 0;
+    let totalDebit = 0;
+
+    const paymentModeSummary = {
+      cashIncome: 0,
+      cashExpense: 0,
+      gpayIncome: 0,
+      gpayExpense: 0,
+      otherIncome: 0,
+      otherExpense: 0
+    };
+
+    const complexSummaryMap = new Map<string, { complexId: string; complexName: string; income: number; expense: number; net: number }>();
+    complexes.forEach(c => {
+      complexSummaryMap.set(c.complexId, {
+        complexId: c.complexId,
+        complexName: c.complexName,
+        income: 0,
+        expense: 0,
+        net: 0
+      });
+    });
+
+    const enrichedEntries = inRangeEntries.map(entry => {
+      runningBal = runningBal + (entry.credit || 0) - (entry.debit || 0);
+      totalCredit += (entry.credit || 0);
+      totalDebit += (entry.debit || 0);
+
+      // Payment Mode Breakdown
+      const mode = (entry.paymentMode || '').toUpperCase();
+      if (mode === 'CASH') {
+        paymentModeSummary.cashIncome += (entry.credit || 0);
+        paymentModeSummary.cashExpense += (entry.debit || 0);
+      } else if (mode === 'GPAY' || mode === 'UPI') {
+        paymentModeSummary.gpayIncome += (entry.credit || 0);
+        paymentModeSummary.gpayExpense += (entry.debit || 0);
+      } else {
+        paymentModeSummary.otherIncome += (entry.credit || 0);
+        paymentModeSummary.otherExpense += (entry.debit || 0);
+      }
+
+      // Complex Breakdown
+      if (entry.complexId) {
+        let cs = complexSummaryMap.get(entry.complexId);
+        if (!cs) {
+          cs = {
+            complexId: entry.complexId,
+            complexName: entry.complexName || entry.complexId,
+            income: 0,
+            expense: 0,
+            net: 0
+          };
+          complexSummaryMap.set(entry.complexId, cs);
+        }
+        cs.income += (entry.credit || 0);
+        cs.expense += (entry.debit || 0);
+        cs.net = cs.income - cs.expense;
+      }
+
+      return {
+        ...entry,
+        runningBalance: runningBal
+      };
+    });
+
+    const closingBalance = openingBalance + totalCredit - totalDebit;
+
+    // 7. Pagination
+    const page = Math.max(1, Number(filter.page) || 1);
+    const limit = Math.max(1, Number(filter.limit) || 50);
+    const totalCount = enrichedEntries.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedEntries = enrichedEntries.slice(startIndex, startIndex + limit);
+
+    const summary = {
+      openingBalance,
+      totalIncome: totalCredit,
+      totalCredit,
+      totalExpense: totalDebit,
+      totalDebit,
+      netCashFlow: totalCredit - totalDebit,
+      closingBalance,
+      cashIncome: paymentModeSummary.cashIncome,
+      cashExpense: paymentModeSummary.cashExpense,
+      netCash: paymentModeSummary.cashIncome - paymentModeSummary.cashExpense,
+      gpayIncome: paymentModeSummary.gpayIncome,
+      gpayExpense: paymentModeSummary.gpayExpense,
+      netGpay: paymentModeSummary.gpayIncome - paymentModeSummary.gpayExpense,
+      transactionCount: totalCount,
+      paymentModeSummary,
+      complexSummaries: Array.from(complexSummaryMap.values()),
+      complexSummary: Array.from(complexSummaryMap.values())
+    };
+
+    const formattedEntries = paginatedEntries.map(e => ({
+      ...e,
+      entryId: e.voucherNo || e.id,
+      particulars: e.description || e.category || 'Rental Transaction'
+    }));
+
+    return {
+      summary,
+      entries: formattedEntries,
+      total: totalCount,
+      totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit) || 1,
+      openingBalance,
+      totalCredit,
+      totalDebit,
+      closingBalance,
+      paymentModeSummary,
+      complexSummary: Array.from(complexSummaryMap.values())
+    };
+  }
+
+  public async createManualDayBookEntry(
+    data: {
+      date?: string;
+      transactionType?: string;
+      category?: string;
+      description?: string;
+      particulars?: string;
+      complexId?: string;
+      shopId?: string;
+      shopNumber?: string;
+      tenantName?: string;
+      paymentMode?: string;
+      amount?: number;
+      cashAmount?: number;
+      gpayAmount?: number;
+      debit?: number;
+      credit?: number;
+      notes?: string;
+    },
+    userId: string = 'STAFF'
+  ): Promise<RentalDayBookEntry> {
+    const complexes = rentalRepository.getComplexes();
+    const complex = complexes.find(c => c.complexId === data.complexId);
+
+    const now = new Date().toISOString();
+    const voucherSeq = Date.now().toString().slice(-6);
+    const voucherNo = `RDB-M${voucherSeq}`;
+
+    const desc = data.particulars || data.description || 'Manual Adjustment';
+    const isIncome =
+      data.transactionType === 'MANUAL_INCOME' ||
+      data.transactionType === 'OTHER_INCOME' ||
+      Boolean(data.credit && data.credit > 0);
+
+    const totalAmt = Number(data.amount || (isIncome ? data.credit : data.debit) || 0);
+    const debit = isIncome ? 0 : Math.max(0, Math.round(Number(data.debit || totalAmt)));
+    const credit = isIncome ? Math.max(0, Math.round(Number(data.credit || totalAmt))) : 0;
+
+    const entry: RentalDayBookEntry = {
+      id: `rdb_m_${Date.now()}`,
+      voucherNo,
+      date: data.date || this.getTodayDate(),
+      transactionType: (data.transactionType || (isIncome ? 'OTHER_INCOME' : 'OTHER_EXPENSE')) as any,
+      category: data.category || (isIncome ? 'Manual Income' : 'Manual Expense'),
+      description: desc,
+      complexId: data.complexId || 'GENERAL',
+      complexName: complex?.complexName || data.complexId || 'General',
+      shopId: data.shopId,
+      shopNumber: data.shopNumber,
+      tenantName: data.tenantName,
+      paymentMode: data.paymentMode || 'CASH',
+      debit,
+      credit,
+      referenceType: 'MANUAL',
+      referenceId: voucherNo,
+      entrySource: 'MANUAL',
+      notes: data.notes,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    await rentalDayBookRepository.saveManualEntry(entry);
+    return {
+      ...entry,
+      entryId: entry.voucherNo,
+      particulars: entry.description
+    } as any;
   }
 }
 

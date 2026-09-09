@@ -462,6 +462,7 @@ export const LoanDisplay: React.FC = () => {
                   <th>QUANTITY</th>
                   <th>PURITY</th>
                   <th>GROSS WEIGHT (G)</th>
+                  <th>DEDUCTION (G)</th>
                   <th>NET WEIGHT (G)</th>
                   <th style={{ textAlign: 'right' }}>VALUATION</th>
                 </tr>
@@ -469,23 +470,30 @@ export const LoanDisplay: React.FC = () => {
               <tbody>
                 {(!inspectingLoan.items || inspectingLoan.items.length === 0) ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                       No pledged ornaments recorded for this loan.
                     </td>
                   </tr>
                 ) : (
-                  inspectingLoan.items.map((item, idx) => (
-                    <tr key={`item-${item.id || idx}`}>
-                      <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{item.item}</td>
-                      <td>{item.qty}</td>
-                      <td><span className="badge badge-gold">{item.purity}</span></td>
-                      <td>{item.grossWeight} g</td>
-                      <td style={{ fontWeight: 700 }}>{item.netWeight} g</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        ₹{Math.round(inspectingLoan.marketValue ? (inspectingLoan.marketValue / inspectingLoan.items.length) : (item.netWeight * 5500)).toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  ))
+                  inspectingLoan.items.map((item, idx) => {
+                    const gross = Number(item.grossWeight) || 0;
+                    const deduction = Number(item.deductionWeight) || 0;
+                    const net = item.netWeight !== undefined ? Number(item.netWeight) : Math.max(0, gross - deduction);
+
+                    return (
+                      <tr key={`item-${item.id || idx}`}>
+                        <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{item.item}</td>
+                        <td>{item.qty}</td>
+                        <td><span className="badge badge-gold">{item.purity}</span></td>
+                        <td>{gross.toFixed(3)} g</td>
+                        <td>{deduction.toFixed(3)} g</td>
+                        <td style={{ fontWeight: 700 }}>{net.toFixed(3)} g</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          ₹{Math.round(inspectingLoan.marketValue ? (inspectingLoan.marketValue / inspectingLoan.items.length) : (net * 5500)).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

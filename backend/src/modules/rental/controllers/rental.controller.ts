@@ -259,6 +259,54 @@ export class RentalController {
     }
   }
 
+  // ── Day Book ──────────────────────────────────────────────────────────────
+  public async getDayBook(req: Request, res: Response): Promise<void> {
+    try {
+      const {
+        fromDate,
+        toDate,
+        complexId,
+        transactionType,
+        paymentMode,
+        search,
+        page,
+        limit,
+      } = req.query as any;
+
+      const filter = {
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        complexId: complexId || undefined,
+        transactionType: transactionType || undefined,
+        paymentMode: paymentMode || undefined,
+        search: search || undefined,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 50,
+      };
+
+      const data = await rentalService.getDayBook(filter);
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error('[RentalController] getDayBook error:', err);
+      res.status(500).json({ success: false, message: err.message || 'Error fetching Day Book' });
+    }
+  }
+
+  public async createManualDayBookEntry(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = (req as any).user?.uid || (req as any).user?.email || 'STAFF';
+      const data = await rentalService.createManualDayBookEntry(req.body, userId);
+      res.status(201).json({
+        success: true,
+        message: 'Manual Day Book entry created successfully',
+        data,
+      });
+    } catch (err: any) {
+      console.error('[RentalController] createManualDayBookEntry error:', err);
+      res.status(400).json({ success: false, message: err.message || 'Error creating Day Book entry' });
+    }
+  }
+
   // ── Sync Control ───────────────────────────────────────────────────────────
   public async getSyncStatus(req: Request, res: Response): Promise<void> {
     try {
@@ -284,3 +332,4 @@ export class RentalController {
 }
 
 export const rentalController = new RentalController();
+

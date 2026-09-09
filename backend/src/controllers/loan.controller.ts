@@ -35,9 +35,10 @@ export const createLoan = async (req: Request, res: Response) => {
       data: newLoan
     });
   } catch (err: any) {
-    console.error('[LoanController] createLoan error:', err);
+    console.error('[LoanController] createLoan error:', err.message || err);
     return res.status(400).json({
       success: false,
+      error: err.code || err.error || 'INVALID_REQUEST',
       message: err.message || 'Failed to create loan'
     });
   }

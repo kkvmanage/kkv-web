@@ -682,6 +682,7 @@ export const PendingLoans: React.FC = () => {
         <th>Qty</th>
         <th>Purity</th>
         <th>Gross Wt</th>
+        <th>Deduction Wt</th>
         <th>Net Wt</th>
       </tr>
     </thead>
@@ -691,8 +692,9 @@ export const PendingLoans: React.FC = () => {
           <td><strong>${it.item}</strong></td>
           <td>${it.qty}</td>
           <td>${it.purity}</td>
-          <td>${it.grossWeight}g</td>
-          <td>${it.netWeight}g</td>
+          <td>${Number(it.grossWeight || 0).toFixed(3)}g</td>
+          <td>${Number(it.deductionWeight || 0).toFixed(3)}g</td>
+          <td>${Number(it.netWeight !== undefined ? it.netWeight : Math.max(0, (Number(it.grossWeight) || 0) - (Number(it.deductionWeight) || 0))).toFixed(3)}g</td>
         </tr>
       `).join('')}
     </tbody>
@@ -2019,6 +2021,7 @@ export const PendingLoans: React.FC = () => {
                           <th>Qty</th>
                           <th>Purity</th>
                           <th>Gross Wt</th>
+                          <th>Deduction Wt</th>
                           <th>Net Wt</th>
                         </tr>
                       </thead>
@@ -2028,8 +2031,9 @@ export const PendingLoans: React.FC = () => {
                             <td style={{ fontWeight: 700 }}>{it.item}</td>
                             <td>{it.qty}</td>
                             <td>{it.purity}</td>
-                            <td>{it.grossWeight}g</td>
-                            <td>{it.netWeight}g</td>
+                            <td>{Number(it.grossWeight || 0).toFixed(3)}g</td>
+                            <td>{Number(it.deductionWeight || 0).toFixed(3)}g</td>
+                            <td>{Number(it.netWeight !== undefined ? it.netWeight : Math.max(0, (Number(it.grossWeight) || 0) - (Number(it.deductionWeight) || 0))).toFixed(3)}g</td>
                           </tr>
                         ))}
                       </tbody>

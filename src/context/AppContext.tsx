@@ -727,16 +727,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name?: string;
     role?: UserRole | string;
     phone?: string;
+    department?: string;
     permissions?: Partial<UserPermissions>;
     password?: string;
+    initialPassword?: string;
     temporaryPassword?: string;
-  }): Promise<{ success: boolean; message?: string }> => {
+  }): Promise<{ success: boolean; data?: any; message?: string }> => {
     try {
       const res = await apiService.createStaff(data);
       if (res.success) {
-        showToast(`Staff account for ${data.email} created successfully.`, 'success');
+        showToast(`Staff account created successfully for ${data.email}.`, 'success');
         await fetchStaffList();
-        return { success: true };
+        return { success: true, data: res.data };
       }
       showToast(res.message || 'Failed to create staff account.', 'error');
       return { success: false, message: res.message };
@@ -1786,10 +1788,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return existingLoan;
     }
 
+    const normalizedItems = (loanData.items || []).map((it) => {
+      const gross = Math.round((Number(it.grossWeight) || 0) * 1000) / 1000;
+      const deduction = Math.round((Number(it.deductionWeight) || 0) * 1000) / 1000;
+      const net = Math.max(0, Math.round((gross - deduction) * 1000) / 1000);
+      return {
+        ...it,
+        grossWeight: gross,
+        deductionWeight: deduction,
+        netWeight: net
+      };
+    });
+
+    const totalGrossWeight = Math.round(normalizedItems.reduce((sum, it) => sum + it.grossWeight, 0) * 1000) / 1000;
+    const totalDeductionWeight = Math.round(normalizedItems.reduce((sum, it) => sum + (it.deductionWeight || 0), 0) * 1000) / 1000;
+    const totalNetWeight = Math.round(normalizedItems.reduce((sum, it) => sum + it.netWeight, 0) * 1000) / 1000;
+
     const newLoan: Loan = {
       ...loanData,
       id: `L-${Date.now()}`,
       loanNo,
+      items: normalizedItems,
+      totalGrossWeight,
+      totalDeductionWeight,
+      totalNetWeight,
       lastInterestPaidDate: loanData.date,
       nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')
     };

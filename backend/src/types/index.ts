@@ -4,27 +4,84 @@ export interface OrnamentItem {
   qty: number;
   purity: '22ct' | '24ct' | '18ct' | '20ct' | '14ct' | 'Silver 925' | 'Silver 999';
   grossWeight: number;
+  deductionWeight?: number;
   netWeight: number;
+}
+
+export interface NomineeKycDocuments {
+  aadhaarFront?: string | null;
+  aadhaarBack?: string | null;
+  panCard?: string | null;
 }
 
 export interface NomineeDetails {
   hasNominee: boolean;
+  enabled?: boolean;
   name: string;
+  fullName?: string;
   relationship: string;
-  age?: number;
+  relation?: string;
+  customRelation?: string | null;
+  specifiedRelation?: string | null;
   phone: string;
+  mobile?: string;
+  alternateMobile?: string;
+  gender?: 'Male' | 'Female' | 'Other';
+  ageMode?: 'DOB' | 'AGE';
+  dateOfBirth?: string;
+  age?: number;
+  occupation?: string;
+  email?: string;
+  photo?: string | null;
+  idProofType?: string;
   idProofNumber?: string;
+  aadhaarNumber?: string;
+  panNumber?: string;
+  otherIdName?: string;
+  otherIdNumber?: string;
   address: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  isSameAddress?: boolean;
+  sameAsCurrentAddress?: boolean;
+  location?: CustomerLocation | LocationDetails | null;
+  documents?: NomineeKycDocuments;
+}
+
+export interface GuarantorKycDocuments {
+  aadhaarFront?: string | null;
+  aadhaarBack?: string | null;
+  panCard?: string | null;
+  photo?: string | null;
 }
 
 export interface GuarantorDetails {
   hasGuarantor: boolean;
+  enabled?: boolean;
   name: string;
+  fullName?: string;
   relationship?: string;
+  relation?: string;
+  customRelation?: string | null;
+  specifiedRelation?: string | null;
+  gender?: 'Male' | 'Female' | 'Other';
+  dateOfBirth?: string;
   age?: number;
   phone: string;
-  idProof: string;
+  mobile?: string;
+  alternateMobile?: string;
+  email?: string;
+  occupation?: string;
+  monthlyIncome?: number;
+  aadhaarNumber?: string;
+  panNumber?: string;
+  idProof?: string;
   address: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  isSameAddress?: boolean;
+  sameAsCurrentAddress?: boolean;
+  documents?: GuarantorKycDocuments;
 }
 
 export interface CustomerLocation {
@@ -154,6 +211,16 @@ export interface Loan {
   customerLocation?: CustomerLocation;
   nominee?: NomineeDetails;
   guarantor?: GuarantorDetails;
+  nomineeName?: string;
+  nomineeRelation?: string;
+  nomineePhone?: string;
+  nomineeAadhaar?: string;
+  nomineePan?: string;
+  guarantorName?: string;
+  guarantorRelation?: string;
+  guarantorPhone?: string;
+  guarantorAadhaar?: string;
+  guarantorPan?: string;
   kycDocuments?: string[];
   date: string;
   loanType: string;
@@ -198,6 +265,7 @@ export interface Loan {
   cardFeeBankMode?: string;
   items: OrnamentItem[];
   totalGrossWeight: number;
+  totalDeductionWeight?: number;
   totalNetWeight: number;
   marketValue: number;
   ltv: number;

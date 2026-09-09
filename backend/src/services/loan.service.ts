@@ -40,22 +40,72 @@ export class LoanService {
     const monthlyInterest = decPrincipal.times(decRate).dividedBy(100).toDecimalPlaces(2).toNumber();
 
     let totalGross = new Decimal(0);
+    let totalDeduction = new Decimal(0);
     let totalNet = new Decimal(0);
 
-    items.forEach((it) => {
-      totalGross = totalGross.plus(new Decimal(it.grossWeight || 0));
-      totalNet = totalNet.plus(new Decimal(it.netWeight || 0));
+    if (!Array.isArray(items) || items.length === 0) {
+      const err: any = new Error('At least one ornament item is required.');
+      err.code = 'INVALID_ORNAMENTS';
+      throw err;
+    }
+
+    const normalizedItems = (items || []).map((it, idx) => {
+      const rawQty = it.qty;
+      const qtyNum = Number(rawQty);
+
+      if (!Number.isInteger(qtyNum) || qtyNum < 1) {
+        const err: any = new Error('Quantity must be a whole number greater than or equal to 1');
+        err.code = 'INVALID_QUANTITY';
+        throw err;
+      }
+
+      const grossVal = Math.round((Number(it.grossWeight) || 0) * 1000) / 1000;
+      const deductionVal = Math.round((Number(it.deductionWeight) || 0) * 1000) / 1000;
+
+      if (grossVal < 0 || deductionVal < 0) {
+        const err: any = new Error(`Weight values cannot be negative for item ${it.item || idx + 1}.`);
+        err.code = 'INVALID_WEIGHT';
+        throw err;
+      }
+
+      if (deductionVal > grossVal) {
+        const err: any = new Error(
+          `Deduction weight (${deductionVal.toFixed(3)}g) cannot be greater than gross weight (${grossVal.toFixed(3)}g) for item ${it.item || idx + 1}.`
+        );
+        err.code = 'INVALID_WEIGHT';
+        throw err;
+      }
+
+      const netVal = Math.max(0, Math.round((grossVal - deductionVal) * 1000) / 1000);
+
+      totalGross = totalGross.plus(new Decimal(grossVal));
+      totalDeduction = totalDeduction.plus(new Decimal(deductionVal));
+      totalNet = totalNet.plus(new Decimal(netVal));
+
+      return {
+        ...it,
+        qty: qtyNum,
+        grossWeight: grossVal,
+        deductionWeight: deductionVal,
+        netWeight: netVal
+      };
     });
+
+    const totalGrossWeight = totalGross.toDecimalPlaces(3).toNumber();
+    const totalDeductionWeight = totalDeduction.toDecimalPlaces(3).toNumber();
+    const totalNetWeight = totalNet.toDecimalPlaces(3).toNumber();
 
     const marketValue = totalNet.times(marketRatePerGram).toDecimalPlaces(2).toNumber();
     const ltv = marketValue > 0 ? decPrincipal.times(100).dividedBy(marketValue).toDecimalPlaces(2).toNumber() : 0;
 
     return {
       monthlyInterest,
-      totalGrossWeight: totalGross.toNumber(),
-      totalNetWeight: totalNet.toNumber(),
+      totalGrossWeight,
+      totalDeductionWeight,
+      totalNetWeight,
       marketValue,
-      ltv
+      ltv,
+      normalizedItems
     };
   }
 
@@ -124,6 +174,177 @@ export class LoanService {
 
     const calc = this.calculateFinancials(effectivePrincipal, interestRate, loanData.items || []);
 
+    // ── NOMINEE KYC VALIDATION & NORMALIZATION ──────────────────────────────
+    let normalizedNominee = loanData.nominee;
+    const isNomineeEnabled = Boolean(
+      (loanData as any).hasNominee ||
+      (loanData.nominee && ((loanData.nominee as any).hasNominee === true || (loanData.nominee as any).enabled === true || ((loanData.nominee as any).hasNominee !== false && (loanData.nominee.name || (loanData.nominee as any).fullName))))
+    );
+    if (isNomineeEnabled && loanData.nominee) {
+      const nom = loanData.nominee;
+      const fullName = (nom.fullName || nom.name || '').trim();
+      if (!fullName) {
+        const err: any = new Error('Nominee Full Name is required.');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const relation = (nom.relation || nom.relationship || '').trim();
+      if (!relation || relation === '-') {
+        const err: any = new Error('Nominee Relationship is required.');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const customRelation = (nom.customRelation || nom.specifiedRelation || '').trim();
+      if (relation === 'Other' && !customRelation) {
+        const err: any = new Error('Please specify the custom Nominee relationship.');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const mobile = (nom.mobile || nom.phone || '').replace(/\D/g, '');
+      if (mobile.length !== 10 || !/^[6-9]\d{9}$/.test(mobile)) {
+        const err: any = new Error('Please enter a valid 10-digit Indian Mobile Number for Nominee.');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const aadhaarDigits = (nom.aadhaarNumber || nom.idProofNumber || (nom as any).idProof?.aadhaarNumber || '').replace(/\D/g, '');
+      if (aadhaarDigits && aadhaarDigits.length !== 12) {
+        const err: any = new Error('Enter a valid 12-digit Aadhaar number for Nominee.');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const panUpper = (nom.panNumber || (nom as any).idProof?.panNumber || '').trim().toUpperCase();
+      if (panUpper && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
+        const err: any = new Error('Enter a valid PAN number for Nominee (e.g. ABCDE1234F).');
+        err.code = 'INVALID_NOMINEE';
+        throw err;
+      }
+
+      const currentAddress = (nom.currentAddress || nom.address || '').trim();
+
+      normalizedNominee = {
+        hasNominee: true,
+        enabled: true,
+        name: fullName,
+        fullName,
+        relation,
+        relationship: relation === 'Other' ? customRelation : relation,
+        customRelation: relation === 'Other' ? customRelation : null,
+        specifiedRelation: relation === 'Other' ? customRelation : null,
+        phone: mobile,
+        mobile,
+        alternateMobile: nom.alternateMobile ? nom.alternateMobile.replace(/\D/g, '') : undefined,
+        gender: nom.gender || 'Male',
+        dateOfBirth: nom.dateOfBirth || undefined,
+        age: nom.age,
+        occupation: nom.occupation?.trim() || undefined,
+        email: nom.email?.trim() || undefined,
+        aadhaarNumber: aadhaarDigits,
+        panNumber: panUpper || undefined,
+        idProofNumber: aadhaarDigits,
+        address: currentAddress,
+        currentAddress,
+        permanentAddress: nom.sameAsCurrentAddress || nom.isSameAddress ? currentAddress : (nom.permanentAddress || currentAddress),
+        sameAsCurrentAddress: Boolean(nom.sameAsCurrentAddress || nom.isSameAddress),
+        isSameAddress: Boolean(nom.sameAsCurrentAddress || nom.isSameAddress),
+        documents: nom.documents || undefined,
+        location: nom.location || null
+      };
+    }
+
+    // ── GUARANTOR KYC VALIDATION & NORMALIZATION ────────────────────────────
+    let normalizedGuarantor = loanData.guarantor;
+    const isGuarantorEnabled = Boolean(
+      (loanData as any).hasGuarantor ||
+      (loanData.guarantor && ((loanData.guarantor as any).hasGuarantor === true || (loanData.guarantor as any).enabled === true || ((loanData.guarantor as any).hasGuarantor !== false && (loanData.guarantor.name || (loanData.guarantor as any).fullName))))
+    );
+    if (isGuarantorEnabled && loanData.guarantor) {
+      const guar = loanData.guarantor;
+      const fullName = (guar.fullName || guar.name || '').trim();
+      if (!fullName) {
+        const err: any = new Error('Guarantor Full Name is required.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const relation = (guar.relation || guar.relationship || '').trim();
+      if (!relation || relation === '-') {
+        const err: any = new Error('Guarantor Relationship is required.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const customRelation = (guar.customRelation || guar.specifiedRelation || '').trim();
+      if (relation === 'Other' && !customRelation) {
+        const err: any = new Error('Please specify the custom Guarantor relationship.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const mobile = (guar.mobile || guar.phone || '').replace(/\D/g, '');
+      if (mobile.length !== 10 || !/^[6-9]\d{9}$/.test(mobile)) {
+        const err: any = new Error('Please enter a valid 10-digit Indian Mobile Number for Guarantor.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const aadhaarDigits = (guar.aadhaarNumber || guar.idProof || '').replace(/\D/g, '');
+      if (aadhaarDigits && aadhaarDigits.length !== 12) {
+        const err: any = new Error('Enter a valid 12-digit Aadhaar number for Guarantor.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const panUpper = (guar.panNumber || '').trim().toUpperCase();
+      if (panUpper && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
+        const err: any = new Error('Enter a valid PAN number for Guarantor (e.g. ABCDE1234F).');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const monthlyIncome = guar.monthlyIncome !== undefined && guar.monthlyIncome !== null ? Number(guar.monthlyIncome) : 0;
+      if (monthlyIncome < 0) {
+        const err: any = new Error('Guarantor Monthly Income cannot be negative.');
+        err.code = 'INVALID_GUARANTOR';
+        throw err;
+      }
+
+      const currentAddress = (guar.currentAddress || guar.address || '').trim();
+
+      normalizedGuarantor = {
+        hasGuarantor: true,
+        enabled: true,
+        name: fullName,
+        fullName,
+        relation,
+        relationship: relation === 'Other' ? customRelation : relation,
+        customRelation: relation === 'Other' ? customRelation : null,
+        specifiedRelation: relation === 'Other' ? customRelation : null,
+        gender: guar.gender || 'Male',
+        dateOfBirth: guar.dateOfBirth || undefined,
+        age: guar.age,
+        phone: mobile,
+        mobile,
+        alternateMobile: guar.alternateMobile ? guar.alternateMobile.replace(/\D/g, '') : undefined,
+        email: guar.email?.trim() || undefined,
+        occupation: guar.occupation?.trim() || undefined,
+        monthlyIncome,
+        aadhaarNumber: aadhaarDigits,
+        panNumber: panUpper || undefined,
+        idProof: aadhaarDigits,
+        address: currentAddress,
+        currentAddress,
+        permanentAddress: guar.sameAsCurrentAddress || guar.isSameAddress ? currentAddress : (guar.permanentAddress || currentAddress),
+        sameAsCurrentAddress: Boolean(guar.sameAsCurrentAddress || guar.isSameAddress),
+        isSameAddress: Boolean(guar.sameAsCurrentAddress || guar.isSameAddress),
+        documents: guar.documents || undefined
+      };
+    }
+
     const effectiveCardFee = serverCardFeeEnabled ? serverCardFee : 0;
     const advanceInterest = loanData.deductAdvanceInterest
       ? (loanData.advanceInterestAmount || 0)
@@ -138,8 +359,20 @@ export class LoanService {
       loanType: matchedType ? matchedType.name : loanData.loanType,
       loanTypeId: matchedType ? matchedType.id : (loanData.loanTypeId || 'gold-loan'),
       loanTypeName: matchedType ? matchedType.name : (loanData.loanTypeName || loanData.loanType),
+      nominee: normalizedNominee,
+      guarantor: normalizedGuarantor,
 
-      // ── IMMUTABLE CONTRACTUAL SNAPSHOT FIELDS ──────────────────────────────
+      // Backward compatibility legacy fields
+      nomineeName: normalizedNominee?.name || (loanData as any).nomineeName || undefined,
+      nomineeRelation: normalizedNominee?.relation || (loanData as any).nomineeRelation || undefined,
+      nomineePhone: normalizedNominee?.phone || (loanData as any).nomineePhone || undefined,
+      nomineeAadhaar: normalizedNominee?.aadhaarNumber || (loanData as any).nomineeAadhaar || undefined,
+      nomineePan: normalizedNominee?.panNumber || (loanData as any).nomineePan || undefined,
+      guarantorName: normalizedGuarantor?.name || (loanData as any).guarantorName || undefined,
+      guarantorRelation: normalizedGuarantor?.relation || (loanData as any).guarantorRelation || undefined,
+      guarantorPhone: normalizedGuarantor?.phone || (loanData as any).guarantorPhone || undefined,
+      guarantorAadhaar: normalizedGuarantor?.aadhaarNumber || (loanData as any).guarantorAadhaar || undefined,
+      guarantorPan: normalizedGuarantor?.panNumber || (loanData as any).guarantorPan || undefined,
       loanTypeNameSnapshot: matchedType ? matchedType.name : loanData.loanType,
       interestRateSnapshot: interestRate,
       interestProfileSnapshot: interestProfileName,
@@ -159,8 +392,10 @@ export class LoanService {
       interestRate,
       cardFee: serverCardFee,
       cardFeeEnabled: serverCardFeeEnabled,
+      items: calc.normalizedItems,
       monthlyInterest: calc.monthlyInterest,
       totalGrossWeight: calc.totalGrossWeight,
+      totalDeductionWeight: calc.totalDeductionWeight,
       totalNetWeight: calc.totalNetWeight,
       marketValue: calc.marketValue,
       ltv: calc.ltv,

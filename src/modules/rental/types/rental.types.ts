@@ -276,3 +276,75 @@ export interface SyncSummary {
   isConfigured: boolean;
   spreadsheetId?: string;
 }
+
+export type RentalTransactionType = 'RENT_PAYMENT' | 'EXPENSE' | 'MANUAL_INCOME' | 'MANUAL_EXPENSE';
+
+export interface RentalDayBookEntry {
+  id: string;
+  entryId: string;
+  date: string; // YYYY-MM-DD
+  transactionType: RentalTransactionType;
+  sourceType: 'RENTAL_PAYMENT' | 'RENTAL_EXPENSE' | 'MANUAL_ENTRY';
+  sourceId: string;
+  complexId?: string;
+  complexName?: string;
+  shopId?: string;
+  shopNumber?: string;
+  shopName?: string;
+  tenantName?: string;
+  particulars: string;
+  category?: string;
+  paymentMode: 'CASH' | 'GPAY' | 'BOTH';
+  cashAmount: number;
+  gpayAmount: number;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+  notes?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RentalDayBookFilter {
+  fromDate?: string;
+  toDate?: string;
+  complexId?: string;
+  transactionType?: RentalTransactionType;
+  paymentMode?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface RentalDayBookSummary {
+  openingBalance: number;
+  totalIncome: number;
+  totalExpense: number;
+  netCashFlow: number;
+  closingBalance: number;
+  cashIncome: number;
+  cashExpense: number;
+  netCash: number;
+  gpayIncome: number;
+  gpayExpense: number;
+  netGpay: number;
+  transactionCount: number;
+  complexSummaries: {
+    complexId: string;
+    complexName: string;
+    income: number;
+    expense: number;
+    net: number;
+  }[];
+}
+
+export interface RentalDayBookResponse {
+  summary: RentalDayBookSummary;
+  entries: RentalDayBookEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+

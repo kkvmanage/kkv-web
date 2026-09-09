@@ -88,6 +88,15 @@ export function maskAadhaarNumber(idNumber: string): string {
   return 'XXXX XXXX ****';
 }
 
+export function maskPANNumber(pan: string): string {
+  if (!pan) return '';
+  const clean = pan.trim().toUpperCase();
+  if (clean.length === 10) {
+    return `${clean.slice(0, 5)}****${clean.slice(9)}`;
+  }
+  return clean;
+}
+
 /**
  * Individual ID Validators according to exact rules
  */

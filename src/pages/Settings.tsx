@@ -15,7 +15,11 @@ import {
   Edit2,
   Clock,
   Coins,
-  X
+  X,
+  Key,
+  Eye,
+  EyeOff,
+  Check
 } from 'lucide-react';
 import { UserProfile, UserRole, UserPermissions } from '../types';
 import {
@@ -98,6 +102,7 @@ export const Settings: React.FC = () => {
     createStaffAccount,
     updateStaffProfile,
     toggleStaffStatus,
+    resetStaffPassword,
     deleteStaffAccount,
     fetchStaffAuditLogs,
     masterControlSettings,
@@ -172,15 +177,34 @@ export const Settings: React.FC = () => {
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState<'STAFF' | 'RENTAL_STAFF'>('STAFF');
   const [addPhone, setAddPhone] = useState('');
+  const [addDepartment, setAddDepartment] = useState('');
   const [addPassword, setAddPassword] = useState('');
+  const [addConfirmPassword, setAddConfirmPassword] = useState('');
+  const [showAddPassword, setShowAddPassword] = useState(false);
+  const [showAddConfirmPassword, setShowAddConfirmPassword] = useState(false);
   const [customPerms, setCustomPerms] = useState<UserPermissions>(getDefaultPermissionsForRole('STAFF'));
+  const [createdStaffSummary, setCreatedStaffSummary] = useState<{
+    name: string;
+    staffId: string;
+    email: string;
+    role: string;
+  } | null>(null);
 
   // Edit Staff State
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editDepartment, setEditDepartment] = useState('');
   const [editRole, setEditRole] = useState<'STAFF' | 'RENTAL_STAFF'>('STAFF');
   const [editPerms, setEditPerms] = useState<UserPermissions>(getDefaultPermissionsForRole('STAFF'));
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset Password Modal State
+  const [resetStaffTarget, setResetStaffTarget] = useState<UserProfile | null>(null);
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'security') {
@@ -266,7 +290,12 @@ export const Settings: React.FC = () => {
     setAddEmail('');
     setAddRole('STAFF');
     setAddPhone('');
+    setAddDepartment('Finance Operations');
     setAddPassword('');
+    setAddConfirmPassword('');
+    setShowAddPassword(false);
+    setShowAddConfirmPassword(false);
+    setCreatedStaffSummary(null);
     setCustomPerms(getDefaultPermissionsForRole('STAFF'));
     setIsAddStaffModalOpen(true);
   };
@@ -278,19 +307,41 @@ export const Settings: React.FC = () => {
       return;
     }
 
+    if (!addPassword) {
+      showToast('Initial password is required.', 'warning');
+      return;
+    }
+
+    if (addPassword.length < 8) {
+      showToast('Password must be at least 8 characters long.', 'warning');
+      return;
+    }
+
+    if (addPassword !== addConfirmPassword) {
+      showToast('Passwords do not match. Please verify and retry.', 'warning');
+      return;
+    }
+
     setIsSubmitting(true);
     const res = await createStaffAccount({
-      email: addEmail.trim(),
+      email: addEmail.trim().toLowerCase(),
       displayName: addName.trim(),
+      fullName: addName.trim(),
       role: addRole,
       phone: addPhone.trim(),
+      department: addDepartment.trim() || (addRole === 'RENTAL_STAFF' ? 'Rental Management' : 'Finance Operations'),
       permissions: customPerms,
-      password: addPassword.trim() || '1234'
+      password: addPassword.trim()
     });
     setIsSubmitting(false);
 
     if (res.success) {
-      setIsAddStaffModalOpen(false);
+      setCreatedStaffSummary({
+        name: addName.trim(),
+        staffId: res.data?.staffId || 'KKV-STAFF-NEW',
+        email: addEmail.trim().toLowerCase(),
+        role: addRole
+      });
     }
   };
 
@@ -298,6 +349,7 @@ export const Settings: React.FC = () => {
     setManagingStaff(staff);
     setEditName(staff.displayName || staff.fullName || '');
     setEditPhone(staff.phone || '');
+    setEditDepartment((staff as any).department || '');
     const currentRole = staff.role === 'RENTAL_STAFF' ? 'RENTAL_STAFF' : 'STAFF';
     setEditRole(currentRole);
     setEditPerms(normalizePermissions(staff.permissions, currentRole));
@@ -308,7 +360,9 @@ export const Settings: React.FC = () => {
     setIsSubmitting(true);
     const res = await updateStaffProfile(managingStaff.uid, {
       displayName: editName.trim(),
+      fullName: editName.trim(),
       phone: editPhone.trim(),
+      department: editDepartment.trim(),
       role: isAdminRole(managingStaff.role) ? 'ADMIN' : editRole,
       permissions: editPerms
     });
@@ -318,10 +372,50 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const handleOpenResetPasswordModal = (staff: UserProfile) => {
+    setResetStaffTarget(staff);
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setShowResetNewPassword(false);
+    setShowResetConfirmPassword(false);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetStaffTarget) return;
+
+    if (!resetNewPassword) {
+      showToast('New password is required.', 'warning');
+      return;
+    }
+
+    if (resetNewPassword.length < 8) {
+      showToast('Password must be at least 8 characters long.', 'warning');
+      return;
+    }
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      showToast('Passwords do not match. Please verify and retry.', 'warning');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    const targetId = resetStaffTarget.uid || resetStaffTarget.id || resetStaffTarget.staffId;
+    const res = await resetStaffPassword(targetId, resetNewPassword.trim());
+    setIsResettingPassword(false);
+
+    if (res.success) {
+      setResetStaffTarget(null);
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+    }
+  };
+
   const filteredStaff = staffList.filter((s) => {
     const matchesSearch =
       s.displayName.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      s.email.toLowerCase().includes(staffSearch.toLowerCase());
+      s.email.toLowerCase().includes(staffSearch.toLowerCase()) ||
+      ((s.staffId || '').toLowerCase().includes(staffSearch.toLowerCase()));
     const matchesRole = staffRoleFilter === 'ALL' || s.role === staffRoleFilter;
     return matchesSearch && matchesRole;
   });
@@ -969,8 +1063,11 @@ export const Settings: React.FC = () => {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th>Staff ID</th>
                     <th>Staff Name &amp; Email</th>
+                    <th>Mobile</th>
                     <th>Role</th>
+                    <th>Department</th>
                     <th>Status</th>
                     <th>Created Date</th>
                     <th>Last Login</th>
@@ -980,24 +1077,36 @@ export const Settings: React.FC = () => {
                 <tbody>
                   {filteredStaff.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                         No staff members found matching criteria.
                       </td>
                     </tr>
                   ) : (
                     filteredStaff.map((staff) => {
                       const isMaster = staff.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase();
+                      const staffId = staff.staffId || staff.id || staff.uid;
+                      const department = (staff as any).department || (staff.role === 'RENTAL_STAFF' ? 'Rental Management' : 'Finance Operations');
                       return (
                         <tr key={staff.uid}>
+                          <td>
+                            <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--color-gold-light)', letterSpacing: '0.02em' }}>
+                              {staffId}
+                            </span>
+                          </td>
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                                 {staff.displayName} {isMaster && '👑'}
                               </span>
                               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                {staff.email} {staff.phone ? `• ${staff.phone}` : ''}
+                                {staff.email}
                               </span>
                             </div>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {staff.phone || (staff as any).phoneNumber || '—'}
+                            </span>
                           </td>
                           <td>
                             <span
@@ -1024,6 +1133,11 @@ export const Settings: React.FC = () => {
                             </span>
                           </td>
                           <td>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {department}
+                            </span>
+                          </td>
+                          <td>
                             {staff.isActive ? (
                               <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <CheckCircle size={10} /> Active
@@ -1037,7 +1151,7 @@ export const Settings: React.FC = () => {
                           <td>{staff.createdAt ? new Date(staff.createdAt).toLocaleDateString('en-GB') : '—'}</td>
                           <td>{staff.lastLoginAt ? new Date(staff.lastLoginAt).toLocaleDateString('en-GB') : 'Never'}</td>
                           <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-xs"
@@ -1046,6 +1160,15 @@ export const Settings: React.FC = () => {
                               >
                                 <Edit2 size={12} />
                                 <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-xs"
+                                onClick={() => handleOpenResetPasswordModal(staff)}
+                                title="Reset Staff Password"
+                              >
+                                <Key size={12} />
+                                <span>Reset Pass</span>
                               </button>
                               {!isMaster && (
                                 <button
@@ -1188,146 +1311,353 @@ export const Settings: React.FC = () => {
       {/* ── MODAL: ADD STAFF ── */}
       {isAddStaffModalOpen && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: '16px' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-light)', padding: '24px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-light)', padding: '24px' }}>
             <div className="card-header" style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <UserPlus size={18} color="var(--color-primary-accent)" />
-                <h3 className="card-title" style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Create New Staff User</h3>
+                <h3 className="card-title" style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Create New Staff Account</h3>
               </div>
               <button type="button" onClick={() => setIsAddStaffModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Full Name</label>
-                  <input type="text" className="input-control" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="e.g. Ramesh Kumar" required />
+
+            {createdStaffSummary ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '10px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '14px 18px', borderRadius: '10px', color: '#10B981' }}>
+                  <CheckCircle size={22} />
+                  <div>
+                    <strong style={{ fontSize: '14px', display: 'block' }}>Staff Account Created Successfully!</strong>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Permanent login credentials have been saved securely in MongoDB.</span>
+                  </div>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Email Address</label>
-                  <input type="email" className="input-control" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="staff@kkvgold.com" required />
+
+                <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: '13px', fontWeight: 800, color: 'var(--color-gold-light)', textTransform: 'uppercase' }}>
+                    Created Account Details
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '13px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>Full Name</span>
+                      <strong>{createdStaffSummary.name}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>Staff ID</span>
+                      <strong style={{ color: 'var(--color-gold-light)' }}>{createdStaffSummary.staffId}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>Email</span>
+                      <strong>{createdStaffSummary.email}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>Assigned Role</span>
+                      <strong style={{ color: '#60a5fa' }}>{createdStaffSummary.role}</strong>
+                    </div>
+                  </div>
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Phone Number</label>
-                  <input type="tel" className="input-control" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="9876543210" />
+
+                <div style={{ padding: '10px 14px', backgroundColor: 'rgba(210, 168, 74, 0.1)', border: '1px solid rgba(210, 168, 74, 0.3)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  🔒 <strong>Credential Notice:</strong> Ask the staff member to use the password provided during account creation. Login identifier supports either <strong>Email</strong> or <strong>Staff ID ({createdStaffSummary.staffId})</strong>.
                 </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Primary Role</label>
-                  <select className="select-control" value={addRole} onChange={(e) => handleRoleChangeForAdd(e.target.value as any)}>
-                    <option value="STAFF">STAFF (Finance &amp; Operations)</option>
-                    <option value="RENTAL_STAFF">RENTAL_STAFF (Complex &amp; Shop Rentals Only)</option>
-                  </select>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleOpenAddStaff}
+                  >
+                    + Create Another Staff
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setIsAddStaffModalOpen(false)}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Section 1: Staff Account */}
+                <div>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: 800, color: 'var(--color-gold-light)', textTransform: 'uppercase' }}>
+                    1. Staff Account Information
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Full Name</label>
+                      <input type="text" className="input-control" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="e.g. Ramesh Kumar" required />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Email Address</label>
+                      <input type="email" className="input-control" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="staff@kkvgoldfinance.com" required />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Mobile Number</label>
+                      <input type="tel" className="input-control" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="9876543210" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Role</label>
+                      <select className="select-control" value={addRole} onChange={(e) => handleRoleChangeForAdd(e.target.value as any)}>
+                        <option value="STAFF">STAFF (Finance Operations &amp; Cash Counter)</option>
+                        <option value="RENTAL_STAFF">RENTAL_STAFF (Commercial Complexes &amp; Rent Collections)</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                      <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Department</label>
+                      <input type="text" className="input-control" value={addDepartment} onChange={(e) => setAddDepartment(e.target.value)} placeholder="e.g. Finance Operations / Rental Management" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Login Credentials */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: 800, color: 'var(--color-gold-light)', textTransform: 'uppercase' }}>
+                    2. Login Credentials
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Initial Password *</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showAddPassword ? 'text' : 'password'}
+                          className="input-control"
+                          style={{ paddingRight: '36px' }}
+                          value={addPassword}
+                          onChange={(e) => setAddPassword(e.target.value)}
+                          placeholder="Min 8 characters"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAddPassword(!showAddPassword)}
+                          style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        >
+                          {showAddPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Confirm Password *</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showAddConfirmPassword ? 'text' : 'password'}
+                          className="input-control"
+                          style={{ paddingRight: '36px' }}
+                          value={addConfirmPassword}
+                          onChange={(e) => setAddConfirmPassword(e.target.value)}
+                          placeholder="Re-enter password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAddConfirmPassword(!showAddConfirmPassword)}
+                          style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        >
+                          {showAddConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', display: 'block' }}>
+                    🔒 Password is automatically encrypted using bcrypt (10 rounds) and stored securely in MongoDB.
+                  </span>
+                </div>
+
+                {/* Section 3: Granular Permission Matrix */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ fontWeight: 800, fontSize: '12px', margin: 0, color: 'var(--color-gold-light)' }}>
+                      3. MODULE-BASED ACCESS PERMISSIONS
+                    </label>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Fine-tune allowed actions per module
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {PERMISSION_MODULES.map((mod) => {
+                      const modPerms = (customPerms as any)[mod.key] || {};
+                      const allActive = mod.actions.every((act) => Boolean(modPerms[act]));
+                      return (
+                        <div
+                          key={mod.key}
+                          style={{
+                            backgroundColor: 'var(--bg-surface-secondary)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: '8px',
+                            padding: '10px 12px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <div>
+                              <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>{mod.label}</span>
+                              <p style={{ fontSize: '10.5px', color: 'var(--text-muted)', margin: 0 }}>{mod.description}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = { ...((customPerms as any)[mod.key] || {}) };
+                                mod.actions.forEach((act) => {
+                                  updated[act] = !allActive;
+                                });
+                                setCustomPerms({
+                                  ...customPerms,
+                                  [mod.key]: updated
+                                });
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: allActive ? 'var(--color-gold-light)' : 'var(--text-muted)',
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '2px 6px'
+                              }}
+                            >
+                              {allActive ? 'Clear All' : 'Select All'}
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {mod.actions.map((act) => {
+                              const isChecked = Boolean(modPerms[act]);
+                              return (
+                                <button
+                                  key={act}
+                                  type="button"
+                                  onClick={() => {
+                                    const cur = (customPerms as any)[mod.key] || {};
+                                    setCustomPerms({
+                                      ...customPerms,
+                                      [mod.key]: {
+                                        ...cur,
+                                        [act]: !isChecked
+                                      }
+                                    });
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    borderRadius: '4px',
+                                    border: isChecked ? '1px solid var(--color-gold-primary)' : '1px solid var(--border-subtle)',
+                                    backgroundColor: isChecked ? 'var(--color-gold-subtle)' : 'transparent',
+                                    color: isChecked ? 'var(--color-gold-light)' : 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    fontWeight: isChecked ? 700 : 500
+                                  }}
+                                >
+                                  <span>{isChecked ? '✓' : '○'}</span>
+                                  <span style={{ textTransform: 'capitalize' }}>{act}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsAddStaffModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Staff'}</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: RESET PASSWORD (ADMIN ACTION) ── */}
+      {resetStaffTarget && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: '16px' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '460px', backgroundColor: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-light)', padding: '24px' }}>
+            <div className="card-header" style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={18} color="var(--color-gold-primary)" />
+                <h3 className="card-title" style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Reset Staff Password</h3>
+              </div>
+              <button type="button" onClick={() => setResetStaffTarget(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Target Staff Summary Box */}
+              <div style={{ backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Staff Name:</span>
+                  <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{resetStaffTarget.displayName || resetStaffTarget.fullName}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Staff ID:</span>
+                  <strong style={{ fontSize: '12.5px', color: 'var(--color-gold-light)' }}>{resetStaffTarget.staffId || resetStaffTarget.id || resetStaffTarget.uid}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Email:</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{resetStaffTarget.email}</span>
                 </div>
               </div>
 
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Temporary / Initial Password</label>
-                <input type="password" placeholder="Default: 1234 (User will be forced to change on first login)" className="input-control" value={addPassword} onChange={(e) => setAddPassword(e.target.value)} />
-              </div>
-
-              {/* Granular Permission Matrix */}
-              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', marginTop: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label className="form-label" style={{ fontWeight: 800, fontSize: '12px', margin: 0, color: 'var(--color-gold-light)' }}>
-                    MODULE-BASED ACCESS PERMISSIONS
-                  </label>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Fine-tune allowed actions per module
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto', paddingRight: '4px' }}>
-                  {PERMISSION_MODULES.map((mod) => {
-                    const modPerms = (customPerms as any)[mod.key] || {};
-                    const allActive = mod.actions.every((act) => Boolean(modPerms[act]));
-                    return (
-                      <div
-                        key={mod.key}
-                        style={{
-                          backgroundColor: 'var(--bg-surface-secondary)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: '8px',
-                          padding: '10px 12px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <div>
-                            <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>{mod.label}</span>
-                            <p style={{ fontSize: '10.5px', color: 'var(--text-muted)', margin: 0 }}>{mod.description}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = { ...((customPerms as any)[mod.key] || {}) };
-                              mod.actions.forEach((act) => {
-                                updated[act] = !allActive;
-                              });
-                              setCustomPerms({
-                                ...customPerms,
-                                [mod.key]: updated
-                              });
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: allActive ? 'var(--color-gold-light)' : 'var(--text-muted)',
-                              cursor: 'pointer',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              padding: '2px 6px'
-                            }}
-                          >
-                            {allActive ? 'Clear All' : 'Select All'}
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {mod.actions.map((act) => {
-                            const isChecked = Boolean(modPerms[act]);
-                            return (
-                              <button
-                                key={act}
-                                type="button"
-                                onClick={() => {
-                                  const cur = (customPerms as any)[mod.key] || {};
-                                  setCustomPerms({
-                                    ...customPerms,
-                                    [mod.key]: {
-                                      ...cur,
-                                      [act]: !isChecked
-                                    }
-                                  });
-                                }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '3px 8px',
-                                  fontSize: '11px',
-                                  borderRadius: '4px',
-                                  border: isChecked ? '1px solid var(--color-gold-primary)' : '1px solid var(--border-subtle)',
-                                  backgroundColor: isChecked ? 'var(--color-gold-subtle)' : 'transparent',
-                                  color: isChecked ? 'var(--color-gold-light)' : 'var(--text-muted)',
-                                  cursor: 'pointer',
-                                  fontWeight: isChecked ? 700 : 500
-                                }}
-                              >
-                                <span>{isChecked ? '✓' : '○'}</span>
-                                <span style={{ textTransform: 'capitalize' }}>{act}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>New Password *</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showResetNewPassword ? 'text' : 'password'}
+                    className="input-control"
+                    style={{ paddingRight: '36px' }}
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="Min 8 characters"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  >
+                    {showResetNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsAddStaffModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Create Staff'}</button>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Confirm New Password *</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showResetConfirmPassword ? 'text' : 'password'}
+                    className="input-control"
+                    style={{ paddingRight: '36px' }}
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  >
+                    {showResetConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Once reset, the previous password will immediately stop working and the new password will become the valid login credential.
+              </span>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setResetStaffTarget(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isResettingPassword}>
+                  {isResettingPassword ? 'Resetting...' : 'Reset Password'}
+                </button>
               </div>
             </form>
           </div>
@@ -1357,7 +1687,11 @@ export const Settings: React.FC = () => {
                   <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Phone Number</label>
                   <input type="tel" className="input-control" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
                 </div>
-                <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 700 }}>Department</label>
+                  <input type="text" className="input-control" value={editDepartment} onChange={(e) => setEditDepartment(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label required" style={{ fontSize: '12px', fontWeight: 700 }}>Assigned Role</label>
                   <select className="select-control" value={editRole} onChange={(e) => handleRoleChangeForEdit(e.target.value as any)}>
                     <option value="STAFF">STAFF (Finance &amp; Operations)</option>

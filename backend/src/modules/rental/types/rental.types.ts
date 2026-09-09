@@ -181,3 +181,86 @@ export interface AdminRentalSummary {
     net: number;
   }[];
 }
+
+// ── Rental Day Book Types ───────────────────────────────────────────────────
+export type RentalTransactionType =
+  | 'RENT_COLLECTION'
+  | 'ADVANCE_RENT'
+  | 'SECURITY_DEPOSIT'
+  | 'LATE_FEE'
+  | 'MAINTENANCE_INCOME'
+  | 'OTHER_INCOME'
+  | 'MAINTENANCE_EXPENSE'
+  | 'REPAIR_EXPENSE'
+  | 'ELECTRICITY_EXPENSE'
+  | 'WATER_EXPENSE'
+  | 'CLEANING_EXPENSE'
+  | 'STAFF_EXPENSE'
+  | 'REFUND'
+  | 'OTHER_EXPENSE'
+  | 'MANUAL_ENTRY';
+
+export interface RentalDayBookEntry {
+  id: string;
+  voucherNo: string;
+  date: string; // YYYY-MM-DD
+  transactionType: RentalTransactionType;
+  category: string;
+  description: string;
+  complexId: string;
+  complexName?: string;
+  shopId?: string;
+  shopNumber?: string;
+  shopName?: string;
+  tenantName?: string;
+  paymentMode: PaymentMode | string;
+  debit: number;
+  credit: number;
+  runningBalance?: number;
+  referenceType: 'RENT_PAYMENT' | 'RENTAL_EXPENSE' | 'MANUAL' | 'REFUND';
+  referenceId: string;
+  entrySource: 'SYSTEM' | 'MANUAL';
+  notes?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RentalDayBookFilter {
+  date?: string;
+  from?: string;
+  to?: string;
+  complexId?: string;
+  paymentMode?: string;
+  transactionType?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface RentalDayBookSummary {
+  openingBalance: number;
+  totalCredit: number;
+  totalDebit: number;
+  closingBalance: number;
+  paymentModeSummary: {
+    cashIncome: number;
+    cashExpense: number;
+    gpayIncome: number;
+    gpayExpense: number;
+    otherIncome: number;
+    otherExpense: number;
+  };
+  complexSummary: {
+    complexId: string;
+    complexName: string;
+    income: number;
+    expense: number;
+    net: number;
+  }[];
+  entries: RentalDayBookEntry[];
+  totalCount: number;
+  page: number;
+  limit: number;
+}
+

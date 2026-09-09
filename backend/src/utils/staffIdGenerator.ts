@@ -2,13 +2,14 @@ import mongoose from 'mongoose';
 import { Counter } from './customerIdGenerator.js';
 
 /**
- * Atomically generates the next unique sequential Staff ID formatted as KKV-STAFF-000001
+ * Atomically generates the next unique sequential Staff ID formatted as KKV-STAFF-000001 or KKV-RS-000001
  */
 export async function generateStaffId(prefix: string = 'KKV-STAFF'): Promise<{ staffId: string; sequenceNumber: number }> {
+  const counterKey = prefix === 'KKV-RS' ? 'rental_staff_id_sequence' : 'staff_id_sequence';
   if (mongoose.connection.readyState === 1) {
     try {
       const counterDoc = await Counter.findByIdAndUpdate(
-        'staff_id_sequence',
+        counterKey,
         { $inc: { seq: 1 } },
         { new: true, upsert: true }
       );

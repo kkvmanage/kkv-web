@@ -33,6 +33,7 @@ import { RentalComplexDetail } from './modules/rental/pages/RentalComplexDetail'
 import { RentalShops } from './modules/rental/pages/RentalShops';
 import { RentalShopDetail } from './modules/rental/pages/RentalShopDetail';
 import { RentalPayments } from './modules/rental/pages/RentalPayments';
+import { RentalDayBook } from './modules/rental/pages/RentalDayBook';
 import { RentalExpenses } from './modules/rental/pages/RentalExpenses';
 import { RentalReports } from './modules/rental/pages/RentalReports';
 
@@ -214,6 +215,12 @@ export const App: React.FC = () => {
           return <AccessDenied requestedArea="Rent Collection & Payments" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
         }
         return <RentalPayments />;
+
+      case 'rental-daybook':
+        if (!hasPermission('rental', 'view')) {
+          return <AccessDenied requestedArea="Rental Day Book" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
+        }
+        return <RentalDayBook />;
 
       case 'rental-expenses':
         if (!hasPermission('rental', 'view')) {

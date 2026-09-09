@@ -24,12 +24,14 @@ import {
   Home,
   Receipt,
   FileSpreadsheet,
-  PieChart
+  PieChart,
+  Key
 } from 'lucide-react';
 
 import { KKVLogo } from '../common/KKVLogo';
 import { BackupCloseModal } from '../common/BackupCloseModal';
 import { RestoreModal } from '../common/RestoreModal';
+import { ChangePasswordModal } from '../common/ChangePasswordModal';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -120,6 +122,7 @@ export const Sidebar: React.FC = () => {
 
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const handleBackupAndClose = () => {
     setIsBackupModalOpen(true);
@@ -488,6 +491,7 @@ export const Sidebar: React.FC = () => {
                     'rental-shops',
                     'rental-shop-detail',
                     'rental-payments',
+                    'rental-daybook',
                     'rental-expenses',
                     'rental-reports'
                   ].includes(currentPage)
@@ -530,6 +534,13 @@ export const Sidebar: React.FC = () => {
                     >
                       <Receipt size={14} style={{ marginRight: '6px' }} />
                       Rent Collection
+                    </button>
+                    <button
+                      className={`sidebar-sublink ${currentPage === 'rental-daybook' ? 'active' : ''}`}
+                      onClick={() => setCurrentPage('rental-daybook')}
+                    >
+                      <BookOpen size={14} style={{ marginRight: '6px' }} />
+                      Day Book
                     </button>
                     <button
                       className={`sidebar-sublink ${currentPage === 'rental-expenses' ? 'active' : ''}`}
@@ -646,13 +657,22 @@ export const Sidebar: React.FC = () => {
                 ● {roleLabel}
               </span>
             </div>
-            <button
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              title="Sign Out"
-              onClick={logoutUser}
-            >
-              <LogOut size={16} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Change Password"
+                onClick={() => setIsChangePasswordOpen(true)}
+              >
+                <Key size={15} />
+              </button>
+              <button
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '6px', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Sign Out"
+                onClick={logoutUser}
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -668,6 +688,12 @@ export const Sidebar: React.FC = () => {
       <RestoreModal
         isOpen={isRestoreModalOpen}
         onClose={() => setIsRestoreModalOpen(false)}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
     </>
   );

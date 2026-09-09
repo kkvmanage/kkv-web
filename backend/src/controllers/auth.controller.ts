@@ -202,11 +202,11 @@ export const changePassword = async (req: Request, res: Response) => {
       });
     }
 
-    if (newPassword.length < 4) {
+    if (newPassword.length < 6) {
       return res.status(400).json({
         success: false,
         error: 'WEAK_PASSWORD',
-        message: 'New password must be at least 4 characters long.'
+        message: 'New password must be at least 6 characters long.'
       });
     }
 

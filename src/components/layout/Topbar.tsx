@@ -171,6 +171,10 @@ const pageTitles: Record<NavPage, PageMetadata> = {
     title: 'Rent Payments',
     subtitle: 'Record rent collections, partial payments, advance adjustments, Cash and GPay split'
   },
+  'rental-daybook': {
+    title: 'Rental Day Book',
+    subtitle: 'Authoritative commercial rental ledger of collections, expenses, cash/online splits, and running balances'
+  },
   'rental-expenses': {
     title: 'Rental Expenses',
     subtitle: 'Property maintenance, utilities, repairs, cleaning, security, and complex expenses'

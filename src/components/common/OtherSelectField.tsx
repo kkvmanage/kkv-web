@@ -164,13 +164,46 @@ export function resolveRelation(value: string, customValue: string): string {
 /** Standard relation options for nominee / guarantor */
 export const RELATION_OPTIONS: { value: string; label: string }[] = [
   { value: '-', label: '- Select -' },
+  { value: 'Father', label: 'Father' },
+  { value: 'Mother', label: 'Mother' },
+  { value: 'Husband', label: 'Husband' },
+  { value: 'Wife', label: 'Wife' },
   { value: 'Spouse', label: 'Spouse' },
   { value: 'Son', label: 'Son' },
   { value: 'Daughter', label: 'Daughter' },
-  { value: 'Father', label: 'Father' },
-  { value: 'Mother', label: 'Mother' },
   { value: 'Brother', label: 'Brother' },
   { value: 'Sister', label: 'Sister' },
+  { value: 'Guardian', label: 'Guardian' },
   { value: 'Friend', label: 'Friend' },
   { value: 'Other', label: 'Other' },
 ];
+
+export const NOMINEE_RELATION_OPTIONS: { value: string; label: string }[] = [
+  { value: '-', label: '- Select Relation -' },
+  { value: 'Father', label: 'Father' },
+  { value: 'Mother', label: 'Mother' },
+  { value: 'Husband', label: 'Husband' },
+  { value: 'Wife', label: 'Wife' },
+  { value: 'Son', label: 'Son' },
+  { value: 'Daughter', label: 'Daughter' },
+  { value: 'Brother', label: 'Brother' },
+  { value: 'Sister', label: 'Sister' },
+  { value: 'Guardian', label: 'Guardian' },
+  { value: 'Other', label: 'Other' },
+];
+
+export const GUARANTOR_RELATION_OPTIONS: { value: string; label: string }[] = [
+  { value: '-', label: '- Select Relation -' },
+  { value: 'Father', label: 'Father' },
+  { value: 'Mother', label: 'Mother' },
+  { value: 'Husband', label: 'Husband' },
+  { value: 'Wife', label: 'Wife' },
+  { value: 'Son', label: 'Son' },
+  { value: 'Daughter', label: 'Daughter' },
+  { value: 'Brother', label: 'Brother' },
+  { value: 'Sister', label: 'Sister' },
+  { value: 'Guardian', label: 'Guardian' },
+  { value: 'Friend', label: 'Friend' },
+  { value: 'Other', label: 'Other' },
+];
+

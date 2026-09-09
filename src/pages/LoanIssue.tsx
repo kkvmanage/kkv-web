@@ -1,10 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import '../styles/LoanIssue.css';
 import { useApp, defaultPurityOptions } from '../context/AppContext';
-import { OtherSelectField, RELATION_OPTIONS, resolveRelation } from '../components/common/OtherSelectField';
+import {
+  OtherSelectField,
+  NOMINEE_RELATION_OPTIONS,
+  GUARANTOR_RELATION_OPTIONS,
+  resolveRelation
+} from '../components/common/OtherSelectField';
 import { FinancialTermsSection } from '../components/common/FinancialTermsSection';
 import { OrnamentItem, Customer, CalculationStrategy } from '../types';
-import { formatIdProofDisplay } from '../utils/kycValidation';
+import {
+  formatIdProofDisplay,
+  formatAadhaarInput,
+  maskAadhaarNumber,
+  maskPANNumber,
+  validatePANNumber
+} from '../utils/kycValidation';
 import {
   getActiveLoanTypesForIssue,
   getProductCardFeeConfig,
@@ -17,12 +28,13 @@ import {
   Search,
   X,
   User,
+  ShieldCheck,
+  FileText,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Upload,
-  Trash2,
-  MapPin
+  Trash2
 } from 'lucide-react';
 
 export const LoanIssue: React.FC = () => {
@@ -93,34 +105,71 @@ export const LoanIssue: React.FC = () => {
   const [showCustSuggestions, setShowCustSuggestions] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-
-
-  // Nominee Collapsible State
+  // ──────────────────────────────────────────────────────────────────────────
+  // NOMINEE KYC STATE
+  // ──────────────────────────────────────────────────────────────────────────
   const [hasNominee, setHasNominee] = useState<boolean>(false);
-  const [nomineePhoto, setNomineePhoto] = useState<string | null>(null);
-  const [isNomineeWebcamOpen, setIsNomineeWebcamOpen] = useState<boolean>(false);
   const [nomineeName, setNomineeName] = useState<string>('');
-  const [nomineePhone, setNomineePhone] = useState<string>('');
-  const [nomineeGender, setNomineeGender] = useState<'Male' | 'Female' | 'Other'>('Male');
-  const [nomineeAgeMode, setNomineeAgeMode] = useState<'DOB' | 'AGE'>('DOB');
   const [nomineeDob, setNomineeDob] = useState<string>('');
-  const [nomineeAge, setNomineeAge] = useState<string>('');
-  const [nomineeRelation, setNomineeRelation] = useState<string>('Spouse');
+  const [nomineeGender, setNomineeGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+  const [nomineeRelation, setNomineeRelation] = useState<string>('Father');
   const [nomineeCustomRelation, setNomineeCustomRelation] = useState<string>('');
-  const [nomineeOccupation, setNomineeOccupation] = useState<string>('');
+  const [nomineePhone, setNomineePhone] = useState<string>('');
+  const [nomineeAltPhone, setNomineeAltPhone] = useState<string>('');
   const [nomineeEmail, setNomineeEmail] = useState<string>('');
-  const [nomineeIdProofType, setNomineeIdProofType] = useState<string>('Aadhaar');
+  const [nomineeOccupation, setNomineeOccupation] = useState<string>('');
   const [nomineeAadhaarNo, setNomineeAadhaarNo] = useState<string>('');
   const [nomineePanNo, setNomineePanNo] = useState<string>('');
-  const [nomineeOtherIdName, setNomineeOtherIdName] = useState<string>('');
-  const [nomineeOtherIdNo, setNomineeOtherIdNo] = useState<string>('');
-  const [nomineeIdNo, setNomineeIdNo] = useState<string>('');
   const [nomineeAddress, setNomineeAddress] = useState<string>('');
   const [nomineePermanentAddress, setNomineePermanentAddress] = useState<string>('');
+  const [nomineeSameAsCurrentAddress, setNomineeSameAsCurrentAddress] = useState<boolean>(false);
   const [nomineeSameAsCustomerAddress, setNomineeSameAsCustomerAddress] = useState<boolean>(false);
+  const [nomineePhoto, setNomineePhoto] = useState<string | null>(null);
+  const [isNomineeWebcamOpen, setIsNomineeWebcamOpen] = useState<boolean>(false);
   const [nomineeLocation, setNomineeLocation] = useState<any>(null);
-  const [isCapturingNomineeGps, setIsCapturingNomineeGps] = useState<boolean>(false);
-  const [nomineeGpsInputUrl, setNomineeGpsInputUrl] = useState<string>('');
+  const [nomineeDocs, setNomineeDocs] = useState<{
+    aadhaarFront: string | null;
+    aadhaarBack: string | null;
+    panCard: string | null;
+  }>({
+    aadhaarFront: null,
+    aadhaarBack: null,
+    panCard: null
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GUARANTOR KYC STATE
+  // ──────────────────────────────────────────────────────────────────────────
+  const [hasGuarantor, setHasGuarantor] = useState<boolean>(false);
+  const [guarantorName, setGuarantorName] = useState<string>('');
+  const [guarantorDob, setGuarantorDob] = useState<string>('');
+  const [guarantorAge, setGuarantorAge] = useState<string>('');
+  const [guarantorGender, setGuarantorGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+  const [guarantorRelation, setGuarantorRelation] = useState<string>('Friend');
+  const [guarantorCustomRelation, setGuarantorCustomRelation] = useState<string>('');
+  const [guarantorPhone, setGuarantorPhone] = useState<string>('');
+  const [guarantorAltPhone, setGuarantorAltPhone] = useState<string>('');
+  const [guarantorEmail, setGuarantorEmail] = useState<string>('');
+  const [guarantorOccupation, setGuarantorOccupation] = useState<string>('');
+  const [guarantorMonthlyIncome, setGuarantorMonthlyIncome] = useState<number | ''>('');
+  const [guarantorAadhaarNo, setGuarantorAadhaarNo] = useState<string>('');
+  const [guarantorPanNo, setGuarantorPanNo] = useState<string>('');
+  const [guarantorAddress, setGuarantorAddress] = useState<string>('');
+  const [guarantorPermanentAddress, setGuarantorPermanentAddress] = useState<string>('');
+  const [guarantorSameAsCurrentAddress, setGuarantorSameAsCurrentAddress] = useState<boolean>(false);
+  const [guarantorPhoto, setGuarantorPhoto] = useState<string | null>(null);
+  const [isGuarantorWebcamOpen, setIsGuarantorWebcamOpen] = useState<boolean>(false);
+  const [guarantorDocs, setGuarantorDocs] = useState<{
+    aadhaarFront: string | null;
+    aadhaarBack: string | null;
+    panCard: string | null;
+    photo: string | null;
+  }>({
+    aadhaarFront: null,
+    aadhaarBack: null,
+    panCard: null,
+    photo: null
+  });
 
   const calculateAgeFromDob = (dobStr: string): number => {
     if (!dobStr) return 0;
@@ -143,9 +192,52 @@ export const LoanIssue: React.FC = () => {
   const handleToggleSameAsCustomerAddress = (checked: boolean) => {
     setNomineeSameAsCustomerAddress(checked);
     if (checked && selectedCustomer) {
-      setNomineeAddress(selectedCustomer.currentAddress || '');
-      setNomineePermanentAddress(selectedCustomer.permanentAddress || selectedCustomer.currentAddress || '');
+      const cAddr = selectedCustomer.currentAddress || '';
+      const pAddr = selectedCustomer.permanentAddress || selectedCustomer.currentAddress || '';
+      setNomineeAddress(cAddr);
+      setNomineePermanentAddress(pAddr);
     }
+  };
+
+  const handleNomineeSameAsCurrentAddressToggle = (checked: boolean) => {
+    setNomineeSameAsCurrentAddress(checked);
+    if (checked) {
+      setNomineePermanentAddress(nomineeAddress);
+    }
+  };
+
+  const handleGuarantorSameAsCurrentAddressToggle = (checked: boolean) => {
+    setGuarantorSameAsCurrentAddress(checked);
+    if (checked) {
+      setGuarantorPermanentAddress(guarantorAddress);
+    }
+  };
+
+  const handleKycDocUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onSuccess: (dataUrl: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Document file size must be less than 5 MB.', 'error');
+      return;
+    }
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      showToast('Please upload a valid JPG, PNG, WEBP image or PDF file.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      onSuccess(event.target?.result as string);
+      showToast('KYC document attached successfully!', 'success');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleNomineePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,7 +250,7 @@ export const LoanIssue: React.FC = () => {
     }
 
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
+    if (!validTypes.includes(file.type.toLowerCase())) {
       showToast('Please select a valid image file (JPG, JPEG, PNG, WEBP).', 'error');
       return;
     }
@@ -169,71 +261,32 @@ export const LoanIssue: React.FC = () => {
       showToast('Nominee photo uploaded successfully!', 'success');
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  const handleCaptureNomineeGps = () => {
-    if (!navigator.geolocation) {
-      showToast('Geolocation is not supported by your browser.', 'error');
+  const handleGuarantorPhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Guarantor photo size must be less than 5 MB.', 'error');
       return;
     }
-    setIsCapturingNomineeGps(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        setNomineeLocation({
-          latitude,
-          longitude,
-          accuracy,
-          capturedAt: new Date().toISOString(),
-          googleMapsUrl: mapsUrl
-        });
-        setIsCapturingNomineeGps(false);
-        showToast('Nominee GPS location captured successfully!', 'success');
-      },
-      (err) => {
-        setIsCapturingNomineeGps(false);
-        showToast(err.message || 'Unable to capture GPS location.', 'error');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
 
-  const handleApplyNomineeGpsUrl = () => {
-    if (!nomineeGpsInputUrl.trim()) return;
-    const match = nomineeGpsInputUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || nomineeGpsInputUrl.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (match) {
-      const lat = parseFloat(match[1]);
-      const lng = parseFloat(match[2]);
-      setNomineeLocation({
-        latitude: lat,
-        longitude: lng,
-        accuracy: 10,
-        capturedAt: new Date().toISOString(),
-        googleMapsUrl: nomineeGpsInputUrl.trim()
-      });
-      showToast('Google Maps location saved for Nominee!', 'success');
-    } else {
-      setNomineeLocation({
-        latitude: 0,
-        longitude: 0,
-        accuracy: 0,
-        capturedAt: new Date().toISOString(),
-        googleMapsUrl: nomineeGpsInputUrl.trim()
-      });
-      showToast('Google Maps URL saved for Nominee!', 'success');
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      showToast('Please select a valid image file (JPG, JPEG, PNG, WEBP).', 'error');
+      return;
     }
-  };
 
-  // Guarantor Collapsible
-  const [hasGuarantor, setHasGuarantor] = useState<boolean>(false);
-  const [guarantorName, setGuarantorName] = useState<string>('');
-  const [guarantorRelation, setGuarantorRelation] = useState<string>('-');
-  const [guarantorCustomRelation, setGuarantorCustomRelation] = useState<string>('');
-  const [guarantorAge, setGuarantorAge] = useState<string>('');
-  const [guarantorPhone, setGuarantorPhone] = useState<string>('');
-  const [guarantorIdNo, setGuarantorIdNo] = useState<string>('');
-  const [guarantorAddress, setGuarantorAddress] = useState<string>('');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setGuarantorPhoto(event.target?.result as string);
+      showToast('Guarantor photo uploaded successfully!', 'success');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Financial details
   const [principal, setPrincipal] = useState<number | ''>(100000);
@@ -308,6 +361,10 @@ export const LoanIssue: React.FC = () => {
     return getPurityRate(item.purity || defaultPurityName);
   };
 
+  const round3 = (val: number): number => {
+    return Math.round((Number(val) || 0) * 1000) / 1000;
+  };
+
   // Ornament Items
   const [items, setItems] = useState<OrnamentItem[]>([
     {
@@ -316,6 +373,7 @@ export const LoanIssue: React.FC = () => {
       qty: 1,
       purity: '22ct',
       grossWeight: 0,
+      deductionWeight: 0,
       netWeight: 0
     }
   ]);
@@ -323,11 +381,27 @@ export const LoanIssue: React.FC = () => {
   const [ornamentPhotos, setOrnamentPhotos] = useState<string[]>([]);
 
   // Auto Calculations
-  const totalGrossWeight = items.reduce((sum, item) => sum + (Number(item.grossWeight) || 0), 0);
-  const totalNetWeight = items.reduce((sum, item) => sum + (Number(item.netWeight) || 0), 0);
+  const totalGrossWeight = round3(items.reduce((sum, item) => sum + (Number(item.grossWeight) || 0), 0));
+  const totalDeductionWeight = round3(items.reduce((sum, item) => sum + (Number(item.deductionWeight) || 0), 0));
+  const totalNetWeight = round3(items.reduce((sum, item) => sum + (Number(item.netWeight) || 0), 0));
   const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
   const marketValue = items.reduce((sum, item) => sum + Math.round((Number(item.netWeight) || 0) * getRateForItem(item)), 0);
   const ltv = marketValue > 0 ? ((numericPrincipal / marketValue) * 100).toFixed(2) : '0.00';
+
+  // Weight validation errors
+  const weightErrors = useMemo(() => {
+    const errors: Record<string, string> = {};
+    items.forEach((item) => {
+      const gross = Number(item.grossWeight) || 0;
+      const deduction = Number(item.deductionWeight) || 0;
+      if (deduction > gross) {
+        errors[item.id] = `Deduction weight (${deduction.toFixed(3)}g) cannot be greater than gross weight (${gross.toFixed(3)}g).`;
+      }
+    });
+    return errors;
+  }, [items]);
+
+  const hasWeightErrors = Object.keys(weightErrors).length > 0;
 
   // Items Handlers
   const handleAddItem = () => {
@@ -339,6 +413,7 @@ export const LoanIssue: React.FC = () => {
         qty: 1,
         purity: '22ct',
         grossWeight: 0,
+        deductionWeight: 0,
         netWeight: 0
       }
     ]);
@@ -352,18 +427,34 @@ export const LoanIssue: React.FC = () => {
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
-    const handleItemChange = (id: string, field: keyof OrnamentItem, value: any) => {
+  const handleItemChange = (id: string, field: keyof OrnamentItem, value: any) => {
     const allPurities = masterControlSettings?.purityOptions || defaultPurityOptions;
     setItems(prev =>
       prev.map(item => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
-          if (field === 'grossWeight') {
-            const numVal = Number(value) || 0;
-            if (item.netWeight === 0 || item.netWeight === item.grossWeight) {
-              updated.netWeight = numVal;
+
+          if (field === 'qty') {
+            if (value === '') {
+              updated.qty = '' as any;
+            } else {
+              const parsed = parseInt(String(value), 10);
+              updated.qty = isNaN(parsed) || parsed < 1 ? 1 : parsed;
             }
           }
+
+          // Automatically derive Net Weight = Gross - Deduction
+          const rawGross = field === 'grossWeight' ? value : item.grossWeight;
+          const rawDeduction = field === 'deductionWeight' ? value : item.deductionWeight;
+
+          const grossNum = rawGross === '' ? 0 : (Number(rawGross) || 0);
+          const deductionNum = rawDeduction === '' ? 0 : (Number(rawDeduction) || 0);
+          const netNum = Math.max(0, round3(grossNum - deductionNum));
+
+          updated.grossWeight = rawGross === '' ? ('' as any) : grossNum;
+          updated.deductionWeight = rawDeduction === '' ? ('' as any) : deductionNum;
+          updated.netWeight = netNum;
+
           if (field === 'purity') {
             const pConfig = allPurities.find(
               p => p.name.trim().toLowerCase() === String(value).trim().toLowerCase() || p.id === value
@@ -377,7 +468,7 @@ export const LoanIssue: React.FC = () => {
             }
           }
           const currentRate = updated.rateUsed || getRateForItem(updated);
-          updated.valuation = Math.round((Number(updated.netWeight) || 0) * currentRate);
+          updated.valuation = Math.round(netNum * currentRate);
           return updated;
         }
         return item;
@@ -480,26 +571,51 @@ export const LoanIssue: React.FC = () => {
     setCustSearchQuery('');
     setHasNominee(false);
     setNomineeName('');
-    setNomineeRelation('-');
+    setNomineeRelation('Father');
     setNomineeCustomRelation('');
-    setNomineeAge('');
+    setNomineeDob('');
+    setNomineeGender('Male');
     setNomineePhone('');
-    setNomineeIdProofType('Aadhaar');
+    setNomineeAltPhone('');
+    setNomineeEmail('');
+    setNomineeOccupation('');
     setNomineeAadhaarNo('');
     setNomineePanNo('');
-    setNomineeOtherIdName('');
-    setNomineeOtherIdNo('');
-    setNomineeIdNo('');
     setNomineeAddress('');
+    setNomineePermanentAddress('');
+    setNomineeSameAsCurrentAddress(false);
     setNomineeSameAsCustomerAddress(false);
+    setNomineePhoto(null);
+    setNomineeLocation(null);
+    setNomineeDocs({
+      aadhaarFront: null,
+      aadhaarBack: null,
+      panCard: null
+    });
     setHasGuarantor(false);
     setGuarantorName('');
-    setGuarantorRelation('-');
+    setGuarantorRelation('Friend');
     setGuarantorCustomRelation('');
     setGuarantorAge('');
+    setGuarantorDob('');
+    setGuarantorGender('Male');
     setGuarantorPhone('');
-    setGuarantorIdNo('');
+    setGuarantorAltPhone('');
+    setGuarantorEmail('');
+    setGuarantorOccupation('');
+    setGuarantorMonthlyIncome('');
+    setGuarantorAadhaarNo('');
+    setGuarantorPanNo('');
     setGuarantorAddress('');
+    setGuarantorPermanentAddress('');
+    setGuarantorSameAsCurrentAddress(false);
+    setGuarantorPhoto(null);
+    setGuarantorDocs({
+      aadhaarFront: null,
+      aadhaarBack: null,
+      panCard: null,
+      photo: null
+    });
     setPrincipal(100000);
     setDisbursementMethod('Cash');
     setDeductAdvanceInterest(false);
@@ -511,6 +627,7 @@ export const LoanIssue: React.FC = () => {
         qty: 1,
         purity: '22ct',
         grossWeight: 0,
+        deductionWeight: 0,
         netWeight: 0
       }
     ]);
@@ -554,8 +671,42 @@ export const LoanIssue: React.FC = () => {
       }
     }
 
+    // Validate Ornament Items
+    if (!items || items.length === 0) {
+      showToast('At least one ornament item is required.', 'error');
+      return;
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const qVal = Number(it.qty);
+      if (it.qty === ('' as any) || isNaN(qVal) || qVal < 1) {
+        showToast(`Quantity must be at least 1 for ornament #${i + 1}.`, 'error');
+        return;
+      }
+      if (!Number.isInteger(qVal)) {
+        showToast(`Quantity must be a whole number for ornament #${i + 1}.`, 'error');
+        return;
+      }
+      const gWeight = Number(it.grossWeight) || 0;
+      const dWeight = Number(it.deductionWeight) || 0;
+      if (gWeight < 0 || dWeight < 0) {
+        showToast(`Weight values cannot be negative for ornament #${i + 1}.`, 'error');
+        return;
+      }
+      if (dWeight > gWeight) {
+        showToast(`Deduction weight (${dWeight.toFixed(3)}g) cannot be greater than gross weight (${gWeight.toFixed(3)}g) for ornament #${i + 1}.`, 'error');
+        return;
+      }
+    }
+
+    if (hasWeightErrors) {
+      showToast('Please resolve ornament weight deduction errors before submitting.', 'error');
+      return;
+    }
+
     if (totalNetWeight <= 0) {
-      showToast('Please specify ornament net weight.', 'error');
+      showToast('Please specify ornament net weight greater than 0.', 'error');
       return;
     }
 
@@ -565,8 +716,8 @@ export const LoanIssue: React.FC = () => {
         showToast('Please enter the Nominee Full Name.', 'error');
         return;
       }
-      if (nomineeRelation === '-' || !nomineeRelation) {
-        showToast('Please select the Nominee Relation.', 'error');
+      if (!nomineeRelation || nomineeRelation === '-') {
+        showToast('Please select the Relationship with Customer for Nominee.', 'error');
         return;
       }
       if (nomineeRelation === 'Other' && !nomineeCustomRelation.trim()) {
@@ -574,59 +725,115 @@ export const LoanIssue: React.FC = () => {
         return;
       }
       const cleanPhone = nomineePhone.replace(/\D/g, '');
-      if (!cleanPhone || cleanPhone.length !== 10) {
-        showToast('Please enter a valid 10-digit Nominee Phone Number.', 'error');
+      if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+        showToast('Please enter a valid 10-digit Indian Mobile Number for Nominee.', 'error');
+        return;
+      }
+      if (nomineeAltPhone && nomineeAltPhone.trim()) {
+        const cleanAlt = nomineeAltPhone.replace(/\D/g, '');
+        if (cleanAlt.length !== 10 || !/^[6-9]\d{9}$/.test(cleanAlt)) {
+          showToast('Please enter a valid 10-digit Alternate Mobile Number for Nominee.', 'error');
+          return;
+        }
+      }
+      if (nomineeEmail && nomineeEmail.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(nomineeEmail.trim())) {
+          showToast('Please enter a valid Email address for Nominee.', 'error');
+          return;
+        }
+      }
+      if (nomineeDob) {
+        const dobDate = new Date(nomineeDob);
+        if (isNaN(dobDate.getTime()) || dobDate > new Date()) {
+          showToast('Nominee Date of Birth cannot be in the future.', 'error');
+          return;
+        }
+      }
+
+      const cleanAadhaar = nomineeAadhaarNo.replace(/\D/g, '');
+      if (cleanAadhaar.length !== 12) {
+        showToast('Enter a valid 12-digit Aadhaar number for Nominee.', 'error');
         return;
       }
 
-      if (nomineeIdProofType === 'Aadhaar') {
-        const cleanAadhaar = nomineeAadhaarNo.replace(/\D/g, '');
-        if (cleanAadhaar.length !== 12) {
-          showToast('Please enter a valid 12-digit Aadhaar number for Nominee.', 'error');
-          return;
-        }
-      } else if (nomineeIdProofType === 'PAN') {
+      if (nomineePanNo && nomineePanNo.trim()) {
         const panUpper = nomineePanNo.trim().toUpperCase();
         if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
-          showToast('Please enter a valid 10-character PAN number (e.g. ABCDE1234F) for Nominee.', 'error');
-          return;
-        }
-      } else if (nomineeIdProofType === 'Aadhaar + PAN') {
-        const cleanAadhaar = nomineeAadhaarNo.replace(/\D/g, '');
-        const panUpper = nomineePanNo.trim().toUpperCase();
-        if (cleanAadhaar.length !== 12) {
-          showToast('Please enter a valid 12-digit Aadhaar number for Nominee.', 'error');
-          return;
-        }
-        if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
-          showToast('Please enter a valid 10-character PAN number for Nominee.', 'error');
-          return;
-        }
-      } else if (nomineeIdProofType === 'Other') {
-        if (!nomineeOtherIdName.trim()) {
-          showToast('Please enter the Other ID Name for Nominee.', 'error');
-          return;
-        }
-        if (!nomineeOtherIdNo.trim()) {
-          showToast('Please enter the Other ID Number for Nominee.', 'error');
-          return;
-        }
-      } else {
-        if (!nomineeIdNo.trim()) {
-          showToast(`Please enter the Nominee ${nomineeIdProofType} Number.`, 'error');
+          showToast('Enter a valid PAN number for Nominee (e.g. ABCDE1234F).', 'error');
           return;
         }
       }
 
       if (!nomineeAddress.trim()) {
-        showToast('Please enter the Nominee Address.', 'error');
+        showToast('Please enter the Nominee Current Address.', 'error');
         return;
       }
     }
 
-    if (hasGuarantor && guarantorRelation === 'Other' && !guarantorCustomRelation.trim()) {
-      showToast('Please specify the guarantor relationship.', 'error');
-      return;
+    // Validate Guarantor details when hasGuarantor is checked
+    if (hasGuarantor) {
+      if (!guarantorName.trim()) {
+        showToast('Please enter the Guarantor Full Name.', 'error');
+        return;
+      }
+      if (!guarantorRelation || guarantorRelation === '-') {
+        showToast('Please select the Relationship with Customer for Guarantor.', 'error');
+        return;
+      }
+      if (guarantorRelation === 'Other' && !guarantorCustomRelation.trim()) {
+        showToast('Please specify the custom Guarantor relationship.', 'error');
+        return;
+      }
+      const cleanPhone = guarantorPhone.replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+        showToast('Please enter a valid 10-digit Indian Mobile Number for Guarantor.', 'error');
+        return;
+      }
+      if (guarantorAltPhone && guarantorAltPhone.trim()) {
+        const cleanAlt = guarantorAltPhone.replace(/\D/g, '');
+        if (cleanAlt.length !== 10 || !/^[6-9]\d{9}$/.test(cleanAlt)) {
+          showToast('Please enter a valid 10-digit Alternate Mobile Number for Guarantor.', 'error');
+          return;
+        }
+      }
+      if (guarantorEmail && guarantorEmail.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(guarantorEmail.trim())) {
+          showToast('Please enter a valid Email address for Guarantor.', 'error');
+          return;
+        }
+      }
+      if (guarantorDob) {
+        const dobDate = new Date(guarantorDob);
+        if (isNaN(dobDate.getTime()) || dobDate > new Date()) {
+          showToast('Guarantor Date of Birth cannot be in the future.', 'error');
+          return;
+        }
+      }
+      if (guarantorMonthlyIncome !== '' && Number(guarantorMonthlyIncome) < 0) {
+        showToast('Guarantor Monthly Income cannot be negative.', 'error');
+        return;
+      }
+
+      const cleanAadhaar = guarantorAadhaarNo.replace(/\D/g, '');
+      if (cleanAadhaar.length !== 12) {
+        showToast('Enter a valid 12-digit Aadhaar number for Guarantor.', 'error');
+        return;
+      }
+
+      if (guarantorPanNo && guarantorPanNo.trim()) {
+        const panUpper = guarantorPanNo.trim().toUpperCase();
+        if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
+          showToast('Enter a valid PAN number for Guarantor (e.g. ABCDE1234F).', 'error');
+          return;
+        }
+      }
+
+      if (!guarantorAddress.trim()) {
+        showToast('Please enter the Guarantor Current Address.', 'error');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -636,6 +843,16 @@ export const LoanIssue: React.FC = () => {
       const finalBusinessDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
       const finalLoanNo = displayLoanNo;
       const finalReceiptNo = displayReceiptNo;
+
+      const cleanNomineeAadhaar = nomineeAadhaarNo.replace(/\D/g, '');
+      const cleanNomineePan = nomineePanNo.trim().toUpperCase();
+      const cleanNomineePhone = nomineePhone.replace(/\D/g, '');
+      const cleanNomineeAltPhone = nomineeAltPhone.replace(/\D/g, '');
+
+      const cleanGuarantorAadhaar = guarantorAadhaarNo.replace(/\D/g, '');
+      const cleanGuarantorPan = guarantorPanNo.trim().toUpperCase();
+      const cleanGuarantorPhone = guarantorPhone.replace(/\D/g, '');
+      const cleanGuarantorAltPhone = guarantorAltPhone.replace(/\D/g, '');
 
       const created = addLoan({
         receiptBillNo: finalReceiptNo,
@@ -667,54 +884,56 @@ export const LoanIssue: React.FC = () => {
             relationship: resolveRelation(nomineeRelation, nomineeCustomRelation),
             relation: nomineeRelation,
             customRelation: nomineeRelation === 'Other' ? nomineeCustomRelation.trim() || null : null,
-            phone: nomineePhone.trim(),
+            specifiedRelation: nomineeRelation === 'Other' ? nomineeCustomRelation.trim() || null : null,
+            phone: cleanNomineePhone,
+            mobile: cleanNomineePhone,
+            alternateMobile: cleanNomineeAltPhone || undefined,
             gender: nomineeGender,
-            ageMode: nomineeAgeMode,
-            dateOfBirth: nomineeDob,
-            age: Number(nomineeAge) || undefined,
+            dateOfBirth: nomineeDob || undefined,
+            age: calculateAgeFromDob(nomineeDob) || undefined,
             occupation: nomineeOccupation.trim() || undefined,
             email: nomineeEmail.trim() || undefined,
             photo: nomineePhoto || null,
-            idProofType: nomineeIdProofType,
-            idProofNumber: nomineeIdProofType === 'Aadhaar'
-              ? nomineeAadhaarNo.replace(/\D/g, '')
-              : nomineeIdProofType === 'PAN'
-              ? nomineePanNo.trim().toUpperCase()
-              : nomineeIdProofType === 'Aadhaar + PAN'
-              ? `Aadhaar: ${nomineeAadhaarNo.replace(/\D/g, '')}, PAN: ${nomineePanNo.trim().toUpperCase()}`
-              : nomineeIdProofType === 'Other'
-              ? `${nomineeOtherIdName.trim()}: ${nomineeOtherIdNo.trim()}`
-              : nomineeIdNo.trim(),
-            aadhaarNumber: (nomineeIdProofType === 'Aadhaar' || nomineeIdProofType === 'Aadhaar + PAN') ? nomineeAadhaarNo.replace(/\D/g, '') : undefined,
-            panNumber: (nomineeIdProofType === 'PAN' || nomineeIdProofType === 'Aadhaar + PAN') ? nomineePanNo.trim().toUpperCase() : undefined,
-            otherIdName: nomineeIdProofType === 'Other' ? nomineeOtherIdName.trim() : undefined,
-            otherIdNumber: nomineeIdProofType === 'Other' ? nomineeOtherIdNo.trim() : undefined,
-            idProof: {
-              type: nomineeIdProofType,
-              aadhaarNumber: (nomineeIdProofType === 'Aadhaar' || nomineeIdProofType === 'Aadhaar + PAN') ? nomineeAadhaarNo.replace(/\D/g, '') : undefined,
-              panNumber: (nomineeIdProofType === 'PAN' || nomineeIdProofType === 'Aadhaar + PAN') ? nomineePanNo.trim().toUpperCase() : undefined,
-              otherIdName: nomineeIdProofType === 'Other' ? nomineeOtherIdName.trim() : undefined,
-              otherIdNumber: nomineeIdProofType === 'Other' ? nomineeOtherIdNo.trim() : undefined,
-              idNumber: nomineeIdNo.trim()
-            },
+            aadhaarNumber: cleanNomineeAadhaar,
+            panNumber: cleanNomineePan || undefined,
+            idProofNumber: cleanNomineeAadhaar,
             address: nomineeAddress.trim(),
             currentAddress: nomineeAddress.trim(),
-            permanentAddress: nomineePermanentAddress.trim() || undefined,
-            isSameAddress: nomineeSameAsCustomerAddress,
-            location: nomineeLocation
+            permanentAddress: nomineeSameAsCurrentAddress ? nomineeAddress.trim() : (nomineePermanentAddress.trim() || nomineeAddress.trim()),
+            sameAsCurrentAddress: nomineeSameAsCurrentAddress,
+            isSameAddress: nomineeSameAsCurrentAddress,
+            location: nomineeLocation,
+            documents: nomineeDocs
           }
           : undefined,
         guarantor: hasGuarantor
           ? {
             hasGuarantor: true,
-            name: guarantorName,
+            enabled: true,
+            name: guarantorName.trim(),
+            fullName: guarantorName.trim(),
             relationship: resolveRelation(guarantorRelation, guarantorCustomRelation),
             relation: guarantorRelation,
             customRelation: guarantorRelation === 'Other' ? guarantorCustomRelation.trim() || null : null,
-            age: Number(guarantorAge) || undefined,
-            phone: guarantorPhone,
-            idProof: guarantorIdNo,
-            address: guarantorAddress
+            specifiedRelation: guarantorRelation === 'Other' ? guarantorCustomRelation.trim() || null : null,
+            gender: guarantorGender,
+            dateOfBirth: guarantorDob || undefined,
+            age: calculateAgeFromDob(guarantorDob) || Number(guarantorAge) || undefined,
+            phone: cleanGuarantorPhone,
+            mobile: cleanGuarantorPhone,
+            alternateMobile: cleanGuarantorAltPhone || undefined,
+            email: guarantorEmail.trim() || undefined,
+            occupation: guarantorOccupation.trim() || undefined,
+            monthlyIncome: guarantorMonthlyIncome !== '' ? Number(guarantorMonthlyIncome) : 0,
+            aadhaarNumber: cleanGuarantorAadhaar,
+            panNumber: cleanGuarantorPan || undefined,
+            idProof: cleanGuarantorAadhaar,
+            address: guarantorAddress.trim(),
+            currentAddress: guarantorAddress.trim(),
+            permanentAddress: guarantorSameAsCurrentAddress ? guarantorAddress.trim() : (guarantorPermanentAddress.trim() || guarantorAddress.trim()),
+            sameAsCurrentAddress: guarantorSameAsCurrentAddress,
+            isSameAddress: guarantorSameAsCurrentAddress,
+            documents: guarantorDocs
           }
           : undefined,
         kycDocuments: selectedCustomer.kycDocumentDriveIds || [],
@@ -741,8 +960,22 @@ export const LoanIssue: React.FC = () => {
         cardFeeEnabled: loanTerms.contractSnapshot.cardFeeEnabled,
         cardFeePaymentMode: cardFeeMode,
         cardFeeBankMode: cardFeeMode === 'Bank' ? cardFeeBankMode : undefined,
-        items,
+        items: items.map(it => {
+          const rawQty = Number(it.qty);
+          const validQty = Number.isInteger(rawQty) && rawQty >= 1 ? rawQty : 1;
+          const gross = Number(it.grossWeight) || 0;
+          const deduction = Number(it.deductionWeight) || 0;
+          const net = Math.max(0, round3(gross - deduction));
+          return {
+            ...it,
+            qty: validQty,
+            grossWeight: gross,
+            deductionWeight: deduction,
+            netWeight: net
+          };
+        }),
         totalGrossWeight,
+        totalDeductionWeight,
         totalNetWeight,
         marketValue,
         ltv: Number(ltv),
@@ -1229,471 +1462,794 @@ export const LoanIssue: React.FC = () => {
             {/* Nominee & Guarantor */}
             <div className="fi-rows">
 
-              {/* Nominee */}
+              {/* ──────────────────────────────────────────────────────── */}
+              {/* NOMINEE KYC SECTION                                     */}
+              {/* ──────────────────────────────────────────────────────── */}
               <div>
                 <label className="fi-checkbox-row">
                   <input type="checkbox" checked={hasNominee} onChange={(e) => setHasNominee(e.target.checked)} />
                   <span className="fi-checkbox-label"><span className="fi-checkbox-label-icon">👤</span> Do you have a Nominee?</span>
                 </label>
+
                 {hasNominee && (
-                  <div className="fi-sub-panel fi-rows" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light, #e2e8f0)', padding: '20px', borderRadius: '12px', marginTop: '12px', boxShadow: 'var(--shadow-sm)' }}>
-                    <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <User size={16} /> 1. NOMINEE PHOTO &amp; PERSONAL INFORMATION
-                    </div>
-
-                    {/* ROW 1: NOMINEE PHOTO & BASIC DETAILS */}
-                    <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '16px' }}>
-                      {/* NOMINEE PHOTO UPLOAD & WEBCAM */}
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '50%', border: '2px dashed var(--border-light, #cbd5e1)', overflow: 'hidden', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {nomineePhoto ? (
-                            <img src={nomineePhoto} alt="Nominee Photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', padding: '4px' }}>
-                              <Camera size={24} style={{ margin: '0 auto 4px auto', display: 'block', opacity: 0.5 }} />
-                              <span>Nominee Photo</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px' }}
-                            onClick={() => setIsNomineeWebcamOpen(true)}
-                          >
-                            <Camera size={12} />
-                            <span>Webcam</span>
-                          </button>
-
-                          <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px', cursor: 'pointer', margin: 0 }}>
-                            <Upload size={12} />
-                            <span>Upload</span>
-                            <input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: 'none' }} onChange={handleNomineePhotoFileUpload} />
-                          </label>
-
-                          {nomineePhoto && (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              style={{ fontSize: '11px', height: '28px', padding: '0 6px', color: 'var(--color-danger, #ef4444)' }}
-                              onClick={() => setNomineePhoto(null)}
-                              title="Remove Photo"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
+                  <div className="fi-sub-panel fi-rows" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light, #e2e8f0)', padding: '24px', borderRadius: '12px', marginTop: '12px', boxShadow: 'var(--shadow-sm)' }}>
+                    
+                    {/* SECTION 1: BASIC INFORMATION */}
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <User size={16} /> 1. BASIC INFORMATION
                       </div>
 
-                      {/* NAME & MOBILE NUMBER */}
-                      <div style={{ flex: 1, minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div className="fi-grid-2">
-                          <div className="fi-field">
-                            <label className="fi-label">NOMINEE FULL NAME <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="Enter nominee full name"
-                              value={nomineeName}
-                              onChange={(e) => setNomineeName(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="fi-field">
-                            <label className="fi-label">MOBILE NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <span className="input-control readonly" style={{ width: '50px', textAlign: 'center', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', flexShrink: 0 }}>
-                                +91
-                              </span>
-                              <input
-                                type="text"
-                                className="input-control"
-                                placeholder="10-digit mobile number"
-                                maxLength={10}
-                                value={nomineePhone}
-                                onChange={(e) => setNomineePhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* GENDER & AGE / DOB */}
-                        <div className="fi-grid-2">
-                          <div className="fi-field">
-                            <label className="fi-label">GENDER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <select
-                              className="select-control input-control"
-                              value={nomineeGender}
-                              onChange={(e) => setNomineeGender(e.target.value as any)}
-                            >
-                              <option value="Male">Male</option>
-                              <option value="Female">Female</option>
-                              <option value="Other">Other</option>
-                            </select>
-                          </div>
-
-                          <div className="fi-field">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                              <label className="fi-label" style={{ margin: 0 }}>AGE / DATE OF BIRTH</label>
-                              <div style={{ display: 'inline-flex', backgroundColor: 'var(--bg-surface-secondary, #f1f5f9)', borderRadius: '6px', padding: '2px' }}>
-                                <button
-                                  type="button"
-                                  style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', border: 'none', backgroundColor: nomineeAgeMode === 'DOB' ? 'var(--color-primary-dark, #047857)' : 'transparent', color: nomineeAgeMode === 'DOB' ? '#ffffff' : 'var(--text-muted)', cursor: 'pointer' }}
-                                  onClick={() => setNomineeAgeMode('DOB')}
-                                >
-                                  DOB
-                                </button>
-                                <button
-                                  type="button"
-                                  style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', border: 'none', backgroundColor: nomineeAgeMode === 'AGE' ? 'var(--color-primary-dark, #047857)' : 'transparent', color: nomineeAgeMode === 'AGE' ? '#ffffff' : 'var(--text-muted)', cursor: 'pointer' }}
-                                  onClick={() => setNomineeAgeMode('AGE')}
-                                >
-                                  AGE
-                                </button>
-                              </div>
-                            </div>
-
-                            {nomineeAgeMode === 'DOB' ? (
-                              <div>
-                                <input
-                                  type="date"
-                                  className="input-control"
-                                  value={nomineeDob}
-                                  onChange={(e) => {
-                                    const dobVal = e.target.value;
-                                    setNomineeDob(dobVal);
-                                    if (dobVal) {
-                                      const calculatedYears = calculateAgeFromDob(dobVal);
-                                      setNomineeAge(calculatedYears ? calculatedYears.toString() : '');
-                                    }
-                                  }}
-                                />
-                                {nomineeAge && (
-                                  <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 700, marginTop: '2px', display: 'block' }}>
-                                    Calculated Age: {nomineeAge} Years
-                                  </span>
-                                )}
-                              </div>
+                      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        {/* NOMINEE PHOTO UPLOAD & WEBCAM */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '50%', border: '2px dashed var(--border-light, #cbd5e1)', overflow: 'hidden', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {nomineePhoto ? (
+                              <img src={nomineePhoto} alt="Nominee Photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             ) : (
-                              <input
-                                type="number"
-                                className="input-control"
-                                placeholder="Enter age (1 - 120)"
-                                min={1}
-                                max={120}
-                                value={nomineeAge}
-                                onChange={(e) => setNomineeAge(e.target.value)}
-                              />
+                              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', padding: '4px' }}>
+                                <Camera size={24} style={{ margin: '0 auto 4px auto', display: 'block', opacity: 0.5 }} />
+                                <span>Nominee Photo</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px' }}
+                              onClick={() => setIsNomineeWebcamOpen(true)}
+                            >
+                              <Camera size={12} />
+                              <span>Webcam</span>
+                            </button>
+
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                              <Upload size={12} />
+                              <span>Upload</span>
+                              <input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: 'none' }} onChange={handleNomineePhotoFileUpload} />
+                            </label>
+
+                            {nomineePhoto && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', height: '28px', padding: '0 6px', color: 'var(--color-danger, #ef4444)' }}
+                                onClick={() => setNomineePhoto(null)}
+                                title="Remove Photo"
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             )}
                           </div>
                         </div>
+
+                        {/* BASIC DETAILS GRID */}
+                        <div style={{ flex: 1, minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          <div className="fi-grid-2">
+                            <div className="fi-field">
+                              <label className="fi-label">Nominee Full Name <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                              <input
+                                type="text"
+                                className="input-control"
+                                placeholder="Enter full name"
+                                value={nomineeName}
+                                onChange={(e) => setNomineeName(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="fi-field">
+                              <label className="fi-label">Gender</label>
+                              <select
+                                className="select-control input-control"
+                                value={nomineeGender}
+                                onChange={(e) => setNomineeGender(e.target.value as any)}
+                              >
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="fi-grid-2">
+                            <div className="fi-field">
+                              <label className="fi-label">Date of Birth</label>
+                              <input
+                                type="date"
+                                className="input-control"
+                                value={nomineeDob}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => setNomineeDob(e.target.value)}
+                              />
+                              {nomineeDob && (
+                                <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 700, marginTop: '2px', display: 'block' }}>
+                                  Calculated Age: {calculateAgeFromDob(nomineeDob)} Years
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="fi-field">
+                              <OtherSelectField
+                                label="Relationship with Customer *"
+                                value={nomineeRelation}
+                                customValue={nomineeCustomRelation}
+                                options={NOMINEE_RELATION_OPTIONS}
+                                customPlaceholder="Specify relation (e.g. Aunt, Uncle)"
+                                customLabel="Specify Relation *"
+                                onChange={(val, custom) => { setNomineeRelation(val); setNomineeCustomRelation(custom); }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="fi-field">
+                            <label className="fi-label">Occupation (Optional)</label>
+                            <input
+                              type="text"
+                              className="input-control"
+                              placeholder="e.g. Salaried, Business, Agriculture, Homemaker"
+                              value={nomineeOccupation}
+                              onChange={(e) => setNomineeOccupation(e.target.value)}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* ROW 2: RELATIONSHIP & OCCUPATION & EMAIL */}
-                    <div className="fi-grid-2" style={{ marginBottom: '14px' }}>
-                      <div className="fi-field">
-                        <OtherSelectField
-                          label="RELATIONSHIP WITH CUSTOMER *"
-                          value={nomineeRelation}
-                          customValue={nomineeCustomRelation}
-                          options={RELATION_OPTIONS}
-                          customPlaceholder="Specify relationship (e.g. Uncle, Aunt)"
-                          customLabel="OTHER RELATIONSHIP *"
-                          onChange={(val, custom) => { setNomineeRelation(val); setNomineeCustomRelation(custom); }}
-                        />
+                    {/* SECTION 2: CONTACT INFORMATION */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <span>📱 2. CONTACT INFORMATION</span>
                       </div>
 
-                      <div className="fi-field">
-                        <label className="fi-label">OCCUPATION</label>
-                        <input
-                          type="text"
-                          className="input-control"
-                          placeholder="e.g. Farmer, Student, Business"
-                          value={nomineeOccupation}
-                          onChange={(e) => setNomineeOccupation(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="fi-field" style={{ marginBottom: '16px' }}>
-                      <label className="fi-label">EMAIL ADDRESS</label>
-                      <input
-                        type="email"
-                        className="input-control"
-                        placeholder="nominee@email.com"
-                        value={nomineeEmail}
-                        onChange={(e) => setNomineeEmail(e.target.value)}
-                      />
-                    </div>
-
-                    {/* SECTION 2: IDENTITY VERIFICATION */}
-                    <div style={{ borderTop: '1px solid var(--border-light, #e2e8f0)', paddingTop: '16px', marginTop: '16px' }}>
-                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px' }}>
-                        2. IDENTITY VERIFICATION / KYC
-                      </div>
-
-                      <div className="fi-grid-2" style={{ marginBottom: '14px' }}>
+                      <div className="fi-grid-3">
                         <div className="fi-field">
-                          <label className="fi-label">ID PROOF TYPE <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                          <select
-                            className="select-control input-control"
-                            value={nomineeIdProofType}
-                            onChange={(e) => setNomineeIdProofType(e.target.value)}
-                          >
-                            <option value="Aadhaar">Aadhaar</option>
-                            <option value="PAN">PAN</option>
-                            <option value="Aadhaar + PAN">Aadhaar + PAN</option>
-                            <option value="Voter ID">Voter ID</option>
-                            <option value="Driving Licence">Driving Licence</option>
-                            <option value="Passport">Passport</option>
-                            <option value="Other">Other</option>
-                          </select>
-                        </div>
-
-                        {nomineeIdProofType === 'Aadhaar' && (
-                          <div className="fi-field">
-                            <label className="fi-label">AADHAAR NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                          <label className="fi-label">Mobile Number <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <span className="input-control readonly" style={{ width: '50px', textAlign: 'center', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', flexShrink: 0 }}>
+                              +91
+                            </span>
                             <input
                               type="text"
                               className="input-control"
-                              placeholder="Enter 12-digit Aadhaar number"
-                              maxLength={12}
-                              value={nomineeAadhaarNo}
-                              onChange={(e) => setNomineeAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                            />
-                          </div>
-                        )}
-
-                        {nomineeIdProofType === 'PAN' && (
-                          <div className="fi-field">
-                            <label className="fi-label">PAN NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="Enter PAN number (e.g. ABCDE1234F)"
+                              placeholder="10-digit mobile number"
                               maxLength={10}
-                              style={{ textTransform: 'uppercase' }}
-                              value={nomineePanNo}
-                              onChange={(e) => setNomineePanNo(e.target.value.toUpperCase().slice(0, 10))}
+                              value={nomineePhone}
+                              onChange={(e) => setNomineePhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                             />
                           </div>
-                        )}
+                        </div>
 
-                        {(nomineeIdProofType === 'Voter ID' || nomineeIdProofType === 'Driving Licence' || nomineeIdProofType === 'Passport') && (
-                          <div className="fi-field">
-                            <label className="fi-label">{nomineeIdProofType.toUpperCase()} NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                        <div className="fi-field">
+                          <label className="fi-label">Alternate Mobile (Optional)</label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <span className="input-control readonly" style={{ width: '50px', textAlign: 'center', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', flexShrink: 0 }}>
+                              +91
+                            </span>
                             <input
                               type="text"
                               className="input-control"
-                              placeholder={`Enter ${nomineeIdProofType} number`}
-                              value={nomineeIdNo}
-                              onChange={(e) => setNomineeIdNo(e.target.value)}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {nomineeIdProofType === 'Aadhaar + PAN' && (
-                        <div className="fi-grid-2" style={{ marginBottom: '14px' }}>
-                          <div className="fi-field">
-                            <label className="fi-label">AADHAAR NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="Enter 12-digit Aadhaar number"
-                              maxLength={12}
-                              value={nomineeAadhaarNo}
-                              onChange={(e) => setNomineeAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                            />
-                          </div>
-
-                          <div className="fi-field">
-                            <label className="fi-label">PAN NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="Enter PAN number (e.g. ABCDE1234F)"
+                              placeholder="10-digit alternate mobile"
                               maxLength={10}
-                              style={{ textTransform: 'uppercase' }}
-                              value={nomineePanNo}
-                              onChange={(e) => setNomineePanNo(e.target.value.toUpperCase().slice(0, 10))}
+                              value={nomineeAltPhone}
+                              onChange={(e) => setNomineeAltPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                             />
                           </div>
                         </div>
-                      )}
 
-                      {nomineeIdProofType === 'Other' && (
-                        <div className="fi-grid-2" style={{ marginBottom: '14px' }}>
-                          <div className="fi-field">
-                            <label className="fi-label">OTHER ID NAME <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="e.g. Ration Card, Govt ID"
-                              value={nomineeOtherIdName}
-                              onChange={(e) => setNomineeOtherIdName(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="fi-field">
-                            <label className="fi-label">OTHER ID NUMBER <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              placeholder="Enter ID number"
-                              value={nomineeOtherIdNo}
-                              onChange={(e) => setNomineeOtherIdNo(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* SECTION 3: ADDRESS DETAILS */}
-                    <div style={{ borderTop: '1px solid var(--border-light, #e2e8f0)', paddingTop: '16px', marginTop: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                          3. RESIDENTIAL ADDRESS
-                        </div>
-
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary-dark)', cursor: 'pointer' }}>
+                        <div className="fi-field">
+                          <label className="fi-label">Email Address (Optional)</label>
                           <input
-                            type="checkbox"
-                            checked={nomineeSameAsCustomerAddress}
-                            onChange={(e) => handleToggleSameAsCustomerAddress(e.target.checked)}
+                            type="email"
+                            className="input-control"
+                            placeholder="nominee@email.com"
+                            value={nomineeEmail}
+                            onChange={(e) => setNomineeEmail(e.target.value)}
                           />
-                          <span>Same as Customer Current Address</span>
-                        </label>
-                      </div>
-
-                      <div className="fi-field" style={{ marginBottom: '14px' }}>
-                        <label className="fi-label">CURRENT ADDRESS <span style={{ color: 'var(--color-danger)' }}>*</span></label>
-                        <textarea
-                          className="input-control"
-                          rows={2}
-                          placeholder="Enter nominee complete current residential address"
-                          value={nomineeAddress}
-                          onChange={(e) => setNomineeAddress(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="fi-field" style={{ marginBottom: '14px' }}>
-                        <label className="fi-label">PERMANENT ADDRESS</label>
-                        <textarea
-                          className="input-control"
-                          rows={2}
-                          placeholder="Enter nominee permanent residential address"
-                          value={nomineePermanentAddress}
-                          onChange={(e) => setNomineePermanentAddress(e.target.value)}
-                        />
+                        </div>
                       </div>
                     </div>
 
-                    {/* SECTION 4: LOCATION / GPS */}
-                    <div style={{ borderTop: '1px solid var(--border-light, #e2e8f0)', paddingTop: '16px', marginTop: '16px' }}>
-                      <div style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>
-                        4. NOMINEE LOCATION (OPTIONAL)
+                    {/* SECTION 3: KYC INFORMATION */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <ShieldCheck size={16} /> 3. KYC IDENTIFICATION
                       </div>
 
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={isCapturingNomineeGps}
-                          onClick={handleCaptureNomineeGps}
-                          style={{ gap: '6px', fontSize: '12px', height: '34px', fontWeight: 700 }}
-                        >
-                          <MapPin size={14} />
-                          <span>{isCapturingNomineeGps ? 'Capturing GPS...' : '📍 Capture GPS Location'}</span>
-                        </button>
-
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>OR</span>
-
-                        <div style={{ flex: 1, minWidth: '240px', display: 'flex', gap: '6px' }}>
+                      <div className="fi-grid-2">
+                        <div className="fi-field">
+                          <label className="fi-label">Aadhaar Number <span style={{ color: 'var(--color-danger)' }}>*</span></label>
                           <input
                             type="text"
                             className="input-control"
-                            style={{ height: '34px', fontSize: '12px' }}
-                            placeholder="Paste Google Maps URL"
-                            value={nomineeGpsInputUrl}
-                            onChange={(e) => setNomineeGpsInputUrl(e.target.value)}
+                            placeholder="12-digit Aadhaar number"
+                            maxLength={14}
+                            value={formatAadhaarInput(nomineeAadhaarNo)}
+                            onChange={(e) => setNomineeAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
                           />
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ height: '34px', fontSize: '12px', flexShrink: 0 }}
-                            onClick={handleApplyNomineeGpsUrl}
-                          >
-                            Save Map URL
-                          </button>
+                          {nomineeAadhaarNo.replace(/\D/g, '').length === 12 && (
+                            <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 600, marginTop: '3px', display: 'block' }}>
+                              ✓ Valid 12-digit format ({maskAadhaarNumber(nomineeAadhaarNo)})
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="fi-field">
+                          <label className="fi-label">PAN Number (Optional)</label>
+                          <input
+                            type="text"
+                            className="input-control"
+                            placeholder="ABCDE1234F"
+                            maxLength={10}
+                            style={{ textTransform: 'uppercase' }}
+                            value={nomineePanNo}
+                            onChange={(e) => setNomineePanNo(e.target.value.toUpperCase().slice(0, 10))}
+                          />
+                          {nomineePanNo && validatePANNumber(nomineePanNo).isValid && (
+                            <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 600, marginTop: '3px', display: 'block' }}>
+                              ✓ Valid PAN format ({maskPANNumber(nomineePanNo)})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 4: ADDRESS DETAILS */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          📍 4. RESIDENTIAL ADDRESS
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary-dark)', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={nomineeSameAsCurrentAddress}
+                              onChange={(e) => handleNomineeSameAsCurrentAddressToggle(e.target.checked)}
+                            />
+                            <span>Same as Current Address</span>
+                          </label>
+
+                          {selectedCustomer && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={nomineeSameAsCustomerAddress}
+                                onChange={(e) => handleToggleSameAsCustomerAddress(e.target.checked)}
+                              />
+                              <span>Copy Customer Address</span>
+                            </label>
+                          )}
                         </div>
                       </div>
 
-                      {nomineeLocation && (
-                        <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--color-primary-dark)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>✓ Nominee Location Saved (Lat: {nomineeLocation.latitude}, Lng: {nomineeLocation.longitude})</span>
-                          {nomineeLocation.googleMapsUrl && (
-                            <a href={nomineeLocation.googleMapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary-accent)', fontWeight: 700, textDecoration: 'underline' }}>
-                              Open Map 🗺️
-                            </a>
+                      <div className="fi-field" style={{ marginBottom: '14px' }}>
+                        <label className="fi-label">Current Address <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                        <textarea
+                          className="input-control"
+                          rows={2}
+                          placeholder="Complete current residential address"
+                          value={nomineeAddress}
+                          onChange={(e) => {
+                            setNomineeAddress(e.target.value);
+                            if (nomineeSameAsCurrentAddress) {
+                              setNomineePermanentAddress(e.target.value);
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="fi-field">
+                        <label className="fi-label">Permanent Address (Optional)</label>
+                        <textarea
+                          className="input-control"
+                          rows={2}
+                          placeholder="Permanent address (or same as current)"
+                          value={nomineePermanentAddress}
+                          onChange={(e) => {
+                            setNomineePermanentAddress(e.target.value);
+                            if (nomineeSameAsCurrentAddress && e.target.value !== nomineeAddress) {
+                              setNomineeSameAsCurrentAddress(false);
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* SECTION 5: KYC DOCUMENTS */}
+                    <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-subtle, #e2e8f0)', paddingTop: '16px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={16} /> 5. NOMINEE KYC DOCUMENTS (OPTIONAL)
+                      </div>
+
+                      <div className="fi-grid-3">
+                        {/* Aadhaar Front */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>Aadhaar Front</span>
+                          {nomineeDocs.aadhaarFront ? (
+                            <div>
+                              {nomineeDocs.aadhaarFront.startsWith('data:image') ? (
+                                <img src={nomineeDocs.aadhaarFront} alt="Aadhaar Front" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setNomineeDocs(prev => ({ ...prev, aadhaarFront: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload Front</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setNomineeDocs(p => ({ ...p, aadhaarFront: url })))} />
+                            </label>
                           )}
                         </div>
-                      )}
+
+                        {/* Aadhaar Back */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>Aadhaar Back</span>
+                          {nomineeDocs.aadhaarBack ? (
+                            <div>
+                              {nomineeDocs.aadhaarBack.startsWith('data:image') ? (
+                                <img src={nomineeDocs.aadhaarBack} alt="Aadhaar Back" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setNomineeDocs(prev => ({ ...prev, aadhaarBack: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload Back</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setNomineeDocs(p => ({ ...p, aadhaarBack: url })))} />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* PAN Card */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>PAN Card</span>
+                          {nomineeDocs.panCard ? (
+                            <div>
+                              {nomineeDocs.panCard.startsWith('data:image') ? (
+                                <img src={nomineeDocs.panCard} alt="PAN Card" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setNomineeDocs(prev => ({ ...prev, panCard: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload PAN</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setNomineeDocs(p => ({ ...p, panCard: url })))} />
+                            </label>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
                   </div>
                 )}
               </div>
 
-              {/* Guarantor */}
+              {/* ──────────────────────────────────────────────────────── */}
+              {/* GUARANTOR KYC SECTION                                   */}
+              {/* ──────────────────────────────────────────────────────── */}
               <div>
                 <label className="fi-checkbox-row">
                   <input type="checkbox" checked={hasGuarantor} onChange={(e) => setHasGuarantor(e.target.checked)} />
                   <span className="fi-checkbox-label"><span className="fi-checkbox-label-icon">🤝</span> Do you have a Guarantor?</span>
                 </label>
+
                 {hasGuarantor && (
-                  <div className="fi-sub-panel fi-rows">
-                    <div className="fi-grid-2">
-                      <div className="fi-field">
-                        <label className="fi-label">Guarantor Name</label>
-                        <input type="text" className="input-control" placeholder="Full name"
-                          value={guarantorName} onChange={(e) => setGuarantorName(e.target.value)} />
+                  <div className="fi-sub-panel fi-rows" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light, #e2e8f0)', padding: '24px', borderRadius: '12px', marginTop: '12px', boxShadow: 'var(--shadow-sm)' }}>
+                    
+                    {/* SECTION 1: BASIC INFORMATION */}
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <User size={16} /> 1. BASIC INFORMATION
                       </div>
+
+                      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '16px' }}>
+                        {/* GUARANTOR PHOTO UPLOAD & WEBCAM */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '50%', border: '2px dashed var(--border-light, #cbd5e1)', overflow: 'hidden', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {guarantorPhoto ? (
+                              <img src={guarantorPhoto} alt="Guarantor Photo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', padding: '4px' }}>
+                                <Camera size={24} style={{ margin: '0 auto 4px auto', display: 'block', opacity: 0.5 }} />
+                                <span>Guarantor Photo</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px' }}
+                              onClick={() => setIsGuarantorWebcamOpen(true)}
+                            >
+                              <Camera size={12} />
+                              <span>Webcam</span>
+                            </button>
+
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', height: '28px', padding: '0 8px', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                              <Upload size={12} />
+                              <span>Upload</span>
+                              <input type="file" accept="image/jpeg,image/jpg,image/png,image/webp" style={{ display: 'none' }} onChange={handleGuarantorPhotoFileUpload} />
+                            </label>
+
+                            {guarantorPhoto && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', height: '28px', padding: '0 6px', color: 'var(--color-danger, #ef4444)' }}
+                                onClick={() => setGuarantorPhoto(null)}
+                                title="Remove Photo"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* BASIC DETAILS GRID */}
+                        <div style={{ flex: 1, minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          <div className="fi-grid-2">
+                            <div className="fi-field">
+                              <label className="fi-label">Guarantor Full Name <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                              <input
+                                type="text"
+                                className="input-control"
+                                placeholder="Enter full name"
+                                value={guarantorName}
+                                onChange={(e) => setGuarantorName(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="fi-field">
+                              <label className="fi-label">Gender</label>
+                              <select
+                                className="select-control input-control"
+                                value={guarantorGender}
+                                onChange={(e) => setGuarantorGender(e.target.value as any)}
+                              >
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="fi-grid-2">
+                            <div className="fi-field">
+                              <label className="fi-label">Date of Birth</label>
+                              <input
+                                type="date"
+                                className="input-control"
+                                value={guarantorDob}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={(e) => setGuarantorDob(e.target.value)}
+                              />
+                              {guarantorDob && (
+                                <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 700, marginTop: '2px', display: 'block' }}>
+                                  Calculated Age: {calculateAgeFromDob(guarantorDob)} Years
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="fi-field">
+                              <OtherSelectField
+                                label="Relationship with Customer *"
+                                value={guarantorRelation}
+                                customValue={guarantorCustomRelation}
+                                options={GUARANTOR_RELATION_OPTIONS}
+                                customPlaceholder="Specify relation (e.g. Colleague, Neighbor)"
+                                customLabel="Specify Relation *"
+                                onChange={(val, custom) => { setGuarantorRelation(val); setGuarantorCustomRelation(custom); }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="fi-grid-2">
+                            <div className="fi-field">
+                              <label className="fi-label">Occupation (Optional)</label>
+                              <input
+                                type="text"
+                                className="input-control"
+                                placeholder="e.g. Salaried, Business, Agriculture"
+                                value={guarantorOccupation}
+                                onChange={(e) => setGuarantorOccupation(e.target.value)}
+                              />
+                            </div>
+
+                            <div className="fi-field">
+                              <label className="fi-label">Monthly Income (₹) (Optional)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="500"
+                                className="input-control"
+                                placeholder="e.g. 35000"
+                                value={guarantorMonthlyIncome}
+                                onChange={(e) => setGuarantorMonthlyIncome(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 2: CONTACT INFORMATION */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <span>📱 2. CONTACT INFORMATION</span>
+                      </div>
+
+                      <div className="fi-grid-3">
+                        <div className="fi-field">
+                          <label className="fi-label">Mobile Number <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <span className="input-control readonly" style={{ width: '50px', textAlign: 'center', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', flexShrink: 0 }}>
+                              +91
+                            </span>
+                            <input
+                              type="text"
+                              className="input-control"
+                              placeholder="10-digit mobile number"
+                              maxLength={10}
+                              value={guarantorPhone}
+                              onChange={(e) => setGuarantorPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="fi-field">
+                          <label className="fi-label">Alternate Mobile (Optional)</label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <span className="input-control readonly" style={{ width: '50px', textAlign: 'center', padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', flexShrink: 0 }}>
+                              +91
+                            </span>
+                            <input
+                              type="text"
+                              className="input-control"
+                              placeholder="10-digit alternate mobile"
+                              maxLength={10}
+                              value={guarantorAltPhone}
+                              onChange={(e) => setGuarantorAltPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="fi-field">
+                          <label className="fi-label">Email Address (Optional)</label>
+                          <input
+                            type="email"
+                            className="input-control"
+                            placeholder="guarantor@email.com"
+                            value={guarantorEmail}
+                            onChange={(e) => setGuarantorEmail(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 3: KYC INFORMATION */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <ShieldCheck size={16} /> 3. KYC IDENTIFICATION
+                      </div>
+
+                      <div className="fi-grid-2">
+                        <div className="fi-field">
+                          <label className="fi-label">Aadhaar Number <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                          <input
+                            type="text"
+                            className="input-control"
+                            placeholder="12-digit Aadhaar number"
+                            maxLength={14}
+                            value={formatAadhaarInput(guarantorAadhaarNo)}
+                            onChange={(e) => setGuarantorAadhaarNo(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                          />
+                          {guarantorAadhaarNo.replace(/\D/g, '').length === 12 && (
+                            <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 600, marginTop: '3px', display: 'block' }}>
+                              ✓ Valid 12-digit format ({maskAadhaarNumber(guarantorAadhaarNo)})
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="fi-field">
+                          <label className="fi-label">PAN Number (Optional)</label>
+                          <input
+                            type="text"
+                            className="input-control"
+                            placeholder="ABCDE1234F"
+                            maxLength={10}
+                            style={{ textTransform: 'uppercase' }}
+                            value={guarantorPanNo}
+                            onChange={(e) => setGuarantorPanNo(e.target.value.toUpperCase().slice(0, 10))}
+                          />
+                          {guarantorPanNo && validatePANNumber(guarantorPanNo).isValid && (
+                            <span style={{ fontSize: '11px', color: 'var(--color-primary-accent, #059669)', fontWeight: 600, marginTop: '3px', display: 'block' }}>
+                              ✓ Valid PAN format ({maskPANNumber(guarantorPanNo)})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 4: ADDRESS DETAILS */}
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid var(--border-subtle, #e2e8f0)', paddingBottom: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          📍 4. RESIDENTIAL ADDRESS
+                        </div>
+
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: 'var(--color-primary-dark)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={guarantorSameAsCurrentAddress}
+                            onChange={(e) => handleGuarantorSameAsCurrentAddressToggle(e.target.checked)}
+                          />
+                          <span>Same as Current Address</span>
+                        </label>
+                      </div>
+
+                      <div className="fi-field" style={{ marginBottom: '14px' }}>
+                        <label className="fi-label">Current Address <span style={{ color: 'var(--color-danger)' }}>*</span></label>
+                        <textarea
+                          className="input-control"
+                          rows={2}
+                          placeholder="Complete current residential address"
+                          value={guarantorAddress}
+                          onChange={(e) => {
+                            setGuarantorAddress(e.target.value);
+                            if (guarantorSameAsCurrentAddress) {
+                              setGuarantorPermanentAddress(e.target.value);
+                            }
+                          }}
+                        />
+                      </div>
+
                       <div className="fi-field">
-                        <OtherSelectField label="Relation" value={guarantorRelation} customValue={guarantorCustomRelation}
-                          options={RELATION_OPTIONS} customPlaceholder="e.g. Uncle, Aunt, Cousin, Guardian"
-                          customLabel="Specify Relation"
-                          onChange={(val, custom) => { setGuarantorRelation(val); setGuarantorCustomRelation(custom); }}
+                        <label className="fi-label">Permanent Address (Optional)</label>
+                        <textarea
+                          className="input-control"
+                          rows={2}
+                          placeholder="Permanent address (or same as current)"
+                          value={guarantorPermanentAddress}
+                          onChange={(e) => {
+                            setGuarantorPermanentAddress(e.target.value);
+                            if (guarantorSameAsCurrentAddress && e.target.value !== guarantorAddress) {
+                              setGuarantorSameAsCurrentAddress(false);
+                            }
+                          }}
                         />
                       </div>
                     </div>
-                    <div className="fi-grid-4">
-                      <div className="fi-field">
-                        <label className="fi-label">Age</label>
-                        <input type="number" className="input-control" placeholder="yrs"
-                          value={guarantorAge} onChange={(e) => setGuarantorAge(e.target.value)} />
+
+                    {/* SECTION 5: KYC DOCUMENTS */}
+                    <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-subtle, #e2e8f0)', paddingTop: '16px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={16} /> 5. GUARANTOR KYC DOCUMENTS (OPTIONAL)
                       </div>
-                      <div className="fi-field">
-                        <label className="fi-label">Phone</label>
-                        <input type="text" className="input-control" placeholder="10-digit mobile"
-                          value={guarantorPhone} onChange={(e) => setGuarantorPhone(e.target.value)} />
-                      </div>
-                      <div className="fi-field">
-                        <label className="fi-label">Aadhaar / ID No.</label>
-                        <input type="text" className="input-control" placeholder="ID number"
-                          value={guarantorIdNo} onChange={(e) => setGuarantorIdNo(e.target.value)} />
-                      </div>
-                      <div className="fi-field">
-                        <label className="fi-label">Address</label>
-                        <input type="text" className="input-control" placeholder="Guarantor address"
-                          value={guarantorAddress} onChange={(e) => setGuarantorAddress(e.target.value)} />
+
+                      <div className="fi-grid-3">
+                        {/* Aadhaar Front */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>Aadhaar Front</span>
+                          {guarantorDocs.aadhaarFront ? (
+                            <div>
+                              {guarantorDocs.aadhaarFront.startsWith('data:image') ? (
+                                <img src={guarantorDocs.aadhaarFront} alt="Aadhaar Front" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setGuarantorDocs(prev => ({ ...prev, aadhaarFront: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload Front</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setGuarantorDocs(p => ({ ...p, aadhaarFront: url })))} />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* Aadhaar Back */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>Aadhaar Back</span>
+                          {guarantorDocs.aadhaarBack ? (
+                            <div>
+                              {guarantorDocs.aadhaarBack.startsWith('data:image') ? (
+                                <img src={guarantorDocs.aadhaarBack} alt="Aadhaar Back" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setGuarantorDocs(prev => ({ ...prev, aadhaarBack: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload Back</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setGuarantorDocs(p => ({ ...p, aadhaarBack: url })))} />
+                            </label>
+                          )}
+                        </div>
+
+                        {/* PAN Card */}
+                        <div style={{ border: '1px dashed var(--border-light, #cbd5e1)', borderRadius: '8px', padding: '12px', backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, display: 'block', marginBottom: '8px', color: 'var(--text-dark)' }}>PAN Card</span>
+                          {guarantorDocs.panCard ? (
+                            <div>
+                              {guarantorDocs.panCard.startsWith('data:image') ? (
+                                <img src={guarantorDocs.panCard} alt="PAN Card" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', marginBottom: '6px' }} />
+                              ) : (
+                                <div style={{ fontSize: '11px', color: 'var(--color-primary-accent)', fontWeight: 700, padding: '20px 0' }}>📄 PDF Document Attached</div>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: '11px', color: 'var(--color-danger, #ef4444)', height: '24px', padding: '0 6px' }}
+                                onClick={() => setGuarantorDocs(prev => ({ ...prev, panCard: null }))}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="btn btn-secondary btn-sm" style={{ fontSize: '11px', cursor: 'pointer', margin: '6px auto 0 auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <Upload size={12} />
+                              <span>Upload PAN</span>
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => handleKycDocUpload(e, (url) => setGuarantorDocs(p => ({ ...p, panCard: url })))} />
+                            </label>
+                          )}
+                        </div>
                       </div>
                     </div>
+
                   </div>
                 )}
               </div>
+
             </div>
           </div>
 
@@ -1747,84 +2303,167 @@ export const LoanIssue: React.FC = () => {
                   <tr>
                     <th style={{ width: '40px' }}>#</th>
                     <th>ITEM</th>
-                    <th style={{ width: '80px' }}>QTY</th>
-                    <th style={{ width: '130px' }}>PURITY</th>
-                    <th style={{ width: '150px' }}>GROSS WT (G)</th>
-                    <th style={{ width: '150px' }}>NET WT (G)</th>
+                    <th style={{ width: '70px' }}>QTY</th>
+                    <th style={{ width: '120px' }}>PURITY</th>
+                    <th style={{ width: '130px' }}>GROSS WT (G)</th>
+                    <th style={{ width: '130px' }}>DEDUCTION (G)</th>
+                    <th style={{ width: '140px' }}>NET WT (G)</th>
                     <th style={{ width: '40px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => (
-                    <tr key={item.id}>
-                      <td style={{ fontWeight: 600 }}>{idx + 1}</td>
-                      <td>
-                        <input
-                          type="text"
-                          className="input-control"
-                          placeholder="e.g. Ring, Chain, Earring"
-                          value={item.item}
-                          onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          className="input-control"
-                          value={item.qty}
-                          onChange={(e) => handleItemChange(item.id, 'qty', Number(e.target.value))}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="input-control"
-                          value={item.purity}
-                          onChange={(e) => handleItemChange(item.id, 'purity', e.target.value)}
-                        >
-                          {activePurityOptions.map((p) => (
-                            <option key={p.id} value={p.name}>
-                              {p.name} {p.category !== 'GOLD' ? `(${p.category})` : ''}
-                            </option>
-                          ))}
-                          {item.purity && !activePurityOptions.some((p) => p.name.trim().toLowerCase() === (item.purity || '').trim().toLowerCase()) && (
-                            <option value={item.purity}>{item.purity} (Inactive)</option>
-                          )}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.001"
-                          className="input-control"
-                          value={item.grossWeight || ''}
-                          placeholder="0.000"
-                          onChange={(e) => handleItemChange(item.id, 'grossWeight', Number(e.target.value))}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.001"
-                          className="input-control"
-                          value={item.netWeight || ''}
-                          placeholder="0.000"
-                          onChange={(e) => handleItemChange(item.id, 'netWeight', Number(e.target.value))}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button type="button" style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }} onClick={() => handleRemoveItem(item.id)}>
-                          <X size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {items.map((item, idx) => {
+                    const isRowError = Number(item.deductionWeight || 0) > Number(item.grossWeight || 0);
+
+                    return (
+                      <React.Fragment key={item.id}>
+                        <tr>
+                          <td style={{ fontWeight: 600 }}>{idx + 1}</td>
+                          <td>
+                            <input
+                              type="text"
+                              className="input-control"
+                              placeholder="e.g. Ring, Chain, Earring"
+                              value={item.item}
+                              onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              className="input-control"
+                              value={item.qty !== undefined && item.qty !== null ? item.qty : 1}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '') {
+                                  handleItemChange(item.id, 'qty', '');
+                                } else {
+                                  const parsed = parseInt(val, 10);
+                                  handleItemChange(item.id, 'qty', isNaN(parsed) ? 1 : Math.max(1, parsed));
+                                }
+                              }}
+                              onBlur={() => {
+                                if (!item.qty || Number(item.qty) < 1 || !Number.isInteger(Number(item.qty))) {
+                                  handleItemChange(item.id, 'qty', 1);
+                                }
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <select
+                              className="input-control"
+                              value={item.purity}
+                              onChange={(e) => handleItemChange(item.id, 'purity', e.target.value)}
+                            >
+                              {activePurityOptions.map((p) => (
+                                <option key={p.id} value={p.name}>
+                                  {p.name} {p.category !== 'GOLD' ? `(${p.category})` : ''}
+                                </option>
+                              ))}
+                              {item.purity && !activePurityOptions.some((p) => p.name.trim().toLowerCase() === (item.purity || '').trim().toLowerCase()) && (
+                                <option value={item.purity}>{item.purity} (Inactive)</option>
+                              )}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              className="input-control"
+                              value={item.grossWeight !== undefined && item.grossWeight !== null && item.grossWeight !== ('' as any) ? item.grossWeight : ''}
+                              placeholder="0.000"
+                              onChange={(e) => handleItemChange(item.id, 'grossWeight', e.target.value === '' ? '' : Number(e.target.value))}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              className={`input-control ${isRowError ? 'input-error' : ''}`}
+                              style={isRowError ? { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.05)' } : {}}
+                              value={item.deductionWeight !== undefined && item.deductionWeight !== null && item.deductionWeight !== ('' as any) ? item.deductionWeight : ''}
+                              placeholder="0.000"
+                              title="Stone / bead / non-gold deduction weight"
+                              onChange={(e) => handleItemChange(item.id, 'deductionWeight', e.target.value === '' ? '' : Number(e.target.value))}
+                            />
+                          </td>
+                          <td>
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                className="input-control"
+                                readOnly
+                                value={item.netWeight !== undefined && item.netWeight !== null ? `${Number(item.netWeight).toFixed(3)}` : '0.000'}
+                                placeholder="0.000"
+                                style={{
+                                  backgroundColor: 'var(--bg-surface-secondary, #f1f5f9)',
+                                  fontWeight: 700,
+                                  color: 'var(--color-primary-dark, #0f172a)',
+                                  cursor: 'not-allowed',
+                                  paddingRight: '45px'
+                                }}
+                              />
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  right: '6px',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: 'var(--primary, #d97706)',
+                                  backgroundColor: 'var(--primary-subtle, rgba(217, 119, 6, 0.12))',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  pointerEvents: 'none',
+                                  userSelect: 'none'
+                                }}
+                              >
+                                Auto
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                              onClick={() => handleRemoveItem(item.id)}
+                              title="Remove item"
+                            >
+                              <X size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                        {weightErrors[item.id] && (
+                          <tr>
+                            <td
+                              colSpan={8}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                color: '#dc2626',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                borderBottom: '1px solid rgba(239, 68, 68, 0.2)'
+                              }}
+                            >
+                              ⚠ {weightErrors[item.id]}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   {/* TOTALS Row */}
                   <tr style={{ fontWeight: 800, backgroundColor: 'var(--bg-surface-subtle)' }}>
                     <td colSpan={2} style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>TOTALS</td>
                     <td>{totalQty}</td>
                     <td>—</td>
                     <td style={{ color: 'var(--color-primary-dark)' }}>{totalGrossWeight.toFixed(3)}</td>
-                    <td style={{ color: 'var(--color-primary-dark)' }}>{totalNetWeight.toFixed(3)}</td>
+                    <td style={{ color: 'var(--color-primary-dark)' }}>{totalDeductionWeight.toFixed(3)}</td>
+                    <td style={{ color: 'var(--color-primary-dark)', fontWeight: 800 }}>{totalNetWeight.toFixed(3)}</td>
                     <td></td>
                   </tr>
                 </tbody>
@@ -2234,6 +2873,17 @@ export const LoanIssue: React.FC = () => {
           setNomineePhoto(dataUrl);
           setIsNomineeWebcamOpen(false);
           showToast('Nominee photo captured via webcam!', 'success');
+        }}
+      />
+
+      {/* WEBCAM CAPTURE MODAL FOR GUARANTOR */}
+      <WebcamCapture
+        isOpen={isGuarantorWebcamOpen}
+        onClose={() => setIsGuarantorWebcamOpen(false)}
+        onCapture={(_file, dataUrl) => {
+          setGuarantorPhoto(dataUrl);
+          setIsGuarantorWebcamOpen(false);
+          showToast('Guarantor photo captured via webcam!', 'success');
         }}
       />
     </div>

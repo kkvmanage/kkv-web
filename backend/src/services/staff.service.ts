@@ -40,19 +40,20 @@ export interface StaffVerificationResult {
 
 class StaffService {
   /**
-   * Automatically seeds Master Admin in MongoDB if no staff exists
+   * Automatically seeds default Admin, Staff, and Rental Staff in MongoDB if missing
    */
   public async ensureMasterAdmin(): Promise<void> {
     if (mongoose.connection.readyState !== 1) return;
 
     try {
+      // 1. Seed Master Admin
       const existingAdmin = await StaffModel.findOne({
         $or: [{ email: MASTER_ADMIN_EMAIL }, { role: 'ADMIN' }, { role: 'MASTER_ADMIN' }]
       });
 
       if (!existingAdmin) {
         console.log('[StaffService] Seeding default Admin in MongoDB...');
-        const passwordHash = await bcrypt.hash('admin123', 10);
+        const passwordHash = await bcrypt.hash('Admin@123456', 10);
         await StaffModel.create({
           staffId: 'KKV-STAFF-000001',
           uid: 'uid_admin_01',
@@ -73,6 +74,54 @@ class StaffService {
         });
         console.log('[StaffService] Administrator seeded successfully in MongoDB.');
       }
+
+      // 2. Seed Default Staff for local development / testing if not exists
+      const existingStaff = await StaffModel.findOne({ email: 'staff@kkvgoldfinance.com' });
+      if (!existingStaff) {
+        const staffHash = await bcrypt.hash('Staff@123456', 10);
+        await StaffModel.create({
+          staffId: 'KKV-STAFF-000002',
+          uid: 'uid_staff_02',
+          fullName: 'Finance Operations Staff',
+          displayName: 'Finance Staff',
+          email: 'staff@kkvgoldfinance.com',
+          phoneNumber: '9876543211',
+          phone: '9876543211',
+          role: 'STAFF',
+          passwordHash: staffHash,
+          status: 'active',
+          isActive: true,
+          mustChangePassword: false,
+          permissions: getDefaultPermissionsForRole('STAFF'),
+          department: 'Finance Operations',
+          createdByUid: 'SYSTEM',
+          createdByEmail: MASTER_ADMIN_EMAIL
+        });
+      }
+
+      // 3. Seed Default Rental Staff for local development / testing if not exists
+      const existingRental = await StaffModel.findOne({ email: 'rental@kkvgoldfinance.com' });
+      if (!existingRental) {
+        const rentalHash = await bcrypt.hash('Rental@123456', 10);
+        await StaffModel.create({
+          staffId: 'KKV-RS-000001',
+          uid: 'uid_rental_01',
+          fullName: 'Rental Complex Manager',
+          displayName: 'Rental Manager',
+          email: 'rental@kkvgoldfinance.com',
+          phoneNumber: '9876543212',
+          phone: '9876543212',
+          role: 'RENTAL_STAFF',
+          passwordHash: rentalHash,
+          status: 'active',
+          isActive: true,
+          mustChangePassword: false,
+          permissions: getDefaultPermissionsForRole('RENTAL_STAFF'),
+          department: 'Rental Management',
+          createdByUid: 'SYSTEM',
+          createdByEmail: MASTER_ADMIN_EMAIL
+        });
+      }
     } catch (err) {
       console.warn('[StaffService] Administrator seeding notice:', err);
     }
@@ -86,8 +135,9 @@ class StaffService {
     const staff = await StaffModel.find({}).sort({ createdAt: -1 }).lean();
     return staff.map((s: any) => {
       const role = s.role === 'MASTER_ADMIN' ? 'ADMIN' : s.role;
+      const { passwordHash, ...safeDoc } = s;
       return {
-        ...s,
+        ...safeDoc,
         id: s.staffId || s.uid || s._id?.toString(),
         uid: s.uid || s.staffId,
         displayName: s.fullName || s.displayName,
@@ -118,9 +168,10 @@ class StaffService {
     if (!staff) return null;
 
     const role = (staff.role as string) === 'MASTER_ADMIN' ? 'ADMIN' : staff.role;
+    const { passwordHash, ...safeDoc } = staff as any;
     return {
-      ...staff,
-      id: staff.staffId || staff.uid || staff._id?.toString(),
+      ...safeDoc,
+      id: staff.staffId || staff.uid || (staff as any)._id?.toString(),
       displayName: staff.fullName || staff.displayName,
       name: staff.fullName || staff.displayName,
       phone: staff.phoneNumber || staff.phone,
@@ -135,7 +186,10 @@ class StaffService {
    */
   public async getStaffByEmail(email: string): Promise<any | null> {
     if (!email) return null;
-    return StaffModel.findOne({ email: email.toLowerCase().trim() }).lean();
+    const staff = await StaffModel.findOne({ email: email.toLowerCase().trim() }).lean();
+    if (!staff) return null;
+    const { passwordHash, ...safeDoc } = staff as any;
+    return safeDoc;
   }
 
   /**
@@ -150,6 +204,7 @@ class StaffService {
       phoneNumber?: string;
       phone?: string;
       password?: string;
+      initialPassword?: string;
       permissions?: Partial<IUserPermissions>;
       department?: string;
     },
@@ -162,20 +217,25 @@ class StaffService {
     const fullName = (data.fullName || data.displayName || '').trim();
     const rawPhone = (data.phoneNumber || data.phone || '').trim();
     const phone = rawPhone.replace(/\D/g, '');
-    let role = (data.role || 'STAFF') as StaffRole;
-    if ((role as string) === 'MASTER_ADMIN') role = 'ADMIN';
+    const requestedRole = (data.role || 'STAFF').toUpperCase();
+
+    // Disallow normal staff creation UI to create ADMIN / MASTER_ADMIN accounts
+    if (requestedRole === 'ADMIN' || requestedRole === 'MASTER_ADMIN') {
+      throw new Error('Creating administrator accounts via staff management is restricted. Administrator accounts must be created through authorized system setup.');
+    }
+
+    const role: StaffRole = requestedRole === 'RENTAL_STAFF' ? 'RENTAL_STAFF' : 'STAFF';
 
     if (!email) throw new Error('Email address is required.');
     if (!fullName) throw new Error('Full name is required.');
-    if (!role) throw new Error('Role is required.');
 
     // 1. Check duplicate email in MongoDB
     const existingEmail = await StaffModel.findOne({ email });
     if (existingEmail) {
-      throw new Error(`A staff member with this email already exists: ${email}`);
+      throw new Error('An account with this email already exists.');
     }
 
-    // 2. Check duplicate phone in MongoDB
+    // 2. Check duplicate phone in MongoDB (if provided)
     if (phone) {
       const existingPhone = await StaffModel.findOne({
         $or: [{ phoneNumber: phone }, { phone: phone }]
@@ -185,12 +245,16 @@ class StaffService {
       }
     }
 
-    // 3. Generate unique sequential Staff ID (KKV-STAFF-000001)
-    const { staffId } = await generateStaffId('KKV-STAFF');
+    // 3. Generate unique sequential Staff ID with role-based prefix
+    const prefix = role === 'RENTAL_STAFF' ? 'KKV-RS' : 'KKV-STAFF';
+    const { staffId } = await generateStaffId(prefix);
     const uid = `uid_${staffId.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
 
     // 4. Securely hash the password using bcrypt
-    const rawPassword = data.password && data.password.trim() ? data.password.trim() : (role === 'RENTAL_STAFF' ? 'rental123' : '1234');
+    const rawPassword = (data.password || data.initialPassword || '').trim();
+    if (!rawPassword || rawPassword.length < 6) {
+      throw new Error('Password must be at least 6 characters long.');
+    }
     const passwordHash = await bcrypt.hash(rawPassword, 10);
 
     // 5. Setup permissions using structured normalizer
@@ -229,16 +293,19 @@ class StaffService {
       performedBy: actorUid,
       actorEmail,
       description: `Created new staff account for ${fullName} (${email}) with role ${role}`,
-      details: `Role: ${role}, Department: ${createdStaff.department}`,
+      details: `Role: ${role}, Department: ${createdStaff.department}, StaffID: ${staffId}`,
       ipAddress,
       userAgent,
       timestamp: new Date()
     });
 
     const staffObj = createdStaff.toJSON();
+    delete (staffObj as any).passwordHash;
+
     return {
       ...staffObj,
       id: staffId,
+      staffId,
       uid,
       displayName: fullName,
       phone: phone || rawPhone

@@ -1330,7 +1330,11 @@ export const LoanReceipts: React.FC = () => {
                             <span>
                               <strong>{item.item}</strong> (x{item.qty}) &mdash; {item.purity}
                             </span>
-                            <span style={{ color: 'var(--text-muted)' }}>{item.netWeight}g net</span>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              Gross: {Number(item.grossWeight || 0).toFixed(3)}g
+                              {Number(item.deductionWeight || 0) > 0 ? ` | Ded: ${Number(item.deductionWeight).toFixed(3)}g` : ''}
+                              {' '}| Net: <strong style={{ color: 'var(--text-primary)' }}>{Number(item.netWeight !== undefined ? item.netWeight : Math.max(0, (Number(item.grossWeight) || 0) - (Number(item.deductionWeight) || 0))).toFixed(3)}g</strong>
+                            </span>
                           </div>
                         ))}
                       </div>

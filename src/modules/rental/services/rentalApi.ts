@@ -10,7 +10,10 @@ import {
   SyncSummary,
   RentalStatus,
   ExpenseCategory,
-  PaymentMode
+  PaymentMode,
+  RentalDayBookFilter,
+  RentalDayBookResponse,
+  RentalDayBookEntry
 } from '../types/rental.types';
 import { getApiBaseUrl, getStoredAuthToken } from '../../../services/api';
 
@@ -258,6 +261,37 @@ export const rentalApi = {
     if (complexId) params.append('complexId', complexId);
     const query = params.toString() ? `?${params.toString()}` : '';
     return request<PaymentModeReportData>(`/rental/reports/payment-modes${query}`);
+  },
+
+  // ── Day Book ───────────────────────────────────────────────────────────────
+  getDayBook: async (filter?: RentalDayBookFilter) => {
+    const searchParams = new URLSearchParams();
+    if (filter) {
+      Object.entries(filter).forEach(([k, v]) => {
+        if (v !== undefined && v !== '') searchParams.append(k, String(v));
+      });
+    }
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request<RentalDayBookResponse>(`/rental/day-book${query}`);
+  },
+
+  createManualDayBookEntry: async (data: {
+    date: string;
+    transactionType: 'MANUAL_INCOME' | 'MANUAL_EXPENSE';
+    particulars: string;
+    amount: number;
+    paymentMode: 'CASH' | 'GPAY' | 'BOTH';
+    cashAmount?: number;
+    gpayAmount?: number;
+    complexId?: string;
+    shopId?: string;
+    category?: string;
+    notes?: string;
+  }) => {
+    return request<RentalDayBookEntry>('/rental/day-book', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   // ── Admin Summary & Detail Endpoints (Finance Admin :5173 -> :8080) ────────

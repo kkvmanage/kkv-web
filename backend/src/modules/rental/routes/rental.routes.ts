@@ -33,6 +33,10 @@ router.post('/expenses', authorizePermission('rental', 'create'), rentalControll
 router.put('/expenses/:id', authorizePermission('rental', 'update'), rentalController.updateExpense.bind(rentalController));
 router.delete('/expenses/:id', authorizePermission('rental', 'delete'), rentalController.deleteExpense.bind(rentalController));
 
+// Day Book
+router.get('/day-book', authorizePermission('rental', 'view'), rentalController.getDayBook.bind(rentalController));
+router.post('/day-book', authorizePermission('rental', 'create'), rentalController.createManualDayBookEntry.bind(rentalController));
+
 // Reports
 router.get('/reports/monthly', authorizePermission('rental', 'view'), rentalController.getMonthlyReport.bind(rentalController));
 router.get('/reports/expenses', authorizePermission('rental', 'view'), rentalController.getExpenseReport.bind(rentalController));

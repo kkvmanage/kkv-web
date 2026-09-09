@@ -797,7 +797,7 @@ export const apiService = {
     }
   },
 
-  async checkSessionStatus(sessionId: string): Promise<{ success: boolean; data?: { isValid: boolean; session?: any }; message?: string }> {
+  async checkSessionStatus(sessionId: string): Promise<{ success: boolean; data?: { isValid: boolean; isRevoked?: boolean; session?: any }; message?: string }> {
     try {
       const res = await fetch(`${getApiBaseUrl()}/sessions/check/${sessionId}`, {
         headers: {

@@ -769,11 +769,11 @@ export const AdminPanel: React.FC = () => {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => window.open('http://localhost:5174', '_blank')}
+                onClick={() => setCurrentPage('rental-dashboard')}
                 style={{ fontSize: '12px', height: '28px', padding: '0 12px', gap: '5px' }}
-                title="Open Standalone Rental Staff Portal (Port 5174)"
+                title="Open Rental Management Module"
               >
-                <span>Rental Staff Portal (Port 5174) ↗</span>
+                <span>Rental Management Module ↗</span>
               </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>

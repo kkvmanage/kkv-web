@@ -7,14 +7,9 @@ let customApiBaseUrl: string | null = null;
 export const getApiBaseUrl = (): string => {
   if (customApiBaseUrl) return customApiBaseUrl;
 
-  const envValue =
-    ((import.meta as any).env?.VITE_FINANCE_API_BASE) ||
-    ((import.meta as any).env?.VITE_FINANCE_API_BASE_URL) ||
-    ((import.meta as any).env?.VITE_API_BASE_URL) ||
-    ((import.meta as any).env?.FINANCE_API_BASE_URL) ||
-    (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__);
+  const envValue = (import.meta as any).env?.VITE_API_BASE_URL;
 
-  const raw = envValue || 'http://localhost:8080/api';
+  const raw = (envValue || (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) || 'http://localhost:8080/api').trim();
   const clean = raw.endsWith('/') ? raw.slice(0, -1) : raw;
   return clean.endsWith('/api') ? clean : `${clean}/api`;
 };

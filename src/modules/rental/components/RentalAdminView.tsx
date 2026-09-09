@@ -20,8 +20,10 @@ import {
 } from 'lucide-react';
 import { rentalApi } from '../services/rentalApi';
 import { AdminRentalSummary } from '../types/rental.types';
+import { useApp } from '../../../context/AppContext';
 
 export const RentalAdminView: React.FC = () => {
+  const { setCurrentPage } = useApp();
   // ── Month Filter State ───────────────────────────────────────────────────────
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     return new Date().toISOString().substring(0, 7); // e.g. "2026-09"
@@ -359,7 +361,7 @@ export const RentalAdminView: React.FC = () => {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => window.open('http://localhost:5174', '_blank')}
+            onClick={() => setCurrentPage('rental-dashboard')}
             style={{
               backgroundColor: '#176B52',
               color: '#FFFFFF',
@@ -371,9 +373,9 @@ export const RentalAdminView: React.FC = () => {
               display: 'flex',
               alignItems: 'center'
             }}
-            title="Launch Separate Rental Staff Operational Portal on Port 5174"
+            title="Launch Rental Operational Portal"
           >
-            <span>Launch Rental Staff Portal</span>
+            <span>Open Rental Portal</span>
             <ExternalLink size={14} />
           </button>
         </div>

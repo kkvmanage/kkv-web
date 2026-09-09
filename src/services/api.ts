@@ -7,7 +7,7 @@ let customApiBaseUrl: string | null = null;
 export const getApiBaseUrl = (): string => {
   if (customApiBaseUrl) return customApiBaseUrl;
 
-  const envValue = (import.meta as any).env?.VITE_API_BASE_URL;
+  const envValue = import.meta.env.VITE_API_BASE_URL;
 
   const raw = (envValue || (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) || 'http://localhost:8080/api').trim();
   const clean = raw.endsWith('/') ? raw.slice(0, -1) : raw;

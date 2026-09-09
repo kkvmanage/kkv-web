@@ -55,7 +55,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
           handleClose();
         }, 1800);
       } else {
-        setError(res.error || 'Failed to change password. Please verify current password.');
+        setError(res.message || 'Failed to change password. Please verify current password.');
       }
     } catch (err: any) {
       setError(err?.message || 'An error occurred while changing password.');
@@ -126,7 +126,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
                 Change Password
               </h3>
               <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-                {currentUser?.email || currentUser?.username || 'Staff Profile'}
+                {currentUser?.email || currentUser?.displayName || 'Staff Profile'}
               </p>
             </div>
           </div>

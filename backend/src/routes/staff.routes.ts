@@ -28,6 +28,8 @@ router.get('/audit', authenticateUser, authorizeRoles('ADMIN'), getAuditLogs);
 router.get('/search', authenticateUser, authorizeRoles('ADMIN'), searchStaff);
 router.get('/:uid', authenticateUser, authorizeRoles('ADMIN'), getStaffProfile);
 router.put('/:uid/password', authenticateUser, authorizeRoles('ADMIN'), updateStaffPassword);
+router.post('/:uid/password', authenticateUser, authorizeRoles('ADMIN'), updateStaffPassword);
+router.put('/:uid/reset-password', authenticateUser, authorizeRoles('ADMIN'), updateStaffPassword);
 router.post('/:uid/reset-password', authenticateUser, authorizeRoles('ADMIN'), updateStaffPassword);
 router.put('/:uid', authenticateUser, authorizeRoles('ADMIN'), updateStaff);
 router.patch('/:uid', authenticateUser, authorizeRoles('ADMIN'), updateStaff);

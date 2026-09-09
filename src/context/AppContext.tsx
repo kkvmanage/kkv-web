@@ -282,7 +282,7 @@ interface AppContextType {
   // Staff & RBAC Management
   staffList: UserProfile[];
   fetchStaffList: () => Promise<void>;
-  createStaffAccount: (data: { email: string; displayName?: string; fullName?: string; name?: string; role?: UserRole | string; phone?: string; permissions?: Partial<UserPermissions>; password?: string; temporaryPassword?: string }) => Promise<{ success: boolean; message?: string }>;
+  createStaffAccount: (data: { email: string; displayName?: string; fullName?: string; name?: string; role?: UserRole | string; phone?: string; department?: string; permissions?: Partial<UserPermissions>; password?: string; initialPassword?: string; temporaryPassword?: string }) => Promise<{ success: boolean; data?: any; message?: string }>;
   updateStaffProfile: (id: string, updates: any) => Promise<{ success: boolean; message?: string }>;
   toggleStaffStatus: (id: string, isActive: boolean) => Promise<{ success: boolean; message?: string }>;
   resetStaffPassword: (id: string, newPassword?: string) => Promise<{ success: boolean; temporaryPassword?: string; message?: string }>;

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import { env } from '../config/env.js';
+import { ensureMongoConnected } from '../config/database.js';
 import {
   UserModel,
   ADMIN_DEFAULT_PERMISSIONS,
@@ -16,12 +17,7 @@ export async function seedUsers() {
     return;
   }
 
-  const isConnected = mongoose.connection.readyState === 1;
-  if (!isConnected) {
-    await mongoose.connect(env.MONGODB_URI, {
-      dbName: env.MONGODB_DB_NAME || 'kkv_gold_finance'
-    });
-  }
+  await ensureMongoConnected();
 
   // 1. Seed/Update ADMIN User (admin@kkvgoldfinance.com)
   const adminEmail = (env.ADMIN_EMAIL || 'admin@kkvgoldfinance.com').trim().toLowerCase();

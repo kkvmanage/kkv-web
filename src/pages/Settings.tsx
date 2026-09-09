@@ -18,8 +18,7 @@ import {
   X,
   Key,
   Eye,
-  EyeOff,
-  Check
+  EyeOff
 } from 'lucide-react';
 import { UserProfile, UserRole, UserPermissions } from '../types';
 import {
@@ -400,7 +399,7 @@ export const Settings: React.FC = () => {
     }
 
     setIsResettingPassword(true);
-    const targetId = resetStaffTarget.uid || resetStaffTarget.id || resetStaffTarget.staffId;
+    const targetId = resetStaffTarget.uid || resetStaffTarget.id || resetStaffTarget.staffId || '';
     const res = await resetStaffPassword(targetId, resetNewPassword.trim());
     setIsResettingPassword(false);
 

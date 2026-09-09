@@ -3,7 +3,8 @@ import { ensureMongoConnected } from '../src/config/database.js';
 
 // Warm up database connection on serverless cold start
 ensureMongoConnected().catch((err: unknown) => {
-  console.warn('[Vercel Serverless] MongoDB warmup notice:', (err as Error)?.message || String(err));
+  const message = err instanceof Error ? err.message : String(err);
+  console.warn('[Vercel Serverless] MongoDB warmup notice:', message);
 });
 
 export default app;

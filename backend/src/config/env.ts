@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Robust multi-path .env resolution
+// Multi-path .env resolution
 const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 const envPaths = [
@@ -17,7 +17,7 @@ for (const envPath of envPaths) {
   dotenv.config({ path: envPath, override: true });
 }
 
-// MongoDB URI resolution with fallback across common variable names
+// Canonical MongoDB URI resolution
 const resolvedMongoUri = (
   process.env.MONGODB_URI ||
   process.env.MONGO_URI ||
@@ -27,8 +27,8 @@ const resolvedMongoUri = (
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.SERVER_PORT || process.env.PORT || '8080', 10),
-  CORS_ORIGIN: process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  PORT: parseInt(process.env.PORT || '8080', 10),
+  CORS_ORIGIN: process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '',
   JWT_SECRET: process.env.JWT_SECRET || 'kkv_gold_finance_rbac_secure_jwt_secret_2026_super_key_512',
   JWT_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '24h',
   ADMIN_NAME: (process.env.ADMIN_NAME || 'KKV Master Admin').trim(),
@@ -37,9 +37,7 @@ export const env = {
   LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH || path.resolve(process.cwd(), 'data'),
   MONGODB_URI: resolvedMongoUri,
   MONGODB_DB_NAME: (process.env.MONGODB_DB_NAME || 'kkv_gold_finance').trim(),
-  RENTAL_MONGODB_DB_NAME: (process.env.RENTAL_MONGODB_DB_NAME || 'kkv_rental').trim(),
-  TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED === 'true',
-  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+  RENTAL_MONGODB_DB_NAME: (process.env.RENTAL_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'kkv_gold_finance').trim(),
 };
 
 export function validateStartupConfig(): { isValid: boolean; missingVars: string[] } {

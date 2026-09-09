@@ -230,10 +230,18 @@ export async function checkMongoHealth(): Promise<{
   };
 }
 
+/**
+ * Initializes database connection and ensures MongoDB readiness and indexes
+ */
+export async function initializeMongoIndexes(): Promise<boolean> {
+  return ensureMongoConnected();
+}
+
 export default {
   connectDB,
   isMongoConnected,
   ensureMongoConnected,
+  initializeMongoIndexes,
   getFinanceDb,
   getRentalDb,
   getMongoClient,

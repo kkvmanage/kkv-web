@@ -12,13 +12,15 @@ import {
   ExpenseCategory,
   PaymentMode
 } from '../types/rental.types';
-import { getApiBaseUrl } from '../../../services/api';
+import { getApiBaseUrl, getStoredAuthToken } from '../../../services/api';
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<{ success: boolean; data?: T; message?: string }> {
   try {
+    const token = getStoredAuthToken();
     const res = await fetch(`${getApiBaseUrl()}${endpoint}`, {
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...options?.headers,
       },
       ...options,

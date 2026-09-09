@@ -107,10 +107,10 @@ export interface AdminRentalSummary {
 class RentalAdminSummaryService {
   private getRentalDbPath(): string {
     const candidates = [
-      path.resolve(process.cwd(), '../complex-rental-management/rental-backend/data/rental.db.json'),
-      path.resolve(process.cwd(), 'complex-rental-management/rental-backend/data/rental.db.json'),
       path.resolve(process.cwd(), 'data/rental.db.json'),
-      path.resolve('d:/cli/Client-2/complex-rental-management/rental-backend/data/rental.db.json')
+      path.resolve(process.cwd(), 'backend/data/rental.db.json'),
+      path.resolve(process.cwd(), 'data/rental/rental.db.json'),
+      path.resolve(process.cwd(), 'backend/data/rental/rental.db.json')
     ];
 
     for (const c of candidates) {

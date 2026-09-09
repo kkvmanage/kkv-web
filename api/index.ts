@@ -1,5 +1,5 @@
-import app from '../src/app.js';
-import { ensureMongoConnected } from '../src/config/database.js';
+import app from '../backend/src/app.js';
+import { ensureMongoConnected } from '../backend/src/config/database.js';
 
 // Warm up database connection on serverless cold start
 ensureMongoConnected().catch((err: unknown) => {

@@ -92,7 +92,6 @@ const StaffAuditSchema = new Schema<IStaffAudit>(
 
 StaffAuditSchema.index({ timestamp: -1 });
 StaffAuditSchema.index({ staffId: 1, timestamp: -1 });
-StaffAuditSchema.index({ action: 1 });
 
 export const StaffAuditModel =
   mongoose.models.StaffAudit || mongoose.model<IStaffAudit>('StaffAudit', StaffAuditSchema);

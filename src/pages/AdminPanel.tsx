@@ -8,7 +8,6 @@ import { KKVLogo } from '../components/common/KKVLogo';
 import { WipeAllDataModal } from '../components/admin/WipeAllDataModal';
 import { SystemRestoreModal } from '../components/admin/SystemRestoreModal';
 import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
-import { EditCustomerModal } from '../components/common/EditCustomerModal';
 import { LoanConfigurationSection } from '../components/admin/LoanConfigurationSection';
 import { FDConfigurationSection } from '../components/admin/FDConfigurationSection';
 import { PurityManagementSection } from '../components/admin/PurityManagementSection';
@@ -53,10 +52,10 @@ export const AdminPanel: React.FC = () => {
     deleteCustomer,
     restoreCustomer,
     deleteCustomerPermanently,
-    updateCustomer,
     fdInterestPayouts,
     setSelectedProfileCustomerId,
     setCurrentPage,
+    startEditCustomer,
     showToast,
     sessions,
     currentSessionId,
@@ -69,7 +68,6 @@ export const AdminPanel: React.FC = () => {
   const [custSubTab, setCustSubTab] = useState<'active' | 'deleted'>('active');
   const [adminCustSearch, setAdminCustSearch] = useState('');
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<Customer | null>(null);
   const [permanentDeleteInput, setPermanentDeleteInput] = useState('');
@@ -202,8 +200,6 @@ export const AdminPanel: React.FC = () => {
 
   // Security Form State
   const [adminPass, setAdminPass] = useState<string>(masterControlSettings?.adminPassword || 'admin123');
-  const [managerPass, setManagerPass] = useState<string>(masterControlSettings?.managerPassword || 'manager123');
-  const [operatorPass, setOperatorPass] = useState<string>(masterControlSettings?.operatorPassword || 'operator123');
 
   // Operations Feature Toggles
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(masterControlSettings?.animationsEnabled ?? true);
@@ -221,7 +217,7 @@ export const AdminPanel: React.FC = () => {
 
   // Sub-tabs navigation states inside master control
   const [operationsSubTab, setOperationsSubTab] = useState<'areas-showrooms' | 'toggles' | 'backup-restore'>('areas-showrooms');
-  const [securitySubTab, setSecuritySubTab] = useState<'account' | 'change-pass' | 'roles'>('roles');
+  const [securitySubTab, setSecuritySubTab] = useState<'account' | 'change-pass'>('account');
 
   // Stored password change states
   const [currentMasterPass, setCurrentMasterPass] = useState('');
@@ -251,8 +247,6 @@ export const AdminPanel: React.FC = () => {
       setAmountBands(masterControlSettings.amountBands || []);
       setSilverAmountBands(masterControlSettings.silverAmountBands || []);
       setAdminPass(masterControlSettings.adminPassword || 'admin123');
-      setManagerPass(masterControlSettings.managerPassword || 'manager123');
-      setOperatorPass(masterControlSettings.operatorPassword || 'operator123');
       setAnimationsEnabled(masterControlSettings.animationsEnabled ?? true);
       setPerformanceModeEnabled(masterControlSettings.performanceModeEnabled ?? false);
       setBulkFdDateChangeEnabled(masterControlSettings.bulkFdDateChangeEnabled ?? true);
@@ -431,8 +425,6 @@ export const AdminPanel: React.FC = () => {
       hireCardFee: loanTypesCardFees['hire-purchase'] ? (Number(loanTypesCardFees['hire-purchase'].amount) || 0) : numHireCardFee,
       overdueCalculationMethod: overdueCalMethod,
       adminPassword: adminPass,
-      managerPassword: managerPass,
-      operatorPassword: operatorPass,
       animationsEnabled,
       performanceModeEnabled,
       bulkFdDateChangeEnabled,
@@ -605,7 +597,7 @@ export const AdminPanel: React.FC = () => {
               </div>
               <div>
                 <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#1F2D26', margin: 0 }}>Master Control</h3>
-                <p style={{ fontSize: '13px', color: '#66756D', margin: '3px 0 0' }}>Company roles &amp; passwords, bank &amp; UPI details, Telegram backup and danger-zone tools.</p>
+                <p style={{ fontSize: '13px', color: '#66756D', margin: '3px 0 0' }}>Master security, bank &amp; UPI details, operations and danger-zone tools.</p>
               </div>
             </div>
             <button className="btn btn-primary" onClick={() => setMasterControlOpen(true)} style={{ backgroundColor: '#176B52', color: '#FFFFFF', fontWeight: 700, borderRadius: '10px', height: '42px', padding: '0 20px', boxShadow: '0 2px 8px rgba(23, 107, 82, 0.25)', gap: '8px' }}>
@@ -1147,7 +1139,7 @@ export const AdminPanel: React.FC = () => {
                                       className="icon-button"
                                       style={{ width: '28px', height: '28px' }}
                                       title="Edit Customer"
-                                      onClick={() => setEditingCustomer(c)}
+                                      onClick={() => startEditCustomer(c.id)}
                                     >
                                       <Edit3 size={13} />
                                     </button>
@@ -3127,8 +3119,7 @@ export const AdminPanel: React.FC = () => {
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
                       {[
                         { key: 'account', label: '👤 Account' },
-                        { key: 'change-pass', label: '🔐 Change Master Password' },
-                        { key: 'roles', label: '🏢 Company Roles & Passwords' }
+                        { key: 'change-pass', label: '🔐 Change Master Password' }
                       ].map((sub) => (
                         <button
                           key={sub.key}
@@ -3182,7 +3173,7 @@ export const AdminPanel: React.FC = () => {
                           />
                         </div>
                         <div style={{ padding: '10px 14px', border: '1px solid #DC2626', color: '#DC2626', backgroundColor: 'rgba(220,38,38,0.05)', borderRadius: 'var(--radius-sm)', fontSize: '11.5px' }}>
-                          ⚠️ Stored password safety: 3 passwords are still readable in plain text on this device.
+                          ⚠️ Stored password safety: Master password protects critical overrides and administrative data wipes.
                         </div>
                         <button
                           type="button"
@@ -3205,51 +3196,6 @@ export const AdminPanel: React.FC = () => {
                         >
                           Secure stored passwords
                         </button>
-                      </div>
-                    )}
-
-                    {securitySubTab === 'roles' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <h3 style={{ fontSize: '13px', fontWeight: 800, margin: 0, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Company Role Passwords</h3>
-                        <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '0 0 10.5px 0' }}>Configure default sign-in passwords for workspace roles.</p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div className="form-group">
-                            <label className="form-label required">ADMIN PASSWORD</label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              value={adminPass}
-                              onChange={(e) => setAdminPass(e.target.value)}
-                              required
-                            />
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Unlocks Master Control overrides. Default: admin123</span>
-                          </div>
-
-                          <div className="form-group">
-                            <label className="form-label required">BRANCH MANAGER PASSWORD</label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              value={managerPass}
-                              onChange={(e) => setManagerPass(e.target.value)}
-                              required
-                            />
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Full operational control access. Default: manager123</span>
-                          </div>
-
-                          <div className="form-group">
-                            <label className="form-label required">OPERATOR PASSWORD</label>
-                            <input
-                              type="text"
-                              className="input-control"
-                              value={operatorPass}
-                              onChange={(e) => setOperatorPass(e.target.value)}
-                              required
-                            />
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Restricted counter entry access (Hides core settings/backups). Default: operator123</span>
-                          </div>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -3337,16 +3283,9 @@ export const AdminPanel: React.FC = () => {
         isOpen={!!viewingCustomer}
         customer={viewingCustomer}
         onClose={() => setViewingCustomer(null)}
-        onEdit={(cust) => setEditingCustomer(cust)}
-      />
-
-      {/* Edit Customer Modal */}
-      <EditCustomerModal
-        isOpen={!!editingCustomer}
-        customer={editingCustomer}
-        onClose={() => setEditingCustomer(null)}
-        onSave={(id, updates) => {
-          updateCustomer(id, updates);
+        onEdit={(cust) => {
+          setViewingCustomer(null);
+          startEditCustomer(cust.id);
         }}
       />
 

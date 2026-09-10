@@ -429,6 +429,38 @@ export const apiService = {
       body: JSON.stringify(templates)
     });
   },
+  async unlockMasterControl(password: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/unlock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getStoredAuthToken() ? { Authorization: `Bearer ${getStoredAuthToken()}` } : {})
+        },
+        body: JSON.stringify({ password })
+      });
+      const json = await res.json().catch(() => ({}));
+      return { success: res.ok && json.success, message: json.message };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to communicate with backend.' };
+    }
+  },
+  async changeMasterPassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/change-master-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getStoredAuthToken() ? { Authorization: `Bearer ${getStoredAuthToken()}` } : {})
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const json = await res.json().catch(() => ({}));
+      return { success: res.ok && json.success, message: json.message };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to update Master Control password.' };
+    }
+  },
 
   // ── Backup & Restore ───────────────────────────────────────────────────────
   async createCloudBackup(backupData?: any, deviceId?: string) {

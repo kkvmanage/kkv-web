@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import { localFileRepository } from '../repositories/localFile.repository.js';
 import { MasterControlSettings, WhatsAppTemplates, TelegramConfig } from '../types/index.js';
 
@@ -260,9 +261,20 @@ export class AdminService {
       updatedHistory = [historyItem, ...updatedHistory];
     }
 
+    // Handle password hashing if adminPassword was explicitly passed
+    let adminPassword = current.adminPassword;
+    if (data.adminPassword && data.adminPassword.trim() !== '') {
+      if (data.adminPassword.startsWith('$2a$') || data.adminPassword.startsWith('$2b$') || data.adminPassword.startsWith('$2y$')) {
+        adminPassword = data.adminPassword;
+      } else {
+        adminPassword = bcrypt.hashSync(data.adminPassword.trim(), 10);
+      }
+    }
+
     const updated: MasterControlSettings = {
       ...current,
       ...data,
+      adminPassword,
       fdInterestRateHistory: updatedHistory,
       configurationVersion: nextVersion
     };
@@ -293,9 +305,52 @@ export class AdminService {
     return updated;
   }
 
+  public verifyPassword(password: string, storedHashOrPlain?: string): boolean {
+    if (!password) return false;
+    if (!storedHashOrPlain) {
+      // Default to bcrypt hash of 'admin123' if not set
+      return password === 'admin123';
+    }
+    if (storedHashOrPlain.startsWith('$2a$') || storedHashOrPlain.startsWith('$2b$') || storedHashOrPlain.startsWith('$2y$')) {
+      try {
+        return bcrypt.compareSync(password, storedHashOrPlain);
+      } catch (err) {
+        console.error('[AdminService] bcrypt compare error:', err);
+        return false;
+      }
+    }
+    // Legacy plaintext comparison
+    return password === storedHashOrPlain;
+  }
+
+  public changeMasterPassword(currentPassword: string, newPassword: string): { success: boolean; message?: string } {
+    if (!currentPassword || !newPassword) {
+      return { success: false, message: 'Both current password and new password are required.' };
+    }
+    if (newPassword.trim().length < 4) {
+      return { success: false, message: 'New password must be at least 4 characters long.' };
+    }
+
+    const current = this.getMasterSettings();
+    const isValid = this.verifyPassword(currentPassword, current.adminPassword);
+    if (!isValid) {
+      return { success: false, message: 'Current password does not match.' };
+    }
+
+    const hashed = bcrypt.hashSync(newPassword.trim(), 10);
+    const updated: MasterControlSettings = {
+      ...current,
+      adminPassword: hashed
+    };
+
+    localFileRepository.writeJson(SETTINGS_FILE, updated);
+    return { success: true, message: 'Master Control password updated successfully.' };
+  }
+
   public unlockMasterControl(password: string): boolean {
+    if (!password) return false;
     const settings = this.getMasterSettings();
-    return password === (settings.adminPassword || 'admin123') || password === 'admin' || password === '1234';
+    return this.verifyPassword(password, settings.adminPassword);
   }
 }
 

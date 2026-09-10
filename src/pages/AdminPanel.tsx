@@ -43,6 +43,7 @@ export const AdminPanel: React.FC = () => {
     setMasterControlOpen,
     masterControlUnlocked,
     unlockMasterControl,
+    changeMasterPassword,
     masterControlSettings,
     updateMasterControlSettings,
     whatsAppTemplates,
@@ -198,8 +199,9 @@ export const AdminPanel: React.FC = () => {
   const [dueTpl, setDueTpl] = useState<string>(whatsAppTemplates?.dueReminderMessage || '');
   const [receiptTpl, setReceiptTpl] = useState<string>(whatsAppTemplates?.receiptMessage || '');
 
-  // Security Form State
-  const [adminPass, setAdminPass] = useState<string>(masterControlSettings?.adminPassword || 'admin123');
+  // Security & Unlock Loading State
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [isChangingMasterPass, setIsChangingMasterPass] = useState(false);
 
   // Operations Feature Toggles
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(masterControlSettings?.animationsEnabled ?? true);
@@ -246,7 +248,6 @@ export const AdminPanel: React.FC = () => {
       setPronoteShowOnIssue(masterControlSettings.pronoteShowOnLoanIssue ?? true);
       setAmountBands(masterControlSettings.amountBands || []);
       setSilverAmountBands(masterControlSettings.silverAmountBands || []);
-      setAdminPass(masterControlSettings.adminPassword || 'admin123');
       setAnimationsEnabled(masterControlSettings.animationsEnabled ?? true);
       setPerformanceModeEnabled(masterControlSettings.performanceModeEnabled ?? false);
       setBulkFdDateChangeEnabled(masterControlSettings.bulkFdDateChangeEnabled ?? true);
@@ -341,10 +342,18 @@ export const AdminPanel: React.FC = () => {
     return comp >= 0 && diffDays <= 30;
   });
 
-  const handleUnlockSubmit = (e: React.FormEvent) => {
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    unlockMasterControl(passwordInput);
-    setPasswordInput('');
+    if (!passwordInput) {
+      showToast('Please enter password', 'warning');
+      return;
+    }
+    setIsUnlocking(true);
+    const success = await unlockMasterControl(passwordInput);
+    setIsUnlocking(false);
+    if (success) {
+      setPasswordInput('');
+    }
   };
 
   const handleSaveMasterChanges = () => {
@@ -424,7 +433,6 @@ export const AdminPanel: React.FC = () => {
       hireCardFeeEnabled: loanTypesCardFees['hire-purchase']?.enabled ?? hireCardFeeEnabled,
       hireCardFee: loanTypesCardFees['hire-purchase'] ? (Number(loanTypesCardFees['hire-purchase'].amount) || 0) : numHireCardFee,
       overdueCalculationMethod: overdueCalMethod,
-      adminPassword: adminPass,
       animationsEnabled,
       performanceModeEnabled,
       bulkFdDateChangeEnabled,
@@ -2013,7 +2021,9 @@ export const AdminPanel: React.FC = () => {
                     />
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="submit" className="btn btn-primary">Unlock</button>
+                    <button type="submit" className="btn btn-primary" disabled={isUnlocking}>
+                      {isUnlocking ? 'Unlocking...' : 'Unlock'}
+                    </button>
                     <button type="button" className="btn btn-secondary" onClick={() => setMasterControlOpen(false)}>Cancel</button>
                   </div>
                 </form>
@@ -3179,22 +3189,22 @@ export const AdminPanel: React.FC = () => {
                           type="button"
                           className="btn btn-primary"
                           style={{ width: 'fit-content' }}
-                          onClick={() => {
+                          disabled={isChangingMasterPass}
+                          onClick={async () => {
                             if (!currentMasterPass || !newMasterPass) {
                               showToast('Please enter both current and new passwords.', 'warning');
                               return;
                             }
-                            if (currentMasterPass !== adminPass) {
-                              showToast('Current password does not match.', 'error');
-                              return;
+                            setIsChangingMasterPass(true);
+                            const res = await changeMasterPassword(currentMasterPass, newMasterPass);
+                            setIsChangingMasterPass(false);
+                            if (res.success) {
+                              setCurrentMasterPass('');
+                              setNewMasterPass('');
                             }
-                            setAdminPass(newMasterPass);
-                            setCurrentMasterPass('');
-                            setNewMasterPass('');
-                            showToast('Stored password successfully secured!', 'success');
                           }}
                         >
-                          Secure stored passwords
+                          {isChangingMasterPass ? 'Saving...' : 'Secure stored passwords'}
                         </button>
                       </div>
                     )}

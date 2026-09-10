@@ -6,7 +6,8 @@ import { backupPackageService } from '../services/backupPackage.service.js';
 
 export const getMasterSettings = (req: Request, res: Response) => {
   const settings = adminService.getMasterSettings();
-  return res.json({ success: true, data: settings });
+  const { adminPassword, ...safeSettings } = settings;
+  return res.json({ success: true, data: safeSettings });
 };
 
 export const updateMasterSettings = (req: Request, res: Response) => {
@@ -39,7 +40,8 @@ export const updateMasterSettings = (req: Request, res: Response) => {
   }
 
   const updated = adminService.updateMasterSettings(req.body);
-  return res.json({ success: true, message: 'Master control settings updated', data: updated });
+  const { adminPassword, ...safeUpdated } = updated;
+  return res.json({ success: true, message: 'Master control settings updated', data: safeUpdated });
 };
 
 export const getWhatsAppTemplates = (req: Request, res: Response) => {
@@ -54,11 +56,26 @@ export const updateWhatsAppTemplates = (req: Request, res: Response) => {
 
 export const unlockMasterControl = (req: Request, res: Response) => {
   const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Password is required.' });
+  }
   const unlocked = adminService.unlockMasterControl(password);
   if (!unlocked) {
-    return res.status(401).json({ success: false, message: 'Incorrect password.' });
+    return res.status(401).json({ success: false, message: 'Incorrect Master Control password' });
   }
-  return res.json({ success: true, message: 'Master Control unlocked' });
+  return res.json({ success: true, message: 'Master Control unlocked successfully' });
+};
+
+export const changeMasterPassword = (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Both current password and new password are required.' });
+  }
+  const result = adminService.changeMasterPassword(currentPassword, newPassword);
+  if (!result.success) {
+    return res.status(401).json({ success: false, message: result.message || 'Current password does not match.' });
+  }
+  return res.json({ success: true, message: result.message || 'Master Control password updated successfully.' });
 };
 
 export const getDriveHealth = async (_req: Request, res: Response) => {

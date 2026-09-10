@@ -306,7 +306,8 @@ interface AppContextType {
   masterControlOpen: boolean;
   setMasterControlOpen: (open: boolean) => void;
   masterControlUnlocked: boolean;
-  unlockMasterControl: (password: string) => boolean;
+  unlockMasterControl: (password: string) => Promise<boolean>;
+  changeMasterPassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message?: string }>;
   masterControlSettings: MasterControlSettings;
   updateMasterControlSettings: (settings: Partial<MasterControlSettings>) => void;
   addLoanType: (config: {
@@ -368,6 +369,9 @@ interface AppContextType {
   removeToast: (id: string) => void;
   selectedProfileCustomerId: string | null;
   setSelectedProfileCustomerId: (id: string | null) => void;
+  editingCustomerId: string | null;
+  setEditingCustomerId: (id: string | null) => void;
+  startEditCustomer: (id: string) => void;
   resetAllData: () => void;
   restoreDataFromJSON: (jsonStr: string) => boolean;
   reloadAllData: () => Promise<void>;
@@ -496,6 +500,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [selectedProfileCustomerId, setSelectedProfileCustomerId] = useState<string | null>(null);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+
+  const startEditCustomer = (id: string) => {
+    setEditingCustomerId(id);
+    setCurrentPage('edit-customer');
+  };
+
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // ── Device & Active Session State ──────────────────────────────────────────
@@ -1053,15 +1064,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const unlockMasterControl = (password: string): boolean => {
-    const adminPass = masterControlSettings.adminPassword || 'admin123';
-    if (password === adminPass || password === 'admin' || password === '1234') {
-      setMasterControlUnlocked(true);
-      showToast('Master Control unlocked successfully', 'success');
-      return true;
-    } else {
-      showToast(`Incorrect password! Try: ${adminPass}`, 'error');
+  const unlockMasterControl = async (password: string): Promise<boolean> => {
+    if (!password) {
+      showToast('Please enter master password', 'warning');
       return false;
+    }
+    try {
+      const res = await apiService.unlockMasterControl(password);
+      if (res.success) {
+        setMasterControlUnlocked(true);
+        showToast('Master Control unlocked successfully', 'success');
+        return true;
+      } else {
+        showToast(res.message || 'Incorrect Master Control password', 'error');
+        return false;
+      }
+    } catch (err: any) {
+      showToast('Incorrect Master Control password', 'error');
+      return false;
+    }
+  };
+
+  const changeMasterPassword = async (currentPassword: string, newPassword: string): Promise<{ success: boolean; message?: string }> => {
+    if (!currentPassword || !newPassword) {
+      showToast('Please enter both current and new passwords.', 'warning');
+      return { success: false, message: 'Please enter both current and new passwords.' };
+    }
+    try {
+      const res = await apiService.changeMasterPassword(currentPassword, newPassword);
+      if (res.success) {
+        showToast('Stored password successfully secured!', 'success');
+        return { success: true, message: res.message };
+      } else {
+        showToast(res.message || 'Current password does not match.', 'error');
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to update Master Control password.';
+      showToast(msg, 'error');
+      return { success: false, message: msg };
     }
   };
 
@@ -2657,6 +2698,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMasterControlOpen,
         masterControlUnlocked,
         unlockMasterControl,
+        changeMasterPassword,
         masterControlSettings,
         updateMasterControlSettings,
         addLoanType,
@@ -2704,6 +2746,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeToast,
         selectedProfileCustomerId,
         setSelectedProfileCustomerId,
+        editingCustomerId,
+        setEditingCustomerId,
+        startEditCustomer,
         resetAllData,
         restoreDataFromJSON,
         reloadAllData,

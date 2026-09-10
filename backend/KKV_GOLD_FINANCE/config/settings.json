@@ -330,7 +330,7 @@
     "Bypass Branch"
   ],
   "lockersEnabled": true,
-  "adminPassword": "admin123",
+  "adminPassword": "$2b$10$c3x6x3JNPafX7Ucq8S6COOFkl5UMBOPKUxH5k0kjpZks.MV1Cmq9K",
   "managerPassword": "manager123",
   "operatorPassword": "operator123",
   "animationsEnabled": true,

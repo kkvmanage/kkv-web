@@ -6,6 +6,7 @@ import {
   getWhatsAppTemplates,
   updateWhatsAppTemplates,
   unlockMasterControl,
+  changeMasterPassword,
   getDriveHealth,
   createBackupPackage,
   getBackupHistory,
@@ -70,6 +71,7 @@ router.get('/rental/sync-status', getRentalSyncStatus);
 router.get('/whatsapp-templates', getWhatsAppTemplates);
 router.put('/whatsapp-templates', updateWhatsAppTemplates);
 router.post('/unlock', unlockMasterControl);
+router.post('/change-master-password', changeMasterPassword);
 
 // Database & MongoDB Management
 router.get('/database/status', getDatabaseStatus);

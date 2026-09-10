@@ -132,10 +132,16 @@ export const getApplicableInterestBand = (
     (lt) => lt.id.toLowerCase() === key || lt.name.toLowerCase() === key
   );
 
-  if (loanTypeObj?.interestProfileId === 'silver-bands' || (!loanTypeObj?.interestProfileId && key.includes('silver'))) {
-    bands = settings.silverAmountBands || [];
-  } else if (loanTypeObj?.interestProfileId === 'gold-bands' || (!loanTypeObj?.interestProfileId && (key.includes('gold') || (!key.includes('pronote') && !key.includes('hire'))))) {
-    bands = settings.amountBands || [];
+  // Priority 1: bands stored directly on the loanType object (new canonical schema)
+  if (loanTypeObj?.amountBands && loanTypeObj.amountBands.length > 0) {
+    bands = loanTypeObj.amountBands;
+  } else {
+    // Priority 2: legacy flat fields (backward compat)
+    if (loanTypeObj?.interestProfileId === 'silver-bands' || (!loanTypeObj?.interestProfileId && key.includes('silver'))) {
+      bands = settings.silverAmountBands || [];
+    } else if (loanTypeObj?.interestProfileId === 'gold-bands' || (!loanTypeObj?.interestProfileId && (key.includes('gold') || (!key.includes('pronote') && !key.includes('hire'))))) {
+      bands = settings.amountBands || [];
+    }
   }
 
   if (!bands || bands.length === 0) return null;
@@ -156,6 +162,7 @@ export const getApplicableInterestBand = (
   return fallback || null;
 };
 
+
 /**
  * Get applicable monthly interest rate % based on Master Control configuration
  */
@@ -169,13 +176,15 @@ export const getApplicableInterestRate = (
     (lt) => lt.id.toLowerCase() === key || lt.name.toLowerCase() === key
   );
 
-  // 1. Amount Bands Profile (when principal is entered > 0 and profile uses amount bands)
-  if (
-    principal > 0 &&
-    (matchedLoanType?.interestProfileId === 'gold-bands' ||
-     matchedLoanType?.interestProfileId === 'silver-bands' ||
-     !matchedLoanType?.interestProfileId)
-  ) {
+  // 1. Amount Bands Profile — only attempt if the type actually has bands configured
+  const usesBandProfile =
+    matchedLoanType?.interestProfileId === 'gold-bands' ||
+    matchedLoanType?.interestProfileId === 'silver-bands' ||
+    (matchedLoanType?.amountBands && matchedLoanType.amountBands.length > 0) ||
+    // Legacy: unknown profile and no explicit fixed-rate marker — default to band resolution
+    (!matchedLoanType?.interestProfileId && !key.includes('pronote') && !key.includes('hire'));
+
+  if (principal > 0 && usesBandProfile) {
     const matchedBand = getApplicableInterestBand(principal, loanTypeNameOrId, settings);
     if (matchedBand && typeof matchedBand.baseRateMonthly === 'number' && matchedBand.baseRateMonthly > 0) {
       return matchedBand.baseRateMonthly;
@@ -201,6 +210,7 @@ export const getApplicableInterestRate = (
   // Default Gold Loan Master Rate
   return settings?.goldLoanMonthlyRate ?? 2.0;
 };
+
 
 /**
  * Retrieve product-specific card/processing fee configuration

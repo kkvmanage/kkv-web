@@ -13,21 +13,28 @@ import {
   RefreshCw,
   FileText,
   Trash2,
-  Plus
+  Plus,
+  ExternalLink
 } from 'lucide-react';
 
-import { StructuredAddress, LocationDetails } from '../types';
+import { StructuredAddress, LocationDetails, Customer } from '../types';
 import {
   validatePhone,
   validateIDProof,
-  formatPhoneInput
+  formatPhoneInput,
+  parseCustomerKYC
 } from '../utils/kycValidation';
 import { IDProofInputFields } from '../components/common/IDProofInputFields';
 import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
-import { emptyStructuredAddress } from '../utils/addressUtils';
+import { emptyStructuredAddress, formatStructuredAddress } from '../utils/addressUtils';
 import { AgeDobInput, calculateAgeFromDob } from '../components/common/AgeDobInput';
-import { Customer } from '../types';
 import { apiService } from '../services/api';
+import { isMatchingCustomerId, getCanonicalCustomerId } from '../utils/customerUtils';
+
+export interface AddCustomerProps {
+  mode?: 'add' | 'edit';
+  customerId?: string | null;
+}
 
 interface UploadedKycItem {
   id: string;
@@ -55,8 +62,31 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   return new File([u8arr], filename, { type: mime });
 }
 
-export const AddCustomer: React.FC = () => {
-  const { customers, setCurrentPage, addCustomer, reloadAllData, showToast } = useApp();
+export const AddCustomer: React.FC<AddCustomerProps> = ({
+  mode: propMode,
+  customerId: propCustomerId
+}) => {
+  const {
+    customers,
+    setCurrentPage,
+    addCustomer,
+    updateCustomer,
+    reloadAllData,
+    showToast,
+    currentPage,
+    editingCustomerId,
+    setEditingCustomerId
+  } = useApp();
+
+  const effectiveCustomerId = propCustomerId || editingCustomerId;
+  const isEditMode =
+    propMode === 'edit' ||
+    currentPage === 'edit-customer' ||
+    Boolean(effectiveCustomerId && propMode !== 'add');
+
+  const [targetCustomer, setTargetCustomer] = useState<Customer | null>(null);
+  const [isLoadingCustomer, setIsLoadingCustomer] = useState(false);
+
   const [duplicateCustomerMatch, setDuplicateCustomerMatch] = useState<Customer | null>(null);
   const [viewingDuplicateCustomer, setViewingDuplicateCustomer] = useState<Customer | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,7 +120,10 @@ export const AddCustomer: React.FC = () => {
   const [extraPan, setExtraPan] = useState('');
   const [docName, setDocName] = useState('');
 
-  // Attached KYC Document Files (Aadhaar, PAN, etc.)
+  // Existing Attached KYC Documents (from backend MongoDB)
+  const [existingKycDocs, setExistingKycDocs] = useState<any[]>([]);
+
+  // Attached KYC Document Files to upload
   const [kycFiles, setKycFiles] = useState<UploadedKycItem[]>([]);
 
   // Address State
@@ -103,31 +136,110 @@ export const AddCustomer: React.FC = () => {
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
   const [mapsUrlInput, setMapsUrlInput] = useState('');
 
-  // Load draft from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedDraft = localStorage.getItem('kkv_kyc_draft');
-      if (savedDraft) {
-        const draft = JSON.parse(savedDraft);
-        if (draft.name) setName(draft.name);
-        if (draft.phone) setPhone(draft.phone);
-        if (draft.gender) setGender(draft.gender);
-        if (draft.age) setAge(draft.age);
-        if (draft.dateOfBirth) setDateOfBirth(draft.dateOfBirth);
-        if (draft.occupation) setOccupation(draft.occupation);
-        if (draft.email) setEmail(draft.email);
-        if (draft.customerPhoto) setCustomerPhoto(draft.customerPhoto);
-        if (draft.photoSource) setPhotoSource(draft.photoSource);
-        if (draft.idProof) setIdProof(draft.idProof);
-        if (draft.idNumber) setIdNumber(draft.idNumber);
-        if (draft.currentAddressText) setCurrentAddressText(draft.currentAddressText);
-        if (draft.permanentAddressText) setPermanentAddressText(draft.permanentAddressText);
-        if (draft.sameAddress !== undefined) setSameAddress(draft.sameAddress);
-      }
-    } catch {
-      // ignore draft parse error
+  // Populate form with existing customer data
+  const populateFormWithCustomer = (cust: Customer) => {
+    setTargetCustomer(cust);
+    setName(cust.name || cust.fullName || '');
+    const cleanPhone = formatPhoneInput(cust.phone || cust.phoneNumber || '');
+    setPhone(cleanPhone);
+    setPhoneError('');
+    setPhoneTouched(false);
+    setDuplicateCustomerMatch(null);
+
+    setGender(cust.gender || 'Male');
+    setAge(cust.age ?? 30);
+    setDateOfBirth(cust.dateOfBirth || '');
+    setOccupation(cust.occupation || '');
+    setEmail(cust.email || '');
+
+    setCustomerPhoto(cust.customerPhoto || cust.customerPhotoData?.url || null);
+    setCustomerPhotoFile(null);
+    setPhotoSource(cust.photoSource || (cust.customerPhoto ? 'upload' : null));
+
+    const parsedKYC = parseCustomerKYC(cust);
+    setIdProof(parsedKYC.idProof || 'Aadhaar');
+    setIdNumber(parsedKYC.idNumber || '');
+    setExtraPan(parsedKYC.extraPan || '');
+    setDocName(parsedKYC.docName || '');
+
+    const currAddr =
+      cust.currentAddress ||
+      (cust.currentAddressDetails ? formatStructuredAddress(cust.currentAddressDetails) : '') ||
+      '';
+    const permAddr =
+      cust.permanentAddress ||
+      (cust.permanentAddressDetails ? formatStructuredAddress(cust.permanentAddressDetails) : '') ||
+      '';
+    setCurrentAddressText(currAddr);
+    setPermanentAddressText(permAddr || currAddr);
+    setSameAddress(!permAddr || currAddr === permAddr);
+
+    const loc = (cust.currentLocation as LocationDetails) || null;
+    setCurrentLoc(loc);
+    if (loc?.googleMapsUrl) {
+      setMapsUrlInput(loc.googleMapsUrl);
+      setLocationStatus('✓ Location saved on file');
     }
-  }, []);
+
+    if (cust.kycDocuments && Array.isArray(cust.kycDocuments)) {
+      setExistingKycDocs(cust.kycDocuments);
+    }
+  };
+
+  // Load customer or draft on mount/change
+  useEffect(() => {
+    if (isEditMode && effectiveCustomerId) {
+      setIsLoadingCustomer(true);
+      const found = customers.find(
+        (c) =>
+          c.id === effectiveCustomerId ||
+          c.customerId?.toString() === effectiveCustomerId ||
+          isMatchingCustomerId(effectiveCustomerId, c)
+      );
+      if (found) {
+        populateFormWithCustomer(found);
+      }
+
+      // Also fetch from API to ensure the most complete and fresh record
+      apiService
+        .getCustomerById(effectiveCustomerId)
+        .then((res) => {
+          if (res && res.success && res.data) {
+            populateFormWithCustomer(res.data);
+          }
+        })
+        .catch((err) => {
+          console.warn('[AddCustomer] Could not fetch fresh customer by ID:', err);
+        })
+        .finally(() => {
+          setIsLoadingCustomer(false);
+        });
+    } else {
+      // In Add mode, load draft from localStorage if available
+      try {
+        const savedDraft = localStorage.getItem('kkv_kyc_draft');
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
+          if (draft.name) setName(draft.name);
+          if (draft.phone) setPhone(draft.phone);
+          if (draft.gender) setGender(draft.gender);
+          if (draft.age) setAge(draft.age);
+          if (draft.dateOfBirth) setDateOfBirth(draft.dateOfBirth);
+          if (draft.occupation) setOccupation(draft.occupation);
+          if (draft.email) setEmail(draft.email);
+          if (draft.customerPhoto) setCustomerPhoto(draft.customerPhoto);
+          if (draft.photoSource) setPhotoSource(draft.photoSource);
+          if (draft.idProof) setIdProof(draft.idProof);
+          if (draft.idNumber) setIdNumber(draft.idNumber);
+          if (draft.currentAddressText) setCurrentAddressText(draft.currentAddressText);
+          if (draft.permanentAddressText) setPermanentAddressText(draft.permanentAddressText);
+          if (draft.sameAddress !== undefined) setSameAddress(draft.sameAddress);
+        }
+      } catch {
+        // ignore draft parse error
+      }
+    }
+  }, [isEditMode, effectiveCustomerId]);
 
   // Handlers
   const handlePhoneChange = (val: string) => {
@@ -139,11 +251,16 @@ export const AddCustomer: React.FC = () => {
     const norm = formatted.replace(/\D/g, '').slice(-10);
     if (norm.length === 10) {
       const match = customers.find(
-        (c) => !c.isDeleted && (c.phoneNormalized === norm || (c.phone && c.phone.replace(/\D/g, '').slice(-10) === norm))
+        (c) =>
+          !c.isDeleted &&
+          (!isEditMode ||
+            (c.id !== (targetCustomer?.id || effectiveCustomerId) &&
+              !isMatchingCustomerId(targetCustomer?.id || effectiveCustomerId || '', c))) &&
+          (c.phoneNormalized === norm || (c.phone && c.phone.replace(/\D/g, '').slice(-10) === norm))
       );
       if (match) {
         setDuplicateCustomerMatch(match);
-        setPhoneError('This mobile number is already registered.');
+        setPhoneError('This mobile number is already registered to another customer.');
         return;
       }
     }
@@ -349,7 +466,7 @@ export const AddCustomer: React.FC = () => {
     showToast('Google Maps location link validated', 'success');
   };
 
-  // Save Draft
+  // Save Draft (Add Mode)
   const handleSaveDraft = () => {
     const draft = {
       name,
@@ -372,7 +489,14 @@ export const AddCustomer: React.FC = () => {
     showToast('KYC Profile Draft Saved Successfully', 'info');
   };
 
-  // Form Submit to Backend MongoDB
+  const handleBackToCustomers = () => {
+    if (setEditingCustomerId) {
+      setEditingCustomerId(null);
+    }
+    setCurrentPage('customers');
+  };
+
+  // Form Submit to Backend MongoDB (Shared Add/Edit logic)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -452,6 +576,10 @@ export const AddCustomer: React.FC = () => {
       } else if (customerPhoto && customerPhoto.startsWith('data:image')) {
         const photoBlob = dataURLtoFile(customerPhoto, 'customer-photo.jpg');
         formData.append('customerPhoto', photoBlob);
+      } else if (isEditMode && customerPhoto) {
+        formData.append('customerPhotoUrl', customerPhoto);
+      } else if (isEditMode && !customerPhoto) {
+        formData.append('removePhoto', 'true');
       }
 
       // 3. Append attached KYC Documents
@@ -459,32 +587,62 @@ export const AddCustomer: React.FC = () => {
         formData.append('kycDocuments', item.file);
       });
 
-      // 4. Send API request to Node/Express backend
-      const response = await apiService.createCustomerFormData(formData);
+      // 4. Dispatch Update or Create Request
+      if (isEditMode) {
+        const targetId = targetCustomer?.id || effectiveCustomerId || '';
+        const response = await apiService.updateCustomerFormData(targetId, formData);
 
-      if (response && response.success) {
-        showToast('Customer KYC Profile Created & Uploaded to Google Drive Successfully!', 'success');
-        localStorage.removeItem('kkv_kyc_draft');
+        if (response && (response.success || response.data)) {
+          showToast('Customer KYC Profile Updated Successfully!', 'success');
 
-
-        // Sync local AppContext state
-        try {
-          if (reloadAllData) {
-            await reloadAllData();
-          } else if (response.data) {
-            addCustomer(response.data);
+          // Sync local AppContext state
+          try {
+            if (reloadAllData) {
+              await reloadAllData();
+            } else if (updateCustomer && response.data) {
+              updateCustomer(targetId, response.data);
+            }
+          } catch {
+            // ignore reload error
           }
-        } catch {
-          // ignore reload error
-        }
 
-        setCurrentPage('customers');
+          if (setEditingCustomerId) {
+            setEditingCustomerId(null);
+          }
+          setCurrentPage('customers');
+        } else {
+          showToast(response?.message || 'Failed to update customer.', 'error');
+        }
       } else {
-        showToast(response?.message || 'Failed to create customer.', 'error');
+        const response = await apiService.createCustomerFormData(formData);
+
+        if (response && response.success) {
+          showToast('Customer KYC Profile Created & Uploaded to Google Drive Successfully!', 'success');
+          localStorage.removeItem('kkv_kyc_draft');
+
+          // Sync local AppContext state
+          try {
+            if (reloadAllData) {
+              await reloadAllData();
+            } else if (response.data) {
+              addCustomer(response.data);
+            }
+          } catch {
+            // ignore reload error
+          }
+
+          setCurrentPage('customers');
+        } else {
+          showToast(response?.message || 'Failed to create customer.', 'error');
+        }
       }
     } catch (err: any) {
-      console.error('[AddCustomer] Submission error:', err);
-      showToast(err.message || 'Customer creation failed. Please check network connection.', 'error');
+      console.error(`[${isEditMode ? 'EditCustomer' : 'AddCustomer'}] Submission error:`, err);
+      showToast(
+        err.message ||
+          `${isEditMode ? 'Customer update' : 'Customer creation'} failed. Please check network connection.`,
+        'error'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -496,7 +654,7 @@ export const AddCustomer: React.FC = () => {
       <div style={{ marginBottom: '16px' }}>
         <button
           className="btn btn-secondary"
-          onClick={() => setCurrentPage('customers')}
+          onClick={handleBackToCustomers}
           disabled={isSubmitting}
           style={{ gap: '6px', fontSize: '13px', padding: '6px 14px' }}
         >
@@ -523,11 +681,11 @@ export const AddCustomer: React.FC = () => {
               width: '38px',
               height: '38px',
               borderRadius: '10px',
-              backgroundColor: 'rgba(5, 150, 105, 0.12)',
+              backgroundColor: isEditMode ? 'rgba(201, 162, 39, 0.15)' : 'rgba(5, 150, 105, 0.12)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--color-primary-dark, #059669)',
+              color: isEditMode ? 'var(--color-primary-accent, #c9a227)' : 'var(--color-primary-dark, #059669)',
               flexShrink: 0
             }}
           >
@@ -535,25 +693,36 @@ export const AddCustomer: React.FC = () => {
           </div>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-dark, #0f172a)' }}>
-              👤 Customer / KYC Details
+              {isEditMode ? '👤 Edit Borrower KYC Details' : '👤 Customer / KYC Details'}
             </h2>
             <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: 'var(--text-muted, #64748b)' }}>
-              Personal information, identity proof, and addresses (MongoDB &amp; Google Drive)
+              {isEditMode
+                ? isLoadingCustomer
+                  ? 'Loading existing customer details from MongoDB...'
+                  : `Updating profile for Customer ID: ${targetCustomer ? getCanonicalCustomerId(targetCustomer) : effectiveCustomerId || ''}`
+                : 'Personal information, identity proof, and addresses (MongoDB & Google Drive)'}
             </p>
-
           </div>
         </div>
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle, #e2e8f0)', margin: '0 0 24px 0' }} />
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-          
           {/* SECTION 1: CUSTOMER PHOTO + PERSONAL DETAILS GRID */}
           <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '28px', alignItems: 'start' }}>
-            
             {/* LEFT SIDE: CUSTOMER PHOTO */}
             <div>
-              <label style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'block', marginBottom: '8px' }}>
+              <label
+                style={{
+                  fontSize: '11.5px',
+                  fontWeight: 800,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.6px',
+                  display: 'block',
+                  marginBottom: '8px'
+                }}
+              >
                 CUSTOMER PHOTO
               </label>
 
@@ -602,7 +771,15 @@ export const AddCustomer: React.FC = () => {
 
                 <label
                   className={`btn btn-secondary btn-sm ${isSubmitting ? 'disabled' : ''}`}
-                  style={{ flex: 1, fontSize: '11.5px', padding: '6px 4px', justifyContent: 'center', gap: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', margin: 0 }}
+                  style={{
+                    flex: 1,
+                    fontSize: '11.5px',
+                    padding: '6px 4px',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    margin: 0
+                  }}
                 >
                   <Upload size={13} />
                   <span>Upload</span>
@@ -647,7 +824,9 @@ export const AddCustomer: React.FC = () => {
               {/* ROW 1: FULL NAME * | PHONE * */}
               <div className="grid-2" style={{ gap: '16px' }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>FULL NAME</label>
+                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>
+                    FULL NAME
+                  </label>
                   <input
                     type="text"
                     className="input-control"
@@ -660,7 +839,9 @@ export const AddCustomer: React.FC = () => {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>PHONE</label>
+                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>
+                    PHONE
+                  </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span
                       style={{
@@ -699,14 +880,40 @@ export const AddCustomer: React.FC = () => {
                     />
                   </div>
                   {phoneTouched && phoneError && (
-                    <small style={{ color: 'var(--color-danger, #ef4444)', fontSize: '11px', marginTop: '3px', display: 'block', fontWeight: 600 }}>
+                    <small
+                      style={{
+                        color: 'var(--color-danger, #ef4444)',
+                        fontSize: '11px',
+                        marginTop: '3px',
+                        display: 'block',
+                        fontWeight: 600
+                      }}
+                    >
                       {phoneError}
                     </small>
                   )}
 
                   {duplicateCustomerMatch && (
-                    <div style={{ padding: '8px 12px', backgroundColor: 'var(--badge-danger-bg)', border: '1px solid var(--badge-danger-border)', borderRadius: '8px', marginTop: '6px', color: 'var(--color-danger)', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                      <span>⚠ Mobile registered to <strong>{duplicateCustomerMatch.name}</strong> ({duplicateCustomerMatch.id})</span>
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: 'var(--badge-danger-bg)',
+                        border: '1px solid var(--badge-danger-border)',
+                        borderRadius: '8px',
+                        marginTop: '6px',
+                        color: 'var(--color-danger)',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>
+                        ⚠ Mobile registered to <strong>{duplicateCustomerMatch.name}</strong> (
+                        {duplicateCustomerMatch.id})
+                      </span>
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
@@ -723,7 +930,9 @@ export const AddCustomer: React.FC = () => {
               {/* ROW 2: GENDER * | AGE / DATE OF BIRTH */}
               <div className="grid-2" style={{ gap: '16px' }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>GENDER</label>
+                  <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>
+                    GENDER
+                  </label>
                   <select
                     className="select-control"
                     value={gender}
@@ -747,7 +956,9 @@ export const AddCustomer: React.FC = () => {
               {/* ROW 3: OCCUPATION / WORK | EMAIL */}
               <div className="grid-2" style={{ gap: '16px' }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>OCCUPATION / WORK</label>
+                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>
+                    OCCUPATION / WORK
+                  </label>
                   <input
                     type="text"
                     className="input-control"
@@ -759,7 +970,9 @@ export const AddCustomer: React.FC = () => {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>EMAIL</label>
+                  <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>
+                    EMAIL
+                  </label>
                   <input
                     type="email"
                     className="input-control"
@@ -777,7 +990,15 @@ export const AddCustomer: React.FC = () => {
 
           {/* SECTION 2: IDENTITY PROOF & DOCUMENT UPLOADS */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 800,
+                color: 'var(--color-primary-dark)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.6px'
+              }}
+            >
               IDENTITY PROOF &amp; KYC DOCUMENTS
             </span>
 
@@ -812,7 +1033,6 @@ export const AddCustomer: React.FC = () => {
                   </p>
                 </div>
 
-
                 <label
                   className="btn btn-secondary btn-sm"
                   style={{
@@ -836,7 +1056,100 @@ export const AddCustomer: React.FC = () => {
                 </label>
               </div>
 
-              {/* LIST OF ATTACHED KYC FILES */}
+              {/* LIST OF EXISTING SAVED KYC DOCUMENTS (Edit Mode) */}
+              {isEditMode && existingKycDocs.length > 0 && (
+                <div style={{ marginTop: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                    Existing Saved KYC Documents on file ({existingKycDocs.length})
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+                    {existingKycDocs.map((doc, idx) => (
+                      <div
+                        key={`exist-kyc-${doc.fileId || idx}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '8px 10px',
+                          backgroundColor: 'var(--bg-card, #ffffff)',
+                          border: '1px solid var(--border-light, #cbd5e1)',
+                          borderRadius: '6px',
+                          position: 'relative'
+                        }}
+                      >
+                        {doc.resourceType === 'raw' || doc.mimeType === 'application/pdf' ? (
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '6px',
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                              color: 'var(--color-danger, #ef4444)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}
+                          >
+                            <FileText size={20} />
+                          </div>
+                        ) : (
+                          <img
+                            src={doc.url}
+                            alt={doc.documentName || 'KYC Doc'}
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '6px',
+                              objectFit: 'cover',
+                              flexShrink: 0,
+                              border: '1px solid var(--border-light, #e2e8f0)'
+                            }}
+                          />
+                        )}
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              color: 'var(--text-dark)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {doc.documentName || doc.fileName || `${doc.documentType || 'KYC'} Document`}
+                          </p>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                            {doc.documentType || 'Verified'} &bull; On File
+                          </span>
+                        </div>
+
+                        {doc.url && (
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: 'var(--color-primary-accent, #059669)',
+                              padding: '4px',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                            title="Open Document"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* LIST OF NEWLY ATTACHED KYC FILES */}
               {kycFiles.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px', marginTop: '6px' }}>
                   {kycFiles.map((item) => (
@@ -899,7 +1212,7 @@ export const AddCustomer: React.FC = () => {
                           {item.name}
                         </p>
                         <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                          {item.size} • {item.docType}
+                          {item.size} • {item.docType} (New)
                         </span>
                       </div>
 
@@ -931,10 +1244,28 @@ export const AddCustomer: React.FC = () => {
           {/* SECTION 3: ADDRESS DETAILS */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: 'var(--color-primary-dark)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.6px'
+                }}
+              >
                 ADDRESS DETAILS
               </span>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'var(--color-primary-dark)'
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={sameAddress}
@@ -949,7 +1280,9 @@ export const AddCustomer: React.FC = () => {
             <div className="grid-2" style={{ gap: '18px' }}>
               {/* CURRENT ADDRESS */}
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>CURRENT ADDRESS</label>
+                <label className="form-label required" style={{ fontSize: '12px', fontWeight: 800 }}>
+                  CURRENT ADDRESS
+                </label>
                 <textarea
                   className="input-control"
                   rows={3}
@@ -968,7 +1301,9 @@ export const AddCustomer: React.FC = () => {
 
               {/* PERMANENT ADDRESS */}
               <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>PERMANENT ADDRESS</label>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: 800 }}>
+                  PERMANENT ADDRESS
+                </label>
                 <textarea
                   className="input-control"
                   rows={3}
@@ -1001,7 +1336,16 @@ export const AddCustomer: React.FC = () => {
               gap: '14px'
             }}
           >
-            <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+            <label
+              style={{
+                fontSize: '12px',
+                fontWeight: 800,
+                color: 'var(--color-primary-dark)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.6px',
+                margin: 0
+              }}
+            >
               CUSTOMER LOCATION (FOR VISITS &amp; COLLECTION)
             </label>
 
@@ -1011,14 +1355,30 @@ export const AddCustomer: React.FC = () => {
               className="btn btn-primary"
               disabled={isSubmitting}
               onClick={handleCaptureGps}
-              style={{ width: '100%', height: '42px', justifyContent: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700 }}
+              style={{
+                width: '100%',
+                height: '42px',
+                justifyContent: 'center',
+                gap: '8px',
+                fontSize: '13.5px',
+                fontWeight: 700
+              }}
             >
               <MapPin size={17} />
               <span>📍 Capture Current Location (GPS)</span>
             </button>
 
             {locationStatus && (
-              <div style={{ fontSize: '12px', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: '#059669',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
                 <CheckCircle2 size={15} />
                 <span>{locationStatus}</span>
               </div>
@@ -1027,7 +1387,16 @@ export const AddCustomer: React.FC = () => {
             {/* CENTERED OR DIVIDER */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '2px 0' }}>
               <div style={{ flex: 1, borderTop: '1px solid var(--border-light, #cbd5e1)' }} />
-              <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>OR</span>
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase'
+                }}
+              >
+                OR
+              </span>
               <div style={{ flex: 1, borderTop: '1px solid var(--border-light, #cbd5e1)' }} />
             </div>
 
@@ -1047,56 +1416,81 @@ export const AddCustomer: React.FC = () => {
                 className="btn btn-secondary"
                 disabled={isSubmitting}
                 onClick={handleUseMapsLink}
-                style={{ height: '40px', padding: '0 18px', fontSize: '13px', fontWeight: 700, gap: '6px' }}
+                style={{
+                  height: '40px',
+                  padding: '0 18px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  gap: '6px'
+                }}
               >
                 <span>🔗 Use link</span>
               </button>
             </div>
 
             <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-              Capture the customer's location while visiting their premises, or paste a Google Maps share link. Location access requires browser/device permission.
+              Capture the customer's location while visiting their premises, or paste a Google Maps share link. Location
+              access requires browser/device permission.
             </span>
           </div>
 
           {/* BOTTOM ACTION BUTTONS */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', gap: '14px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: '8px',
+              gap: '14px'
+            }}
+          >
             <button
               type="button"
               className="btn btn-secondary"
               disabled={isSubmitting}
-              onClick={() => setCurrentPage('customers')}
+              onClick={handleBackToCustomers}
               style={{ height: '42px', padding: '0 20px', fontWeight: 600 }}
             >
               Cancel
             </button>
 
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={isSubmitting}
-                onClick={handleSaveDraft}
-                style={{ gap: '8px', height: '42px', padding: '0 20px', fontWeight: 600 }}
-              >
-                <BookmarkCheck size={16} />
-                <span>Save Draft</span>
-              </button>
+              {!isEditMode && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={isSubmitting}
+                  onClick={handleSaveDraft}
+                  style={{ gap: '8px', height: '42px', padding: '0 20px', fontWeight: 600 }}
+                >
+                  <BookmarkCheck size={16} />
+                  <span>Save Draft</span>
+                </button>
+              )}
 
               <button
                 type="submit"
                 className="btn btn-primary"
                 disabled={isSubmitting}
-                style={{ height: '42px', gap: '8px', padding: '0 24px', fontWeight: 700, fontSize: '14px', minWidth: '220px', justifyContent: 'center' }}
+                style={{
+                  height: '42px',
+                  gap: '8px',
+                  padding: '0 24px',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  minWidth: '220px',
+                  justifyContent: 'center'
+                }}
               >
                 {isSubmitting ? (
                   <>
                     <RefreshCw size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>Saving to MongoDB...</span>
+                    <span>{isEditMode ? 'Updating in MongoDB...' : 'Saving to MongoDB...'}</span>
                   </>
                 ) : (
                   <>
                     <ShieldCheck size={18} />
-                    <span>✓ Create &amp; Verify Customer</span>
+                    <span>{isEditMode ? '✓ Save Changes' : '✓ Create & Verify Customer'}</span>
                   </>
                 )}
               </button>

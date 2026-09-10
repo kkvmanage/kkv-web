@@ -27,6 +27,10 @@ const pageTitles: Record<NavPage, PageMetadata> = {
     title: 'Add Borrower KYC',
     subtitle: 'Complete borrower KYC onboarding and identity verification'
   },
+  'edit-customer': {
+    title: 'Edit Borrower KYC',
+    subtitle: 'Update borrower KYC details and identity verification'
+  },
   'search-customer': {
     title: 'Search Customers',
     subtitle: 'Find and manage registered borrower records.'

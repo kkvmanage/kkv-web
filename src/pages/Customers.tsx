@@ -2,25 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserPlus, RotateCcw, Edit3, Eye } from 'lucide-react';
 import { SearchInput } from '../components/common/SearchInput';
-import { EditCustomerModal } from '../components/common/EditCustomerModal';
 import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
 import { Customer } from '../types';
 import { formatIdProofDisplay } from '../utils/kycValidation';
 import { isMatchingCustomerId } from '../utils/customerUtils';
 
 export const Customers: React.FC = () => {
-  const { customers, loans, updateCustomer, setCurrentPage, setSelectedProfileCustomerId } = useApp();
+  const { customers, loans, setCurrentPage, setSelectedProfileCustomerId, startEditCustomer } = useApp();
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING'>('ALL');
 
   // Filter active non-deleted customers
   const activeCustomers = customers.filter((c) => !c.isDeleted);
 
-  // Lock background body scroll while any modal is active
+  // Lock background body scroll while modal is active
   useEffect(() => {
-    if (viewingCustomer || editingCustomer) {
+    if (viewingCustomer) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -28,7 +26,7 @@ export const Customers: React.FC = () => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [viewingCustomer, editingCustomer]);
+  }, [viewingCustomer]);
 
   const handleViewCustomer = (customer: Customer) => {
     setViewingCustomer(customer);
@@ -223,7 +221,7 @@ export const Customers: React.FC = () => {
                             title="Edit Customer"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditingCustomer(c);
+                              startEditCustomer(c.id);
                             }}
                           >
                             <Edit3 size={13} />
@@ -244,16 +242,9 @@ export const Customers: React.FC = () => {
         isOpen={!!viewingCustomer}
         customer={viewingCustomer}
         onClose={() => setViewingCustomer(null)}
-        onEdit={(cust) => setEditingCustomer(cust)}
-      />
-
-      {/* Edit Customer Modal */}
-      <EditCustomerModal
-        isOpen={!!editingCustomer}
-        customer={editingCustomer}
-        onClose={() => setEditingCustomer(null)}
-        onSave={(id, updates) => {
-          updateCustomer(id, updates);
+        onEdit={(cust) => {
+          setViewingCustomer(null);
+          startEditCustomer(cust.id);
         }}
       />
     </div>

@@ -179,6 +179,7 @@ export interface LoanTypeConfig {
   calculationStrategy?: CalculationStrategy;
   configurationVersion?: number;
   sortOrder: number;
+  amountBands?: AmountBand[];
   createdAt?: string;
   updatedAt?: string;
 }

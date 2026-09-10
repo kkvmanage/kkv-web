@@ -18,7 +18,6 @@ import {
   DollarSign
 } from 'lucide-react';
 import { formatIdProofDisplay } from '../utils/kycValidation';
-import { EditCustomerModal } from '../components/common/EditCustomerModal';
 import { ViewFDModal } from '../components/common/ViewFDModal';
 import { isMatchingCustomerId, getCanonicalCustomerId } from '../utils/customerUtils';
 import { toDisplayDate } from '../components/common/AgeDobInput';
@@ -48,13 +47,12 @@ export const CustomerProfile: React.FC = () => {
     selectedProfileCustomerId,
     setSelectedLoan,
     setCurrentPage,
-    updateCustomer,
+    startEditCustomer,
     showToast,
     masterControlSettings
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
-  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [selectedViewFD, setSelectedViewFD] = useState<FixedDeposit | null>(null);
 
   // Normalized today's date
@@ -90,9 +88,9 @@ export const CustomerProfile: React.FC = () => {
 
   const canonicalCustId = getCanonicalCustomerId(customer);
 
-  // Open Edit Modal with current data
+  // Open Full-Page Customer Edit with current data
   const handleOpenEditModal = () => {
-    setIsEditModalOpen(true);
+    startEditCustomer(customer.id);
   };
 
   // ── Customer Loans (using customerId as relationship) ───────────────────────
@@ -1242,19 +1240,6 @@ export const CustomerProfile: React.FC = () => {
             ))}
           </div>
         </div>
-      )}
-
-      {/* Edit Customer Modal */}
-      {isEditModalOpen && (
-        <EditCustomerModal
-          isOpen={isEditModalOpen}
-          customer={customer}
-          onClose={() => setIsEditModalOpen(false)}
-          onSave={(id, updates) => {
-            updateCustomer(id, updates);
-            setIsEditModalOpen(false);
-          }}
-        />
       )}
 
       {/* View FD Statement / Certificate Modal */}

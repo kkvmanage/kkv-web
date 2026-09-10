@@ -76,7 +76,8 @@ export const AdminPanel: React.FC = () => {
   const [isDeletingPermanently, setIsDeletingPermanently] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [masterSubTab, setMasterSubTab] = useState<'rates' | 'loan-config' | 'fd-config' | 'purity' | 'operations' | 'messaging' | 'security' | 'danger'>('rates');
-  const [ratesSubChip, setRatesSubChip] = useState<'gold' | 'silver' | 'pronote' | 'hire' | 'card' | 'overdue' | 'upi'>('gold');
+  // string type so it can hold any loanTypeId (e.g. 'gold-loan', 'silver-loan', 'diamond-loan') OR 'card'/'overdue'/'upi'
+  const [ratesSubChip, setRatesSubChip] = useState<string>('gold-loan');
 
   // ── Rental Management Summary State (Section 28 & 29) ───────────────────────
   const [rentalSummary, setRentalSummary] = useState<AdminRentalSummary | null>(null);
@@ -126,18 +127,12 @@ export const AdminPanel: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Rates & Payments Form State with safe fallbacks
-  const [goldShowOnIssue, setGoldShowOnIssue] = useState<boolean>(masterControlSettings?.showOnLoanIssue ?? true);
-  const [hireShowOnIssue, setHireShowOnIssue] = useState<boolean>(masterControlSettings?.hireShowOnLoanIssue ?? true);
-  const [silverShowOnIssue, setSilverShowOnIssue] = useState<boolean>(masterControlSettings?.silverShowOnLoanIssue ?? true);
-  const [pronoteShowOnIssue, setPronoteShowOnIssue] = useState<boolean>(masterControlSettings?.pronoteShowOnLoanIssue ?? true);
-  const [amountBands, setAmountBands] = useState<AmountBand[]>(masterControlSettings?.amountBands || []);
-  const [silverAmountBands, setSilverAmountBands] = useState<AmountBand[]>(masterControlSettings?.silverAmountBands || []);
+  // ── Rates & Payments — unified per-loan-type config map ─────────────────────
+  // Key = loanTypeId, value = editable snapshot of that loan type's config
+  const [loanTypeConfigs, setLoanTypeConfigs] = useState<Record<string, Partial<import('../types').LoanTypeConfig>>>({});
+  const [loanTypesCardFees, setLoanTypesCardFees] = useState<{ [key: string]: { enabled: boolean; amount: number } }>({});
 
-  // Additional rates states
-  const [silverRate, setSilverRate] = useState<number | ''>(masterControlSettings?.silverLoanMonthlyRate ?? 2.0);
-  const [pronoteRate, setPronoteRate] = useState<number | ''>(masterControlSettings?.pronoteRate ?? 12);
-  const [hireRate, setHireRate] = useState<number | ''>(masterControlSettings?.hirePurchaseMonthlyRate ?? 12);
+  // Static non-loan-type rates (overdue, card default, upi, grace)
   const [cardFee, setCardFee] = useState<number | ''>(masterControlSettings?.defaultCardFee ?? 10);
   const [overdueRate, setOverdueRate] = useState<number | ''>(masterControlSettings?.overdueInterestRatePA ?? 24);
   const [overduePenalty, setOverduePenalty] = useState<number | ''>(masterControlSettings?.overduePenaltyPerDayPercent ?? 3.6);
@@ -145,16 +140,6 @@ export const AdminPanel: React.FC = () => {
   const [upiIdVal, setUpiIdVal] = useState<string>(masterControlSettings?.upiId || '');
   const [upiPayeeVal, setUpiPayeeVal] = useState<string>(masterControlSettings?.upiPayeeName || '');
 
-  // Card Fee configs per loan type
-  const [goldCardFeeEnabled, setGoldCardFeeEnabled] = useState<boolean>(masterControlSettings?.goldCardFeeEnabled ?? true);
-  const [goldCardFeeVal, setGoldCardFeeVal] = useState<number | ''>(masterControlSettings?.goldCardFee ?? 10);
-  const [silverCardFeeEnabled, setSilverCardFeeEnabled] = useState<boolean>(masterControlSettings?.silverCardFeeEnabled ?? true);
-  const [silverCardFeeVal, setSilverCardFeeVal] = useState<number | ''>(masterControlSettings?.silverCardFee ?? 10);
-  const [pronoteCardFeeEnabled, setPronoteCardFeeEnabled] = useState<boolean>(masterControlSettings?.pronoteCardFeeEnabled ?? true);
-  const [pronoteCardFeeVal, setPronoteCardFeeVal] = useState<number | ''>(masterControlSettings?.pronoteCardFee ?? 10);
-  const [hireCardFeeEnabled, setHireCardFeeEnabled] = useState<boolean>(masterControlSettings?.hireCardFeeEnabled ?? true);
-  const [hireCardFeeVal, setHireCardFeeVal] = useState<number | ''>(masterControlSettings?.hireCardFee ?? 10);
-  const [loanTypesCardFees, setLoanTypesCardFees] = useState<{ [key: string]: { enabled: boolean; amount: number } }>({});
 
   const handleConfirmPermanentDelete = async () => {
     if (!permanentDeleteTarget || permanentDeleteInput !== 'DELETE') return;
@@ -271,20 +256,11 @@ export const AdminPanel: React.FC = () => {
 
   useEffect(() => {
     if (masterControlSettings) {
-      setGoldShowOnIssue(masterControlSettings.showOnLoanIssue ?? true);
-      setHireShowOnIssue(masterControlSettings.hireShowOnLoanIssue ?? true);
-      setSilverShowOnIssue(masterControlSettings.silverShowOnLoanIssue ?? true);
-      setPronoteShowOnIssue(masterControlSettings.pronoteShowOnLoanIssue ?? true);
-      setAmountBands(masterControlSettings.amountBands || []);
-      setSilverAmountBands(masterControlSettings.silverAmountBands || []);
       setAnimationsEnabled(masterControlSettings.animationsEnabled ?? true);
       setPerformanceModeEnabled(masterControlSettings.performanceModeEnabled ?? false);
       setBulkFdDateChangeEnabled(masterControlSettings.bulkFdDateChangeEnabled ?? true);
       setLockersEnabled(masterControlSettings.lockersEnabled ?? false);
 
-      setSilverRate(masterControlSettings.silverLoanMonthlyRate ?? 2.0);
-      setPronoteRate(masterControlSettings.pronoteRate ?? 12);
-      setHireRate(masterControlSettings.hirePurchaseMonthlyRate ?? 12);
       setCardFee(masterControlSettings.defaultCardFee ?? 10);
       setOverdueRate(masterControlSettings.overdueInterestRatePA ?? 24);
       setOverduePenalty(masterControlSettings.overduePenaltyPerDayPercent ?? 3.6);
@@ -299,25 +275,23 @@ export const AdminPanel: React.FC = () => {
         setOverdueTiersList([...rawT].sort((a, b) => a.overdueDays - b.overdueDays));
       }
 
-      setGoldCardFeeEnabled(masterControlSettings.goldCardFeeEnabled ?? true);
-      setGoldCardFeeVal(masterControlSettings.goldCardFee ?? 10);
-      setSilverCardFeeEnabled(masterControlSettings.silverCardFeeEnabled ?? true);
-      setSilverCardFeeVal(masterControlSettings.silverCardFee ?? 10);
-      setPronoteCardFeeEnabled(masterControlSettings.pronoteCardFeeEnabled ?? true);
-      setPronoteCardFeeVal(masterControlSettings.pronoteCardFee ?? 10);
-      setHireCardFeeEnabled(masterControlSettings.hireCardFeeEnabled ?? true);
-      setHireCardFeeVal(masterControlSettings.hireCardFee ?? 10);
-
-      const dynamicFees: { [key: string]: { enabled: boolean; amount: number } } = {};
+      // Sync per-loan-type config map from masterControlSettings.loanTypes
       const baseLTs = masterControlSettings.loanTypes && masterControlSettings.loanTypes.length > 0
         ? masterControlSettings.loanTypes
         : defaultLoanTypes;
+
+      const configs: Record<string, Partial<import('../types').LoanTypeConfig>> = {};
+      const dynamicFees: { [key: string]: { enabled: boolean; amount: number } } = {};
+
       baseLTs.forEach((lt) => {
+        configs[lt.id] = { ...lt };
         dynamicFees[lt.id] = {
           enabled: lt.cardFeeEnabled ?? true,
           amount: lt.cardFee ?? 25
         };
       });
+
+      setLoanTypeConfigs(configs);
       setLoanTypesCardFees(dynamicFees);
 
       setOverdueCalMethod(masterControlSettings.overdueCalculationMethod || 'Whole months — a part month counts as full (recommended)');
@@ -330,6 +304,7 @@ export const AdminPanel: React.FC = () => {
       setShowroomsVal(masterControlSettings.showrooms || []);
     }
   }, [masterControlSettings]);
+
 
   useEffect(() => {
     if (whatsAppTemplates) {
@@ -393,63 +368,54 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleSaveMasterChanges = () => {
-    // Validation for Amount Bands
-    const cleanedAmountBands = (amountBands || []).map(b => ({
-      ...b,
-      amount: b.amount === ('' as any) ? 0 : Number(b.amount) || 0,
-      baseRateMonthly: b.baseRateMonthly === ('' as any) ? 0 : Number(b.baseRateMonthly) || 0,
-      penaltyAfterMonths: b.penaltyAfterMonths === ('' as any) ? 0 : Number(b.penaltyAfterMonths) || 0,
-      penaltyStepUpMonthly: b.penaltyStepUpMonthly === ('' as any) ? 0 : Number(b.penaltyStepUpMonthly) || 0
-    }));
-
-    const cleanedSilverAmountBands = (silverAmountBands || []).map(b => ({
-      ...b,
-      amount: b.amount === ('' as any) ? 0 : Number(b.amount) || 0,
-      baseRateMonthly: b.baseRateMonthly === ('' as any) ? 0 : Number(b.baseRateMonthly) || 0,
-      penaltyAfterMonths: b.penaltyAfterMonths === ('' as any) ? 0 : Number(b.penaltyAfterMonths) || 0,
-      penaltyStepUpMonthly: b.penaltyStepUpMonthly === ('' as any) ? 0 : Number(b.penaltyStepUpMonthly) || 0
-    }));
-
-    for (const b of cleanedAmountBands) {
-      if (b.amount < 0 || b.baseRateMonthly < 0 || b.penaltyAfterMonths < 0 || b.penaltyStepUpMonthly < 0) {
-        showToast('Gold Amount Bands cannot contain negative values.', 'error');
-        return;
-      }
-    }
-    for (const b of cleanedSilverAmountBands) {
-      if (b.amount < 0 || b.baseRateMonthly < 0 || b.penaltyAfterMonths < 0 || b.penaltyStepUpMonthly < 0) {
-        showToast('Silver Amount Bands cannot contain negative values.', 'error');
-        return;
-      }
-    }
-
     const baseLTs = masterControlSettings?.loanTypes && masterControlSettings.loanTypes.length > 0
       ? masterControlSettings.loanTypes
       : defaultLoanTypes;
 
+    // Merge edits from loanTypeConfigs map back into loanTypes
     const updatedLoanTypes = baseLTs.map((lt) => {
+      const cfg = loanTypeConfigs[lt.id] || {};
       const fee = loanTypesCardFees[lt.id];
-      if (fee) {
-        return {
-          ...lt,
-          cardFeeEnabled: fee.enabled,
-          cardFee: fee.amount === ('' as any) ? 0 : Number(fee.amount) || 0
-        };
-      }
-      return lt;
+
+      // Clean amount bands
+      const cleanedBands = (cfg.amountBands || lt.amountBands || []).map(b => ({
+        ...b,
+        amount: b.amount === ('' as any) ? 0 : Number(b.amount) || 0,
+        baseRateMonthly: b.baseRateMonthly === ('' as any) ? 0 : Number(b.baseRateMonthly) || 0,
+        penaltyAfterMonths: b.penaltyAfterMonths === ('' as any) ? 0 : Number(b.penaltyAfterMonths) || 0,
+        penaltyStepUpMonthly: b.penaltyStepUpMonthly === ('' as any) ? 0 : Number(b.penaltyStepUpMonthly) || 0
+      }));
+
+      return {
+        ...lt,
+        ...cfg,
+        amountBands: cleanedBands,
+        cardFeeEnabled: fee ? fee.enabled : (cfg.cardFeeEnabled ?? lt.cardFeeEnabled ?? true),
+        cardFee: fee ? (Number(fee.amount) || 0) : (cfg.cardFee ?? lt.cardFee ?? 0),
+        configurationVersion: (lt.configurationVersion || 1) + (JSON.stringify(cfg) !== JSON.stringify(lt) ? 1 : 0)
+      };
     });
 
-    const numPronoteRate = pronoteRate === '' ? 12 : Number(pronoteRate);
-    const numHireRate = hireRate === '' ? 12 : Number(hireRate);
-    const numSilverRate = silverRate === '' ? 2 : Number(silverRate);
+    // Validate amount bands for all types
+    for (const lt of updatedLoanTypes) {
+      for (const b of lt.amountBands || []) {
+        if (b.amount < 0 || b.baseRateMonthly < 0 || b.penaltyAfterMonths < 0 || b.penaltyStepUpMonthly < 0) {
+          showToast(`${lt.name} amount bands cannot contain negative values.`, 'error');
+          return;
+        }
+      }
+    }
+
+    // Derive backward-compat flat fields from per-type configs
+    const goldLT = updatedLoanTypes.find(lt => lt.id === 'gold-loan');
+    const silverLT = updatedLoanTypes.find(lt => lt.id === 'silver-loan');
+    const pronoteLT = updatedLoanTypes.find(lt => lt.id === 'pronote');
+    const hireLT = updatedLoanTypes.find(lt => lt.id === 'hire-purchase');
+
     const numCardFee = cardFee === '' ? 10 : Number(cardFee);
     const numOverdueRate = overdueRate === '' ? 24 : Number(overdueRate);
     const numOverduePenalty = overduePenalty === '' ? 3.6 : Number(overduePenalty);
     const numGraceDays = graceDaysVal === '' ? 3 : Number(graceDaysVal);
-    const numGoldCardFee = goldCardFeeVal === '' ? 10 : Number(goldCardFeeVal);
-    const numSilverCardFee = silverCardFeeVal === '' ? 10 : Number(silverCardFeeVal);
-    const numPronoteCardFee = pronoteCardFeeVal === '' ? 10 : Number(pronoteCardFeeVal);
-    const numHireCardFee = hireCardFeeVal === '' ? 10 : Number(hireCardFeeVal);
 
     const cleanedTiers = overdueTiersList
       .map(t => ({
@@ -464,21 +430,26 @@ export const AdminPanel: React.FC = () => {
 
     updateMasterControlSettings({
       loanTypes: updatedLoanTypes,
-      showOnLoanIssue: goldShowOnIssue,
-      hireShowOnLoanIssue: hireShowOnIssue,
-      silverShowOnLoanIssue: silverShowOnIssue,
-      pronoteShowOnLoanIssue: pronoteShowOnIssue,
-      pronoteRate: numPronoteRate,
-      amountBands: cleanedAmountBands,
-      silverAmountBands: cleanedSilverAmountBands,
-      goldCardFeeEnabled: loanTypesCardFees['gold-loan']?.enabled ?? goldCardFeeEnabled,
-      goldCardFee: loanTypesCardFees['gold-loan'] ? (Number(loanTypesCardFees['gold-loan'].amount) || 0) : numGoldCardFee,
-      silverCardFeeEnabled: loanTypesCardFees['silver-loan']?.enabled ?? silverCardFeeEnabled,
-      silverCardFee: loanTypesCardFees['silver-loan'] ? (Number(loanTypesCardFees['silver-loan'].amount) || 0) : numSilverCardFee,
-      pronoteCardFeeEnabled: loanTypesCardFees['pronote']?.enabled ?? pronoteCardFeeEnabled,
-      pronoteCardFee: loanTypesCardFees['pronote'] ? (Number(loanTypesCardFees['pronote'].amount) || 0) : numPronoteCardFee,
-      hireCardFeeEnabled: loanTypesCardFees['hire-purchase']?.enabled ?? hireCardFeeEnabled,
-      hireCardFee: loanTypesCardFees['hire-purchase'] ? (Number(loanTypesCardFees['hire-purchase'].amount) || 0) : numHireCardFee,
+      // Backward-compat flat fields derived from per-type configs
+      showOnLoanIssue: goldLT?.showOnLoanIssue ?? true,
+      hireShowOnLoanIssue: hireLT?.showOnLoanIssue ?? true,
+      silverShowOnLoanIssue: silverLT?.showOnLoanIssue ?? true,
+      pronoteShowOnLoanIssue: pronoteLT?.showOnLoanIssue ?? true,
+      pronoteRate: pronoteLT?.defaultMonthlyRate ?? 12,
+      amountBands: goldLT?.amountBands || [],
+      silverAmountBands: silverLT?.amountBands || [],
+      goldCardFeeEnabled: goldLT?.cardFeeEnabled ?? true,
+      goldCardFee: goldLT?.cardFee ?? 0,
+      silverCardFeeEnabled: silverLT?.cardFeeEnabled ?? true,
+      silverCardFee: silverLT?.cardFee ?? 0,
+      pronoteCardFeeEnabled: pronoteLT?.cardFeeEnabled ?? true,
+      pronoteCardFee: pronoteLT?.cardFee ?? 0,
+      hireCardFeeEnabled: hireLT?.cardFeeEnabled ?? true,
+      hireCardFee: hireLT?.cardFee ?? 0,
+      silverLoanMonthlyRate: silverLT?.defaultMonthlyRate ?? 2.0,
+      pronoteMonthlyRate: pronoteLT?.defaultMonthlyRate ?? 12,
+      hirePurchaseMonthlyRate: hireLT?.defaultMonthlyRate ?? 12,
+      // Static non-loan-type settings
       overdueCalculationMethod: overdueCalMethod,
       overdueEscalationEnabled: overdueEscalationOn,
       overdueBaseRateMonthly: overdueBaseRateVal === '' ? 2.0 : Number(overdueBaseRateVal),
@@ -492,9 +463,6 @@ export const AdminPanel: React.FC = () => {
       performanceModeEnabled,
       bulkFdDateChangeEnabled,
       lockersEnabled,
-      silverLoanMonthlyRate: numSilverRate,
-      pronoteMonthlyRate: numPronoteRate, // keep in sync
-      hirePurchaseMonthlyRate: numHireRate,
       defaultCardFee: numCardFee,
       overdueInterestRatePA: numOverdueRate,
       overduePenaltyPerDayPercent: numOverduePenalty,
@@ -515,6 +483,7 @@ export const AdminPanel: React.FC = () => {
     });
     setMasterControlOpen(false);
   };
+
 
   const handleAddArea = () => {
     if (newAreaInput.trim()) {
@@ -576,9 +545,9 @@ export const AdminPanel: React.FC = () => {
     setShowroomsVal(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleAddAmountBand = () => {
+  const handleAddAmountBandForType = (loanTypeId: string) => {
     const newBand: AmountBand = {
-      id: `band-${Date.now()}`,
+      id: `band-${loanTypeId}-${Date.now()}`,
       condition: 'Above',
       amount: 10000,
       baseRateMonthly: 1.5,
@@ -586,21 +555,37 @@ export const AdminPanel: React.FC = () => {
       penaltyStepUpMonthly: 0.1,
       penaltyCalculation: 'From the start — stepped rate over the whole overc'
     };
-    setAmountBands([...(amountBands || []), newBand]);
+    setLoanTypeConfigs(prev => ({
+      ...prev,
+      [loanTypeId]: {
+        ...prev[loanTypeId],
+        amountBands: [...(prev[loanTypeId]?.amountBands || []), newBand]
+      }
+    }));
   };
 
-  const handleAddSilverAmountBand = () => {
-    const newBand: AmountBand = {
-      id: `silver-band-${Date.now()}`,
-      condition: 'Above',
-      amount: 10000,
-      baseRateMonthly: 2.0,
-      penaltyAfterMonths: 6,
-      penaltyStepUpMonthly: 0.1,
-      penaltyCalculation: 'From the start — stepped rate over the whole overc'
-    };
-    setSilverAmountBands([...(silverAmountBands || []), newBand]);
+  const handleUpdateAmountBandForType = (loanTypeId: string, bandId: string, field: string, value: any) => {
+    setLoanTypeConfigs(prev => ({
+      ...prev,
+      [loanTypeId]: {
+        ...prev[loanTypeId],
+        amountBands: (prev[loanTypeId]?.amountBands || []).map(b =>
+          b.id === bandId ? { ...b, [field]: value } : b
+        )
+      }
+    }));
   };
+
+  const handleRemoveAmountBandForType = (loanTypeId: string, bandId: string) => {
+    setLoanTypeConfigs(prev => ({
+      ...prev,
+      [loanTypeId]: {
+        ...prev[loanTypeId],
+        amountBands: (prev[loanTypeId]?.amountBands || []).filter(b => b.id !== bandId)
+      }
+    }));
+  };
+
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -2136,581 +2121,206 @@ export const AdminPanel: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* ── Dynamic Loan Type Chip Tabs ── */}
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {[
-                        { key: 'gold', label: '↗️ Gold Loan' },
-                        { key: 'silver', label: '↗️ Silver Loan' },
-                        { key: 'pronote', label: '📄 Pronote' },
-                        { key: 'hire', label: '🚗 Hire Purchase' },
-                        { key: 'card', label: '💳 Card Fee' },
-                        { key: 'overdue', label: '🕐 Overdue Interest' },
-                        { key: 'upi', label: '💳 UPI Payment' }
-                      ].map((sc) => (
-                        <button
-                          key={sc.key}
-                          type="button"
-                          className={`btn btn-sm ${ratesSubChip === sc.key ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ borderRadius: 'var(--radius-full)', fontSize: '11.5px', padding: '4px 12px' }}
-                          onClick={() => setRatesSubChip(sc.key as any)}
-                        >
-                          {sc.label}
-                        </button>
-                      ))}
+                      {(() => {
+                        const activeLTs = (masterControlSettings?.loanTypes && masterControlSettings.loanTypes.length > 0
+                          ? masterControlSettings.loanTypes
+                          : defaultLoanTypes
+                        ).slice().sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+                        return [
+                          ...activeLTs.map(lt => ({ key: lt.id, label: lt.name })),
+                          { key: 'card', label: '💳 Card Fee' },
+                          { key: 'overdue', label: '🕐 Overdue Interest' },
+                          { key: 'upi', label: '🔗 UPI Payment' }
+                        ].map(sc => (
+                          <button
+                            key={sc.key}
+                            type="button"
+                            className={`btn btn-sm ${ratesSubChip === sc.key ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ borderRadius: 'var(--radius-full)', fontSize: '11.5px', padding: '4px 12px' }}
+                            onClick={() => setRatesSubChip(sc.key)}
+                          >
+                            {sc.label}
+                          </button>
+                        ));
+                      })()}
                     </div>
 
-                    {ratesSubChip === 'gold' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700 }}>SHOW ON LOAN ISSUE</span>
-                          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${goldShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setGoldShowOnIssue(true)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              On
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${!goldShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setGoldShowOnIssue(false)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              Off
-                            </button>
-                          </div>
-                        </div>
+                    {/* ── Dynamic Loan Type Panel ── renders for any loanTypeId that is not card/overdue/upi */}
+                    {ratesSubChip !== 'card' && ratesSubChip !== 'overdue' && ratesSubChip !== 'upi' && (() => {
+                      const allLTs = masterControlSettings?.loanTypes && masterControlSettings.loanTypes.length > 0
+                        ? masterControlSettings.loanTypes
+                        : defaultLoanTypes;
+                      const selectedLT = allLTs.find(lt => lt.id === ratesSubChip);
+                      if (!selectedLT) return null;
 
-                        <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      const cfg = loanTypeConfigs[selectedLT.id] || {};
+                      const showOnIssue = cfg.showOnLoanIssue ?? selectedLT.showOnLoanIssue ?? true;
+                      const defaultRate = cfg.defaultMonthlyRate ?? selectedLT.defaultMonthlyRate ?? 0;
+                      const interestProfile = selectedLT.interestProfileId || 'fixed-rate';
+                      const hasBands = interestProfile === 'gold-bands' || interestProfile === 'silver-bands';
+                      const currentBands = cfg.amountBands ?? selectedLT.amountBands ?? [];
+
+                      const updateCfg = (patch: Record<string, any>) => {
+                        setLoanTypeConfigs(prev => ({
+                          ...prev,
+                          [selectedLT.id]: { ...prev[selectedLT.id], ...patch }
+                        }));
+                      };
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          {/* Header */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div>
-                              <h4 style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
-                                MONTHLY INTEREST AMOUNT BANDS
-                              </h4>
-                              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>Rate is % per month, pre-filled by loan size.</span>
+                              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>{selectedLT.name}</h3>
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {hasBands ? 'Rate is % per month, set by loan size via amount bands.' : 'Flat rate % per month for this loan type.'}
+                                {!selectedLT.active && <span style={{ color: '#DC2626', marginLeft: 8 }}>⚠ Inactive — not shown in Loan Issue.</span>}
+                              </span>
                             </div>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-secondary"
-                              style={{ gap: '4px', fontSize: '11px', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
-                              onClick={handleAddAmountBand}
-                            >
-                              <Plus size={13} />
-                              <span>Add Amount Band</span>
-                            </button>
                           </div>
 
-                          {(!amountBands || amountBands.length === 0) ? (
-                            <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
-                              No interest rate bands configured. Click "+ Add Amount Band" to add one.
+                          {/* Show on Loan Issue toggle */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700 }}>SHOW ON LOAN ISSUE</span>
+                            <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                              <button type="button" className={`btn btn-sm ${showOnIssue ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => updateCfg({ showOnLoanIssue: true })} style={{ padding: '2px 10px', fontSize: '11px' }}>On</button>
+                              <button type="button" className={`btn btn-sm ${!showOnIssue ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => updateCfg({ showOnLoanIssue: false })} style={{ padding: '2px 10px', fontSize: '11px' }}>Off</button>
                             </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                              {(amountBands || []).map((band, idx) => (
-                                <div key={band.id || idx} style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '14px', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '10px', alignItems: 'end' }}>
-                                  <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>CONDITION</label>
-                                    <select
-                                      className="input-control"
-                                      value={band.condition}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], condition: e.target.value as any };
-                                        setAmountBands(u);
-                                      }}
-                                      style={{ width: '100%', height: '36px', padding: '4px 8px' }}
-                                    >
-                                      <option value="Below">Below</option>
-                                      <option value="Above">Above</option>
-                                    </select>
-                                  </div>
-                                  <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>AMOUNT (₹)</label>
-                                    <input
-                                      type="number"
-                                      className="input-control"
-                                      value={band.amount}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], amount: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                        setAmountBands(u);
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>BASE %/MO</label>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      className="input-control"
-                                      value={band.baseRateMonthly}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], baseRateMonthly: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                        setAmountBands(u);
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY AFTER (MO)</label>
-                                    <input
-                                      type="number"
-                                      className="input-control"
-                                      value={band.penaltyAfterMonths}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], penaltyAfterMonths: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                        setAmountBands(u);
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>STEP-UP %/MO</label>
-                                    <input
-                                      type="number"
-                                      step="0.05"
-                                      className="input-control"
-                                      value={band.penaltyStepUpMonthly}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], penaltyStepUpMonthly: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                        setAmountBands(u);
-                                      }}
-                                    />
-                                  </div>
-                                  <div style={{ gridColumn: 'span 1.5' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>CALCULATION</label>
-                                    <select
-                                      className="input-control"
-                                      value={band.penaltyCalculation}
-                                      onChange={(e) => {
-                                        const u = [...(amountBands || [])];
-                                        u[idx] = { ...u[idx], penaltyCalculation: e.target.value as any };
-                                        setAmountBands(u);
-                                      }}
-                                      style={{ width: '100%', height: '36px', padding: '4px 4px', fontSize: '11px' }}
-                                    >
-                                      <option value="From the start — stepped rate over the whole overc">Stepped period</option>
-                                      <option value="After threshold">After threshold</option>
-                                    </select>
-                                  </div>
-                                  <div style={{ gridColumn: 'span 0.5', textAlign: 'right' }}>
-                                    <button
-                                      type="button"
-                                      style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '6px' }}
-                                      onClick={() => setAmountBands((amountBands || []).filter((_, bIdx) => bIdx !== idx))}
-                                      title="Delete Band"
-                                    >
-                                      <Trash2 size={16} />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+                            {/* Interest panel — bands or flat rate */}
+                            <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
+                              {hasBands ? (
+                                <>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <div>
+                                      <h4 style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>MONTHLY INTEREST AMOUNT BANDS</h4>
+                                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>Rate is % per month, pre-filled by loan size.</span>
+                                    </div>
+                                    <button type="button" className="btn btn-sm btn-secondary"
+                                      style={{ gap: '4px', fontSize: '11px', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
+                                      onClick={() => handleAddAmountBandForType(selectedLT.id)}>
+                                      <Plus size={13} /><span>Add Band</span>
                                     </button>
                                   </div>
-                                </div>
-                              ))}
-                              <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-surface-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                                💡 <strong>Evaluation order:</strong> Amount bands are checked in order from top to bottom. The first match will determine the interest rates.
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
-                          <h4 style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
-                            DUE SYSTEM SETTINGS
-                          </h4>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                            <div className="form-group" style={{ margin: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>PENALTY %/DAY ON OVERDUE EMI</label>
-                              <input
-                                type="number"
-                                step="0.1"
-                                className="input-control"
-                                value={overduePenalty}
-                                onChange={(e) => setOverduePenalty(e.target.value === '' ? '' : Number(e.target.value))}
-                              />
-                            </div>
-                            <div className="form-group" style={{ margin: 0 }}>
-                              <label className="form-label" style={{ fontSize: '11px' }}>GRACE DAYS FROM DUE DATE</label>
-                              <input
-                                type="number"
-                                className="input-control"
-                                value={graceDaysVal}
-                                onChange={(e) => setGraceDaysVal(e.target.value === '' ? '' : Number(e.target.value))}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {ratesSubChip === 'silver' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '20px' }}>🥈</span>
-                          <div>
-                            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Silver Loan</h3>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Rate is % per month. One rate for every silver loan.</span>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700 }}>SHOW ON LOAN ISSUE</span>
-                          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${silverShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setSilverShowOnIssue(true)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              On
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${!silverShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setSilverShowOnIssue(false)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              Off
-                            </button>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-                          {/* MONTHLY INTEREST (Amount Bands) */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                              <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
-                                MONTHLY INTEREST
-                              </h4>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-secondary"
-                                style={{ gap: '4px', fontSize: '11px', padding: '4px 10px', borderRadius: 'var(--radius-md)' }}
-                                onClick={handleAddSilverAmountBand}
-                              >
-                                <Plus size={13} />
-                                <span>Add amount band</span>
-                              </button>
-                            </div>
-
-                            {(!silverAmountBands || silverAmountBands.length === 0) ? (
-                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
-                                No interest rate bands configured. Click "+ Add amount band" to add one.
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                {(silverAmountBands || []).map((band, idx) => (
-                                  <div key={band.id || idx} style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 2fr 1fr', gap: '8px', alignItems: 'center' }}>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>AMOUNT IS</label>
-                                        <select
-                                          className="input-control"
-                                          value={band.condition}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], condition: e.target.value as any };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ width: '100%', height: '36px', padding: '4px 8px', fontSize: '11px' }}
-                                        >
-                                          <option value="Below">Below</option>
-                                          <option value="Above">Above</option>
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>₹ AMOUNT</label>
-                                        <input
-                                          type="number"
-                                          className="input-control"
-                                          value={band.amount}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], amount: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ fontSize: '11.5px', height: '36px' }}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>BASE %/MONTH</label>
-                                        <input
-                                          type="number"
-                                          step="0.1"
-                                          className="input-control"
-                                          value={band.baseRateMonthly}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], baseRateMonthly: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ fontSize: '11.5px', height: '36px' }}
-                                        />
-                                      </div>
-                                      <div style={{ textAlign: 'right' }}>
-                                        <label style={{ display: 'block', height: '14px' }}></label>
-                                        <button
-                                          type="button"
-                                          style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '4px' }}
-                                          onClick={() => setSilverAmountBands((silverAmountBands || []).filter((_, bIdx) => bIdx !== idx))}
-                                          title="Delete Band"
-                                        >
-                                          <Trash2 size={15} />
-                                        </button>
+                                  {currentBands.length === 0 ? (
+                                    <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0', textAlign: 'center' }}>
+                                      No interest rate bands configured. Click "Add Band" to add one.
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                      {currentBands.map((band, idx) => (
+                                        <div key={band.id || idx} style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 2fr 1fr', gap: '8px', alignItems: 'center' }}>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>AMOUNT IS</label>
+                                              <select className="input-control" value={band.condition}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'condition', e.target.value)}
+                                                style={{ width: '100%', height: '36px', padding: '4px 8px', fontSize: '11px' }}>
+                                                <option value="Below">Below</option>
+                                                <option value="Above">Above</option>
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>₹ AMOUNT</label>
+                                              <input type="number" className="input-control" value={band.amount}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'amount', e.target.value === '' ? '' : Number(e.target.value))}
+                                                style={{ fontSize: '11.5px', height: '36px' }} />
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>BASE %/MONTH</label>
+                                              <input type="number" step="0.1" className="input-control" value={band.baseRateMonthly}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'baseRateMonthly', e.target.value === '' ? '' : Number(e.target.value))}
+                                                style={{ fontSize: '11.5px', height: '36px' }} />
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                              <label style={{ display: 'block', height: '14px' }}></label>
+                                              <button type="button" style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '4px' }}
+                                                onClick={() => handleRemoveAmountBandForType(selectedLT.id, band.id)} title="Delete Band">
+                                                <Trash2 size={15} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 4fr', gap: '8px' }}>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY AFTER (MONTHS)</label>
+                                              <input type="number" className="input-control" value={band.penaltyAfterMonths}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'penaltyAfterMonths', e.target.value === '' ? '' : Number(e.target.value))}
+                                                style={{ fontSize: '11.5px', height: '36px' }} />
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY STEP-UP %/MONTH</label>
+                                              <input type="number" step="0.05" className="input-control" value={band.penaltyStepUpMonthly}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'penaltyStepUpMonthly', e.target.value === '' ? '' : Number(e.target.value))}
+                                                style={{ fontSize: '11.5px', height: '36px' }} />
+                                            </div>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY IS COUNTED</label>
+                                              <select className="input-control" value={band.penaltyCalculation}
+                                                onChange={e => handleUpdateAmountBandForType(selectedLT.id, band.id, 'penaltyCalculation', e.target.value)}
+                                                style={{ width: '100%', height: '36px', padding: '4px 8px', fontSize: '11px' }}>
+                                                <option value="From the start — stepped rate over the whole overc">From the start — stepped rate over the whole overc</option>
+                                                <option value="After threshold">After threshold</option>
+                                              </select>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                                        The first band that matches is used — make sure the last band catches everything else (usually Above 0).
                                       </div>
                                     </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 4fr', gap: '8px' }}>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY AFTER (MONTHS)</label>
-                                        <input
-                                          type="number"
-                                          className="input-control"
-                                          value={band.penaltyAfterMonths}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], penaltyAfterMonths: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ fontSize: '11.5px', height: '36px' }}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY STEP-UP %/MONTH</label>
-                                        <input
-                                          type="number"
-                                          step="0.05"
-                                          className="input-control"
-                                          value={band.penaltyStepUpMonthly}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], penaltyStepUpMonthly: e.target.value === '' ? ('' as any) : Number(e.target.value) };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ fontSize: '11.5px', height: '36px' }}
-                                        />
-                                      </div>
-                                      <div>
-                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>PENALTY IS COUNTED</label>
-                                        <select
-                                          className="input-control"
-                                          value={band.penaltyCalculation}
-                                          onChange={(e) => {
-                                            const u = [...(silverAmountBands || [])];
-                                            u[idx] = { ...u[idx], penaltyCalculation: e.target.value as any };
-                                            setSilverAmountBands(u);
-                                          }}
-                                          style={{ width: '100%', height: '36px', padding: '4px 8px', fontSize: '11px' }}
-                                        >
-                                          <option value="From the start — stepped rate over the whole overc">From the start — stepped rate over the whole overc</option>
-                                          <option value="After threshold">After threshold</option>
-                                        </select>
-                                      </div>
-                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
+                                    MONTHLY INTEREST
+                                  </h4>
+                                  <div className="form-group" style={{ margin: 0 }}>
+                                    <label className="form-label required" style={{ fontSize: '11px' }}>DEFAULT RATE %/MONTH</label>
+                                    <input type="number" step="0.1" className="input-control"
+                                      value={defaultRate}
+                                      onChange={e => updateCfg({ defaultMonthlyRate: e.target.value === '' ? '' : Number(e.target.value) })} />
                                   </div>
-                                ))}
-                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                                  The first band that matches is the one used, so the order here is the order they are checked. Make sure the last band catches everything else — usually Above 0.
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '12px' }}>
+                                    Applied to every new loan of this type. Existing loans preserve the rate at issue.
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Due System */}
+                            <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>DUE SYSTEM</h4>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label" style={{ fontSize: '11px' }}>PENALTY %/DAY ON OVERDUE EMI</label>
+                                  <input type="number" step="0.1" className="input-control" value={overduePenalty}
+                                    onChange={e => setOverduePenalty(e.target.value === '' ? '' : Number(e.target.value))} />
+                                </div>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label" style={{ fontSize: '11px' }}>GRACE DAYS FROM DUE DATE</label>
+                                  <input type="number" className="input-control" value={graceDaysVal}
+                                    onChange={e => setGraceDaysVal(e.target.value === '' ? '' : Number(e.target.value))} />
                                 </div>
                               </div>
-                            )}
-                          </div>
-
-                          {/* DUE SYSTEM */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
-                              DUE SYSTEM
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>PENALTY %/DAY ON OVERDUE EMI</label>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  className="input-control"
-                                  value={overduePenalty}
-                                  onChange={(e) => setOverduePenalty(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>GRACE DAYS FROM DUE DATE</label>
-                                <input
-                                  type="number"
-                                  className="input-control"
-                                  value={graceDaysVal}
-                                  onChange={(e) => setGraceDaysVal(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
-                    {ratesSubChip === 'pronote' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '20px' }}>📝</span>
-                          <div>
-                            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Pronote</h3>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Rate is % per year — unchanged from how every existing Pronote loan was issued.</span>
-                          </div>
-                        </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700 }}>SHOW ON LOAN ISSUE</span>
-                          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${pronoteShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setPronoteShowOnIssue(true)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              On
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${!pronoteShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setPronoteShowOnIssue(false)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              Off
-                            </button>
-                          </div>
-                        </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-                          {/* MONTHLY INTEREST */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                            <div>
-                              <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
-                                MONTHLY INTEREST
-                              </h4>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>DEFAULT RATE %/YEAR</label>
-                                <input
-                                  type="number"
-                                  className="input-control"
-                                  value={pronoteRate}
-                                  onChange={(e) => setPronoteRate(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                            </div>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '12px' }}>
-                              How far behind a loan is counted is set under Overdue Interest below.
-                            </span>
-                          </div>
 
-                          {/* DUE SYSTEM */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
-                              DUE SYSTEM
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>PENALTY %/DAY ON OVERDUE EMI</label>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  className="input-control"
-                                  value={overduePenalty}
-                                  onChange={(e) => setOverduePenalty(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>GRACE DAYS FROM DUE DATE</label>
-                                <input
-                                  type="number"
-                                  className="input-control"
-                                  value={graceDaysVal}
-                                  onChange={(e) => setGraceDaysVal(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {ratesSubChip === 'hire' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{ fontSize: '20px' }}>🚗</span>
-                          <div>
-                            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Hire Purchase</h3>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Rate is % per year — unchanged from how every existing Hire Purchase loan was issued.</span>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700 }}>SHOW ON LOAN ISSUE</span>
-                          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${hireShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setHireShowOnIssue(true)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              On
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${!hireShowOnIssue ? 'btn-primary' : 'btn-secondary'}`}
-                              onClick={() => setHireShowOnIssue(false)}
-                              style={{ padding: '2px 10px', fontSize: '11px' }}
-                            >
-                              Off
-                            </button>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-                          {/* MONTHLY INTEREST */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                            <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: '0 0 12px 0' }}>
-                              MONTHLY INTEREST
-                            </h4>
-                            <div className="form-group" style={{ margin: 0 }}>
-                              <label className="form-label required" style={{ fontSize: '11px' }}>DEFAULT RATE %/YEAR</label>
-                              <input
-                                type="number"
-                                className="input-control"
-                                value={hireRate}
-                                onChange={(e) => setHireRate(e.target.value === '' ? '' : Number(e.target.value))}
-                              />
-                            </div>
-                          </div>
-
-                          {/* DUE SYSTEM */}
-                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
-                              DUE SYSTEM
-                            </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>PENALTY %/DAY ON OVERDUE EMI</label>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  className="input-control"
-                                  value={overduePenalty}
-                                  onChange={(e) => setOverduePenalty(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                              <div className="form-group" style={{ margin: 0 }}>
-                                <label className="form-label required" style={{ fontSize: '11px' }}>GRACE DAYS FROM DUE DATE</label>
-                                <input
-                                  type="number"
-                                  className="input-control"
-                                  value={graceDaysVal}
-                                  onChange={(e) => setGraceDaysVal(e.target.value === '' ? '' : Number(e.target.value))}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {ratesSubChip === 'card' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

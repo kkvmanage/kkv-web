@@ -542,6 +542,19 @@ export const updateCustomer = async (req: Request, res: Response) => {
       updateFields.idNumber = updateFields.idProofNumber;
     }
 
+    if (typeof updateFields.currentAddressDetails === 'string') {
+      try { updateFields.currentAddressDetails = JSON.parse(updateFields.currentAddressDetails); } catch {}
+    }
+    if (typeof updateFields.permanentAddressDetails === 'string') {
+      try { updateFields.permanentAddressDetails = JSON.parse(updateFields.permanentAddressDetails); } catch {}
+    }
+    if (typeof updateFields.currentLocation === 'string') {
+      try { updateFields.currentLocation = JSON.parse(updateFields.currentLocation); } catch {}
+    }
+    if (typeof updateFields.permanentLocation === 'string') {
+      try { updateFields.permanentLocation = JSON.parse(updateFields.permanentLocation); } catch {}
+    }
+
     // Photo update
     const photoFile = files['customerPhoto']?.[0];
     if (photoFile) {
@@ -556,6 +569,30 @@ export const updateCustomer = async (req: Request, res: Response) => {
         uploadedAt: new Date(),
         publicId: `photo_${custId}_${Date.now()}`
       };
+    } else if (body.customerPhoto && typeof body.customerPhoto === 'string' && body.customerPhoto.startsWith('data:image')) {
+      const custId = existing.customerId;
+      updateFields.customerPhoto = {
+        fileId: `photo_${custId}_${Date.now()}`,
+        fileName: `customer-photo-${custId}-${Date.now()}.jpg`,
+        url: body.customerPhoto,
+        mimeType: 'image/jpeg',
+        fileSize: body.customerPhoto.length,
+        uploadedAt: new Date(),
+        publicId: `photo_${custId}_${Date.now()}`
+      };
+    } else if (body.customerPhotoUrl && typeof body.customerPhotoUrl === 'string') {
+      const custId = existing.customerId;
+      updateFields.customerPhoto = {
+        fileId: existing.customerPhoto?.fileId || `photo_${custId}_${Date.now()}`,
+        fileName: existing.customerPhoto?.fileName || `customer-photo-${custId}.jpg`,
+        url: body.customerPhotoUrl,
+        mimeType: existing.customerPhoto?.mimeType || 'image/jpeg',
+        fileSize: existing.customerPhoto?.fileSize || 0,
+        uploadedAt: existing.customerPhoto?.uploadedAt || new Date(),
+        publicId: existing.customerPhoto?.publicId || `photo_${custId}_${Date.now()}`
+      };
+    } else if (body.customerPhoto === 'null' || body.removePhoto === 'true') {
+      updateFields.customerPhoto = null;
     }
 
     // KYC update

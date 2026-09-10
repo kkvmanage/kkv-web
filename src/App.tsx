@@ -95,17 +95,24 @@ export const App: React.FC = () => {
       case 'customers':
       case 'customers-add':
       case 'add-customer-form':
+      case 'edit-customer':
       case 'search-customer':
       case 'customer-profile':
         if (!hasPermission('customers', 'view')) {
           return <AccessDenied requestedArea="Customer Management" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
         }
         if (currentPage === 'customers') return <Customers />;
+        if (currentPage === 'edit-customer') {
+          if (!hasPermission('customers', 'update') && !hasPermission('customers', 'create')) {
+            return <AccessDenied requestedArea="Edit Customer" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
+          }
+          return <AddCustomer mode="edit" />;
+        }
         if (currentPage === 'customers-add' || currentPage === 'add-customer-form') {
           if (!hasPermission('customers', 'create')) {
             return <AccessDenied requestedArea="Create Customer" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
           }
-          return <AddCustomer />;
+          return <AddCustomer mode="add" />;
         }
         if (currentPage === 'search-customer') return <SearchCustomer />;
         return <CustomerProfile />;

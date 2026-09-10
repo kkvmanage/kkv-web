@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, RotateCcw, Edit3, Eye, User } from 'lucide-react';
-import { EditCustomerModal } from '../components/common/EditCustomerModal';
 import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
 import { Customer } from '../types';
 import { formatIdProofDisplay } from '../utils/kycValidation';
@@ -12,9 +11,9 @@ export const SearchCustomer: React.FC = () => {
     customers,
     loans,
     fixedDeposits,
-    updateCustomer,
     setSelectedProfileCustomerId,
-    setCurrentPage
+    setCurrentPage,
+    startEditCustomer
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,7 +21,6 @@ export const SearchCustomer: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING'>('ALL');
 
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -396,7 +394,7 @@ export const SearchCustomer: React.FC = () => {
                             className="btn btn-secondary btn-sm"
                             style={{ height: '30px', padding: '0 8px', fontSize: '11.5px', gap: '4px' }}
                             title="Edit Customer Profile"
-                            onClick={() => setEditingCustomer(c)}
+                            onClick={() => startEditCustomer(c.id)}
                           >
                             <Edit3 size={12} />
                           </button>
@@ -420,19 +418,6 @@ export const SearchCustomer: React.FC = () => {
         </div>
       </div>
 
-      {/* Edit Customer Modal */}
-      {editingCustomer && (
-        <EditCustomerModal
-          isOpen={Boolean(editingCustomer)}
-          customer={editingCustomer}
-          onClose={() => setEditingCustomer(null)}
-          onSave={(id, updates) => {
-            updateCustomer(id, updates);
-            setEditingCustomer(null);
-          }}
-        />
-      )}
-
       {/* View Customer Quick Modal */}
       {viewingCustomer && (
         <ViewCustomerModal
@@ -440,8 +425,9 @@ export const SearchCustomer: React.FC = () => {
           customer={viewingCustomer}
           onClose={() => setViewingCustomer(null)}
           onEdit={() => {
-            setEditingCustomer(viewingCustomer);
+            const custId = viewingCustomer.id;
             setViewingCustomer(null);
+            startEditCustomer(custId);
           }}
         />
       )}

@@ -65,7 +65,7 @@ export const Sidebar: React.FC = () => {
   }, [isMobileMenuOpen, closeMobileMenu]);
 
   useEffect(() => {
-    if (['customers', 'customers-add', 'add-customer-form', 'search-customer'].includes(currentPage)) {
+    if (['customers', 'customers-add', 'add-customer-form', 'edit-customer', 'search-customer'].includes(currentPage)) {
       setCustomersOpen(true);
     }
     if (

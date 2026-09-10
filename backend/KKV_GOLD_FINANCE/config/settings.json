@@ -18,7 +18,18 @@
       "interestProfile": "Gold Monthly Interest Bands",
       "interestProfileName": "Gold Monthly Interest Bands",
       "status": "ACTIVE",
-      "issueEnabled": true
+      "issueEnabled": true,
+      "amountBands": [
+        {
+          "id": "band-2",
+          "condition": "Above",
+          "amount": 10000,
+          "baseRateMonthly": 1.5,
+          "penaltyAfterMonths": 3,
+          "penaltyStepUpMonthly": 0.1,
+          "penaltyCalculation": "From the start — stepped rate over the whole overc"
+        }
+      ]
     },
     {
       "id": "silver-loan",
@@ -38,64 +49,18 @@
       "interestProfile": "Silver Monthly Interest Bands",
       "interestProfileName": "Silver Monthly Interest Bands",
       "status": "ACTIVE",
-      "issueEnabled": true
-    },
-    {
-      "id": "pronote",
-      "name": "Pronote",
-      "description": "Promissory note unsecured credit",
-      "defaultMonthlyRate": 4,
-      "cardFee": 50,
-      "cardFeeEnabled": true,
-      "interestProfileId": "pronote-interest",
-      "repaymentSystemId": "monthly-interest-only",
-      "active": true,
-      "showOnLoanIssue": true,
-      "configurationVersion": 1,
-      "sortOrder": 3,
-      "cardProcessingFee": 50,
-      "interestRate": 4,
-      "interestProfile": "Gold Monthly Interest Bands",
-      "interestProfileName": "Gold Monthly Interest Bands",
-      "status": "ACTIVE",
-      "issueEnabled": true
-    },
-    {
-      "id": "hire-purchase",
-      "name": "Hire Purchase",
-      "description": "Vehicle and asset hire purchase financing",
-      "defaultMonthlyRate": 1.5,
-      "cardFee": 40,
-      "cardFeeEnabled": true,
-      "interestProfileId": "fixed-rate",
-      "repaymentSystemId": "emi",
-      "active": true,
-      "showOnLoanIssue": true,
-      "configurationVersion": 1,
-      "sortOrder": 4,
-      "cardProcessingFee": 40,
-      "interestRate": 1.5,
-      "interestProfile": "Fixed Rate (1.5%/mo)",
-      "interestProfileName": "Fixed Rate (1.5%/mo)",
-      "status": "ACTIVE",
-      "issueEnabled": true
-    },
-    {
-      "id": "diamond",
-      "name": "diamond",
-      "active": true,
-      "showOnLoanIssue": true,
-      "useMasterDefaults": false,
-      "cardFeeEnabled": true,
-      "cardFee": 20,
-      "defaultMonthlyRate": 2,
-      "interestProfileId": "gold-bands",
-      "repaymentSystemId": "monthly-interest-only",
-      "calculationStrategy": "MONTHLY_INTEREST_ONLY",
-      "sortOrder": 5,
-      "configurationVersion": 1,
-      "createdAt": "2026-09-06T14:34:17.787Z",
-      "updatedAt": "2026-09-06T14:34:17.787Z"
+      "issueEnabled": true,
+      "amountBands": [
+        {
+          "id": "silver-band-1788445453323",
+          "condition": "Above",
+          "amount": 10000,
+          "baseRateMonthly": 2,
+          "penaltyAfterMonths": 6,
+          "penaltyStepUpMonthly": 0.1,
+          "penaltyCalculation": "From the start — stepped rate over the whole overc"
+        }
+      ]
     }
   ],
   "repaymentSystems": [
@@ -139,13 +104,13 @@
   "silverShowOnLoanIssue": false,
   "pronoteShowOnLoanIssue": false,
   "pronoteRate": 15,
-  "goldCardFeeEnabled": false,
-  "goldCardFee": 25,
-  "silverCardFeeEnabled": false,
-  "silverCardFee": 30,
-  "pronoteCardFeeEnabled": false,
-  "pronoteCardFee": 35,
-  "hireCardFeeEnabled": false,
+  "goldCardFeeEnabled": true,
+  "goldCardFee": 75,
+  "silverCardFeeEnabled": true,
+  "silverCardFee": 60,
+  "pronoteCardFeeEnabled": true,
+  "pronoteCardFee": 50,
+  "hireCardFeeEnabled": true,
   "hireCardFee": 40,
   "overdueCalculationMethod": "Exact days — calculation based on actual days late",
   "silverAmountBands": [
@@ -160,15 +125,6 @@
     }
   ],
   "amountBands": [
-    {
-      "id": "band-1",
-      "condition": "Below",
-      "amount": 10000,
-      "baseRateMonthly": 2,
-      "penaltyAfterMonths": 6,
-      "penaltyStepUpMonthly": 0.1,
-      "penaltyCalculation": "From the start — stepped rate over the whole overc"
-    },
     {
       "id": "band-2",
       "condition": "Above",
@@ -330,14 +286,38 @@
     "Bypass Branch"
   ],
   "lockersEnabled": true,
-  "adminPassword": "$2b$10$c3x6x3JNPafX7Ucq8S6COOFkl5UMBOPKUxH5k0kjpZks.MV1Cmq9K",
+  "adminPassword": "$2b$10$WSEN.3WZHH7l4QCCsTbOVe4uDWudhfMVQxEhf1yb4anlmnzMdYsES",
   "managerPassword": "manager123",
   "operatorPassword": "operator123",
   "animationsEnabled": true,
   "performanceModeEnabled": false,
   "bulkFdDateChangeEnabled": true,
   "goldRate22ct": 7000,
-  "configurationVersion": 28,
+  "configurationVersion": 33,
+  "overdueEscalationEnabled": false,
+  "overdueBaseRateMonthly": 2,
+  "overdueEscalationTiers": [
+    {
+      "overdueDays": 0,
+      "rate": 2
+    },
+    {
+      "overdueDays": 90,
+      "rate": 2.1
+    },
+    {
+      "overdueDays": 180,
+      "rate": 2.2
+    },
+    {
+      "overdueDays": 270,
+      "rate": 2.3
+    },
+    {
+      "overdueDays": 360,
+      "rate": 2.4
+    }
+  ],
   "fdInterestRate": 12.5,
   "fdInterestRateEffectiveFrom": "01-08-2026",
   "fdDefaultTenureMonths": 24,
@@ -475,5 +455,31 @@
       "sortOrder": 6,
       "description": "Sterling Silver (92.5%)"
     }
-  ]
+  ],
+  "overdueInterest": {
+    "enabled": false,
+    "baseRate": 2,
+    "escalationTiers": [
+      {
+        "overdueDays": 0,
+        "rate": 2
+      },
+      {
+        "overdueDays": 90,
+        "rate": 2.1
+      },
+      {
+        "overdueDays": 180,
+        "rate": 2.2
+      },
+      {
+        "overdueDays": 270,
+        "rate": 2.3
+      },
+      {
+        "overdueDays": 360,
+        "rate": 2.4
+      }
+    ]
+  }
 }

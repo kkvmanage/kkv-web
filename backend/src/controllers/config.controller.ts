@@ -161,6 +161,7 @@ export const createLoanType = (req: Request, res: Response) => {
       interestProfileId,
       repaymentSystemId,
       calculationStrategy,
+      amountBands: Array.isArray(req.body.amountBands) ? req.body.amountBands : undefined,
       configurationVersion: 1,
       sortOrder: maxSort + 1,
       createdAt: now,
@@ -215,6 +216,7 @@ export const updateLoanType = (req: Request, res: Response) => {
       interestProfileId: updates.interestProfileId !== undefined ? updates.interestProfileId : existing.interestProfileId,
       repaymentSystemId: updates.repaymentSystemId !== undefined ? updates.repaymentSystemId : existing.repaymentSystemId,
       calculationStrategy: updates.calculationStrategy !== undefined ? updates.calculationStrategy : existing.calculationStrategy,
+      amountBands: updates.amountBands !== undefined ? updates.amountBands : existing.amountBands,
       configurationVersion: nextVersion,
       updatedAt: now
     };

@@ -218,7 +218,14 @@ export class AdminService {
         repaymentSystemId: lt.repaymentSystemId || defaultMatch?.repaymentSystemId || 'monthly-interest-only',
         active: lt.active !== undefined ? lt.active : (defaultMatch?.active ?? true),
         showOnLoanIssue: lt.showOnLoanIssue !== undefined ? lt.showOnLoanIssue : (defaultMatch?.showOnLoanIssue ?? true),
-        configurationVersion: lt.configurationVersion || defaultMatch?.configurationVersion || 1
+        configurationVersion: lt.configurationVersion || defaultMatch?.configurationVersion || 1,
+        amountBands: lt.amountBands && lt.amountBands.length > 0
+          ? lt.amountBands
+          : (lt.id === 'gold-loan' && raw.amountBands && raw.amountBands.length > 0)
+            ? raw.amountBands
+            : (lt.id === 'silver-loan' && raw.silverAmountBands && raw.silverAmountBands.length > 0)
+              ? raw.silverAmountBands
+              : (defaultMatch?.amountBands ?? undefined)
       };
     });
 

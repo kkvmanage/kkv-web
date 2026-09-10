@@ -109,6 +109,26 @@ export const defaultRepaymentSystems: RepaymentSystemConfig[] = [
   { id: 'bullet', name: 'Bullet Repayment', description: 'Lump-sum principal + accrued interest at maturity', calculationStrategy: 'BULLET', active: true, sortOrder: 3 }
 ];
 
+/**
+ * Migrate old flat amountBands/silverAmountBands from MasterControlSettings
+ * into their respective LoanTypeConfig.amountBands field.
+ * Safe to run multiple times — skips migration if amountBands already set on the loan type.
+ */
+export function migrateLoanTypeAmountBands(settings: MasterControlSettings): LoanTypeConfig[] {
+  const loanTypes = settings.loanTypes && settings.loanTypes.length > 0 ? settings.loanTypes : defaultLoanTypes;
+  return loanTypes.map((lt) => {
+    // Already has per-type bands — no migration needed
+    if (lt.amountBands && lt.amountBands.length > 0) return lt;
+    if (lt.id === 'gold-loan' && settings.amountBands && settings.amountBands.length > 0) {
+      return { ...lt, amountBands: settings.amountBands };
+    }
+    if (lt.id === 'silver-loan' && settings.silverAmountBands && settings.silverAmountBands.length > 0) {
+      return { ...lt, amountBands: settings.silverAmountBands };
+    }
+    return lt;
+  });
+}
+
 
 export const defaultPurityOptions: PurityConfig[] = [
   { id: 'gold-24', name: '24ct', category: 'GOLD', purityValue: 24, ratePerGram: 6800, active: true, sortOrder: 1, description: '24 Carat Pure Gold (99.9%)' },
@@ -486,9 +506,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [masterControlUnlocked, setMasterControlUnlocked] = useState<boolean>(false);
   const [masterControlSettings, setMasterControlSettings] = useState<MasterControlSettings>(() => {
     const stored = getStored('masterSettings', defaultMasterSettings);
+    const migratedLoanTypes = migrateLoanTypeAmountBands(stored);
     return {
       ...stored,
-      loanTypes: stored.loanTypes && stored.loanTypes.length > 0 ? stored.loanTypes : defaultLoanTypes,
+      loanTypes: migratedLoanTypes,
       repaymentSystems: stored.repaymentSystems && stored.repaymentSystems.length > 0 ? stored.repaymentSystems : defaultRepaymentSystems,
       purityOptions: stored.purityOptions && stored.purityOptions.length > 0 ? stored.purityOptions : defaultPurityOptions,
       goldRate22ct: stored.goldRate22ct ?? 6400
@@ -618,14 +639,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           else if (key === 'fdCustomers' && Array.isArray(val)) setFdCustomers(val);
           else if (key === 'dayBook' && Array.isArray(val)) setDayBookEntries(val);
           else if (key === 'masterSettings' && val) {
-            setMasterControlSettings(prev => ({
-              ...prev,
-              ...val,
-              loanTypes: val.loanTypes && val.loanTypes.length > 0 ? val.loanTypes : defaultLoanTypes,
-              repaymentSystems: val.repaymentSystems && val.repaymentSystems.length > 0 ? val.repaymentSystems : defaultRepaymentSystems,
-              purityOptions: val.purityOptions && val.purityOptions.length > 0 ? val.purityOptions : defaultPurityOptions,
-              goldRate22ct: val.goldRate22ct ?? 6400
-            }));
+            setMasterControlSettings(prev => {
+              const migratedLoanTypes = migrateLoanTypeAmountBands(val);
+              return {
+                ...prev,
+                ...val,
+                loanTypes: migratedLoanTypes,
+                repaymentSystems: val.repaymentSystems && val.repaymentSystems.length > 0 ? val.repaymentSystems : defaultRepaymentSystems,
+                purityOptions: val.purityOptions && val.purityOptions.length > 0 ? val.purityOptions : defaultPurityOptions,
+                goldRate22ct: val.goldRate22ct ?? 6400
+              };
+            });
           } else if (key === 'waTemplates' && val) setWhatsAppTemplates(val);
           else if (key === 'tgConfig' && val) setTelegramConfig(val);
         }

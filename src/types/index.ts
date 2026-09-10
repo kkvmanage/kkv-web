@@ -211,7 +211,9 @@ export interface LoanTypeConfig {
   cardFeeEnabled?: boolean;
   cardFee?: number;
   defaultMonthlyRate?: number;
-  interestProfileId?: 'gold-bands' | 'silver-bands' | 'fixed-rate' | string;
+  interestProfileId?: 'gold-bands' | 'silver-bands' | 'pronote-interest' | 'fixed-rate' | string;
+  /** Per-loan-type interest rate amount bands. When present, takes precedence over global amountBands/silverAmountBands. */
+  amountBands?: AmountBand[];
   repaymentSystemId?: string;
   calculationStrategy?: CalculationStrategy;
   configurationVersion?: number;

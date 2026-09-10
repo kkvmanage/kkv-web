@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApp, defaultLoanTypes } from '../context/AppContext';
 import { Users, CreditCard, DollarSign, CheckCircle2, PiggyBank, Wallet, Building2, Bell, Database, X, Save, Lock, Plus, Trash2, Search, CloudDownload, Eye, Edit3, RotateCcw, AlertTriangle, Clock, Percent, Monitor, Smartphone, Tablet, Laptop, Activity, LogOut, RefreshCw, Shield, Info } from 'lucide-react';
-import { AmountBand, Customer, DeviceSession } from '../types';
+import { AmountBand, Customer, DeviceSession, OverdueEscalationTier } from '../types';
 import { formatRelativeTime, maskIpAddress } from '../utils/deviceUtils';
+import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
 
 import { KKVLogo } from '../components/common/KKVLogo';
 import { WipeAllDataModal } from '../components/admin/WipeAllDataModal';
@@ -203,6 +204,34 @@ export const AdminPanel: React.FC = () => {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isChangingMasterPass, setIsChangingMasterPass] = useState(false);
 
+  // Overdue Escalation State
+  const [overdueEscalationOn, setOverdueEscalationOn] = useState<boolean>(
+    masterControlSettings?.overdueEscalationEnabled ?? masterControlSettings?.overdueInterest?.enabled ?? false
+  );
+  const [overdueBaseRateVal, setOverdueBaseRateVal] = useState<number | ''>(
+    masterControlSettings?.overdueBaseRateMonthly ?? masterControlSettings?.overdueInterest?.baseRate ?? 2.0
+  );
+  const [overdueTiersList, setOverdueTiersList] = useState<OverdueEscalationTier[]>(() => {
+    const raw = masterControlSettings?.overdueEscalationTiers || masterControlSettings?.overdueInterest?.escalationTiers;
+    if (raw && raw.length > 0) {
+      return [...raw].sort((a, b) => a.overdueDays - b.overdueDays);
+    }
+    return [
+      { overdueDays: 0, rate: 2.0 },
+      { overdueDays: 90, rate: 2.1 },
+      { overdueDays: 180, rate: 2.2 },
+      { overdueDays: 270, rate: 2.3 },
+      { overdueDays: 360, rate: 2.4 }
+    ];
+  });
+
+  // Overdue Tier Modal / Form State
+  const [editingTierIndex, setEditingTierIndex] = useState<number | null>(null);
+  const [tierDaysInput, setTierDaysInput] = useState<string>('');
+  const [tierRateInput, setTierRateInput] = useState<string>('');
+  const [showTierModal, setShowTierModal] = useState<boolean>(false);
+  const [testSimulatorDays, setTestSimulatorDays] = useState<number | ''>(120);
+
   // Operations Feature Toggles
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(masterControlSettings?.animationsEnabled ?? true);
   const [performanceModeEnabled, setPerformanceModeEnabled] = useState<boolean>(masterControlSettings?.performanceModeEnabled ?? false);
@@ -262,6 +291,13 @@ export const AdminPanel: React.FC = () => {
       setGraceDaysVal(masterControlSettings.graceDays ?? 3);
       setUpiIdVal(masterControlSettings.upiId || '');
       setUpiPayeeVal(masterControlSettings.upiPayeeName || '');
+
+      setOverdueEscalationOn(masterControlSettings.overdueEscalationEnabled ?? masterControlSettings.overdueInterest?.enabled ?? false);
+      setOverdueBaseRateVal(masterControlSettings.overdueBaseRateMonthly ?? masterControlSettings.overdueInterest?.baseRate ?? 2.0);
+      const rawT = masterControlSettings.overdueEscalationTiers || masterControlSettings.overdueInterest?.escalationTiers;
+      if (rawT && rawT.length > 0) {
+        setOverdueTiersList([...rawT].sort((a, b) => a.overdueDays - b.overdueDays));
+      }
 
       setGoldCardFeeEnabled(masterControlSettings.goldCardFeeEnabled ?? true);
       setGoldCardFeeVal(masterControlSettings.goldCardFee ?? 10);
@@ -415,6 +451,17 @@ export const AdminPanel: React.FC = () => {
     const numPronoteCardFee = pronoteCardFeeVal === '' ? 10 : Number(pronoteCardFeeVal);
     const numHireCardFee = hireCardFeeVal === '' ? 10 : Number(hireCardFeeVal);
 
+    const cleanedTiers = overdueTiersList
+      .map(t => ({
+        overdueDays: Math.max(0, Math.floor(Number(t.overdueDays) || 0)),
+        rate: Math.max(0, Number(t.rate) || 0)
+      }))
+      .sort((a, b) => a.overdueDays - b.overdueDays);
+
+    if (!cleanedTiers.some(t => t.overdueDays === 0)) {
+      cleanedTiers.unshift({ overdueDays: 0, rate: overdueBaseRateVal === '' ? 2.0 : Number(overdueBaseRateVal) });
+    }
+
     updateMasterControlSettings({
       loanTypes: updatedLoanTypes,
       showOnLoanIssue: goldShowOnIssue,
@@ -433,6 +480,14 @@ export const AdminPanel: React.FC = () => {
       hireCardFeeEnabled: loanTypesCardFees['hire-purchase']?.enabled ?? hireCardFeeEnabled,
       hireCardFee: loanTypesCardFees['hire-purchase'] ? (Number(loanTypesCardFees['hire-purchase'].amount) || 0) : numHireCardFee,
       overdueCalculationMethod: overdueCalMethod,
+      overdueEscalationEnabled: overdueEscalationOn,
+      overdueBaseRateMonthly: overdueBaseRateVal === '' ? 2.0 : Number(overdueBaseRateVal),
+      overdueEscalationTiers: cleanedTiers,
+      overdueInterest: {
+        enabled: overdueEscalationOn,
+        baseRate: overdueBaseRateVal === '' ? 2.0 : Number(overdueBaseRateVal),
+        escalationTiers: cleanedTiers
+      },
       animationsEnabled,
       performanceModeEnabled,
       bulkFdDateChangeEnabled,
@@ -2744,13 +2799,14 @@ export const AdminPanel: React.FC = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <span style={{ fontSize: '20px' }}>🕐</span>
                           <div>
-                            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Overdue Interest</h3>
+                            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Overdue Interest &amp; Escalation</h3>
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              For Pronote and Hire Purchase loans on Monthly Interest: what the Loan Receipt screen fills in when the loan is behind. Gold and silver are not affected — they already work the months out from the amount you type.
+                              Configure overdue interest calculation methods and progressive interest rate escalation tiers based on overdue duration.
                             </span>
                           </div>
                         </div>
 
+                        {/* 1. OVERDUE CALCULATION METHOD */}
                         <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                           <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', margin: 0 }}>
                             WHEN A LOAN IS OVERDUE, FILL IN
@@ -2774,6 +2830,342 @@ export const AdminPanel: React.FC = () => {
                             Only the starting figure. You can still change the days on any receipt, and anything left over carries to the next one.
                           </span>
                         </div>
+
+                        {/* 2. OVERDUE INTEREST PROGRESSIVE ESCALATION */}
+                        <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                              <h4 style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>📈</span>
+                                <span>OVERDUE INTEREST ESCALATION</span>
+                              </h4>
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                Automatically escalates the monthly interest rate progressively as loan delinquency duration increases.
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700 }}>ENABLE ESCALATION:</span>
+                              <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface-secondary)', padding: '2px', borderRadius: 'var(--radius-full)' }}>
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm ${overdueEscalationOn ? 'btn-primary' : 'btn-secondary'}`}
+                                  onClick={() => setOverdueEscalationOn(true)}
+                                  style={{ padding: '3px 12px', fontSize: '11px', fontWeight: 700 }}
+                                >
+                                  On
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm ${!overdueEscalationOn ? 'btn-primary' : 'btn-secondary'}`}
+                                  onClick={() => setOverdueEscalationOn(false)}
+                                  style={{ padding: '3px 12px', fontSize: '11px', fontWeight: 700 }}
+                                >
+                                  Off
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', backgroundColor: 'var(--bg-surface-secondary)', padding: '12px 14px', borderRadius: 'var(--radius-sm)' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                BASE MONTHLY RATE (% / MO)
+                              </label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <input
+                                  type="number"
+                                  step="0.05"
+                                  className="input-control"
+                                  value={overdueBaseRateVal}
+                                  onChange={(e) => {
+                                    const v = e.target.value === '' ? '' : Number(e.target.value);
+                                    setOverdueBaseRateVal(v);
+                                    // Also update 0-day tier if present
+                                    if (v !== '') {
+                                      setOverdueTiersList(prev => prev.map(t => t.overdueDays === 0 ? { ...t, rate: Number(v) } : t));
+                                    }
+                                  }}
+                                  style={{ width: '100px', height: '34px', fontWeight: 700 }}
+                                />
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>%/mo</span>
+                              </div>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                Default base rate applied when overdue days &lt; first escalation threshold or when escalation is OFF.
+                              </span>
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                ESCALATION STATUS
+                              </label>
+                              <div style={{ display: 'flex', alignItems: 'center', height: '34px' }}>
+                                <span className={`badge ${overdueEscalationOn ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+                                  {overdueEscalationOn ? '✓ Active (Tiers Controlling Rates)' : '○ Inactive (Fixed Base Rates Applied)'}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                                {overdueTiersList.length} escalation tier{overdueTiersList.length === 1 ? '' : 's'} configured.
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Escalation Rules Table */}
+                          <div style={{ border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', backgroundColor: 'var(--bg-surface-secondary)', borderBottom: '1px solid var(--border-light)' }}>
+                              <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>ESCALATION RULES TABLE</strong>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                style={{ fontSize: '11px', padding: '4px 10px', gap: '4px' }}
+                                onClick={() => {
+                                  setEditingTierIndex(null);
+                                  setTierDaysInput('');
+                                  setTierRateInput('');
+                                  setShowTierModal(true);
+                                }}
+                              >
+                                <Plus size={13} />
+                                <span>Add Tier</span>
+                              </button>
+                            </div>
+
+                            <table className="custom-table" style={{ margin: 0 }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ width: '60px' }}>TIER</th>
+                                  <th>OVERDUE DAYS (≥)</th>
+                                  <th>MONTHLY RATE (%)</th>
+                                  <th>ANNUAL RATE (APR)</th>
+                                  <th style={{ textAlign: 'right', width: '120px' }}>ACTIONS</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {overdueTiersList.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+                                      No escalation tiers configured. Click &quot;+ Add Tier&quot; to configure.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  overdueTiersList.map((tier, idx) => (
+                                    <tr key={`tier-${tier.overdueDays}-${idx}`}>
+                                      <td>
+                                        <span className="badge badge-info" style={{ fontSize: '10px', fontWeight: 700 }}>
+                                          {idx === 0 ? 'Base' : `Tier ${idx}`}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <strong style={{ color: 'var(--color-primary-dark)' }}>{tier.overdueDays} days</strong>
+                                        {idx === 0 && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>(Starting Base)</span>}
+                                      </td>
+                                      <td>
+                                        <strong style={{ color: idx > 0 ? '#b91c1c' : 'var(--text-primary)' }}>
+                                          {Number(tier.rate).toFixed(2)}% / month
+                                        </strong>
+                                      </td>
+                                      <td style={{ color: 'var(--text-muted)' }}>
+                                        {(Number(tier.rate) * 12).toFixed(2)}% p.a.
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-secondary"
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => {
+                                              setEditingTierIndex(idx);
+                                              setTierDaysInput(String(tier.overdueDays));
+                                              setTierRateInput(String(tier.rate));
+                                              setShowTierModal(true);
+                                            }}
+                                            title="Edit Tier"
+                                          >
+                                            Edit
+                                          </button>
+                                          {idx > 0 && (
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-secondary"
+                                              style={{ padding: '2px 8px', fontSize: '11px', color: '#dc2626' }}
+                                              onClick={() => {
+                                                setOverdueTiersList(prev => prev.filter((_, i) => i !== idx));
+                                                showToast(`Removed tier at ${tier.overdueDays} days.`, 'info');
+                                              }}
+                                              title="Delete Tier"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* 3. INTERACTIVE OVERDUE SIMULATOR */}
+                          <div style={{ border: '1px dashed var(--border-light)', borderRadius: 'var(--radius-md)', padding: '14px', backgroundColor: 'rgba(23, 107, 82, 0.03)' }}>
+                            <div style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--color-primary-dark)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>🔍</span>
+                              <span>LIVE RATE SIMULATOR &amp; PREVIEW</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>TEST DAYS OVERDUE:</label>
+                                <input
+                                  type="number"
+                                  className="input-control"
+                                  value={testSimulatorDays}
+                                  onChange={(e) => setTestSimulatorDays(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                                  style={{ width: '90px', height: '32px', fontWeight: 700 }}
+                                />
+                              </div>
+                              {(() => {
+                                const days = testSimulatorDays === '' ? 0 : Number(testSimulatorDays);
+                                const simSettings = {
+                                  overdueEscalationEnabled: overdueEscalationOn,
+                                  overdueBaseRateMonthly: overdueBaseRateVal === '' ? 2.0 : Number(overdueBaseRateVal),
+                                  overdueEscalationTiers: overdueTiersList
+                                };
+                                const details = getOverdueEscalationDetails(days, Number(overdueBaseRateVal) || 2.0, simSettings as any);
+                                return (
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', fontSize: '12px' }}>
+                                    <span>
+                                      Applicable Rate: <strong style={{ color: details.isEscalated ? '#dc2626' : 'var(--color-primary-dark)', fontSize: '13.5px' }}>{details.currentRate.toFixed(2)}% / mo</strong> ({(details.currentRate * 12).toFixed(2)}% p.a.)
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                      Tier: <strong style={{ color: 'var(--text-primary)' }}>{details.currentTierLabel}</strong>
+                                    </span>
+                                    {details.nextTier && (
+                                      <>
+                                        <span>•</span>
+                                        <span style={{ color: 'var(--text-muted)' }}>
+                                          Next: <strong>{details.nextTier.rate.toFixed(2)}%</strong> at {details.nextTier.overdueDays}d (in {details.daysUntilNextTier} days)
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* TIER ADD/EDIT MODAL */}
+                        {showTierModal && (
+                          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, padding: '16px' }}>
+                            <div className="card" style={{ maxWidth: '420px', width: '100%', padding: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                  {editingTierIndex !== null ? 'EDIT ESCALATION TIER' : 'ADD NEW ESCALATION TIER'}
+                                </h4>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowTierModal(false)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+
+                              <form onSubmit={(e) => {
+                                e.preventDefault();
+                                const days = Math.max(0, Math.floor(Number(tierDaysInput)));
+                                const rate = Math.max(0, Number(tierRateInput));
+                                if (isNaN(days) || isNaN(rate) || rate <= 0) {
+                                  showToast('Please enter valid overdue days and rate.', 'warning');
+                                  return;
+                                }
+
+                                if (editingTierIndex !== null) {
+                                  // Update existing tier
+                                  const updated = [...overdueTiersList];
+                                  updated[editingTierIndex] = { overdueDays: days, rate };
+                                  // Sort and deduplicate
+                                  const sorted = updated.sort((a, b) => a.overdueDays - b.overdueDays);
+                                  setOverdueTiersList(sorted);
+                                  showToast('Escalation tier updated successfully.', 'success');
+                                } else {
+                                  // Add new tier
+                                  if (overdueTiersList.some(t => t.overdueDays === days)) {
+                                    showToast(`A tier for ${days} overdue days already exists. Please edit that tier instead.`, 'error');
+                                    return;
+                                  }
+                                  const updated = [...overdueTiersList, { overdueDays: days, rate }]
+                                    .sort((a, b) => a.overdueDays - b.overdueDays);
+                                  setOverdueTiersList(updated);
+                                  showToast('New escalation tier added.', 'success');
+                                }
+                                setShowTierModal(false);
+                              }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label required" style={{ fontSize: '11.5px' }}>
+                                    OVERDUE THRESHOLD (DAYS ≥)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    className="input-control"
+                                    value={tierDaysInput}
+                                    onChange={(e) => setTierDaysInput(e.target.value)}
+                                    placeholder="e.g. 90"
+                                    disabled={editingTierIndex === 0}
+                                    required
+                                    autoFocus
+                                  />
+                                  {editingTierIndex === 0 && (
+                                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                      Base tier threshold is fixed at 0 days.
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="form-group" style={{ margin: 0 }}>
+                                  <label className="form-label required" style={{ fontSize: '11.5px' }}>
+                                    MONTHLY INTEREST RATE (%)
+                                  </label>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                      type="number"
+                                      min="0.1"
+                                      step="0.05"
+                                      className="input-control"
+                                      value={tierRateInput}
+                                      onChange={(e) => setTierRateInput(e.target.value)}
+                                      placeholder="e.g. 2.10"
+                                      required
+                                    />
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>%/mo</span>
+                                  </div>
+                                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    Equivalent Annual APR: {tierRateInput ? (Number(tierRateInput) * 12).toFixed(2) : '0.00'}% p.a.
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowTierModal(false)}
+                                    style={{ fontSize: '12px' }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    style={{ fontSize: '12px' }}
+                                  >
+                                    {editingTierIndex !== null ? 'Save Tier' : 'Add Tier'}
+                                  </button>
+                                </div>
+                              </form>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

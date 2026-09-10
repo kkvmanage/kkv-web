@@ -3,6 +3,7 @@ export type NavPage =
   | 'customers'
   | 'customers-add'
   | 'add-customer-form'
+  | 'edit-customer'
   | 'search-customer'
   | 'customer-profile'
   | 'loan-issue'
@@ -614,6 +615,18 @@ export interface FDRateHistoryItem {
   notes?: string;
 }
 
+export interface OverdueEscalationTier {
+  id?: string;
+  overdueDays: number; // e.g. 0, 90, 180, 270, 360
+  rate: number;        // % / month (e.g. 2.00, 2.10, 2.20, 2.30, 2.40)
+}
+
+export interface OverdueInterestConfig {
+  enabled: boolean;
+  baseRate?: number;
+  escalationTiers: OverdueEscalationTier[];
+}
+
 export interface MasterControlSettings {
   purityOptions?: PurityConfig[];
   goldRate22ct?: number;
@@ -646,6 +659,10 @@ export interface MasterControlSettings {
   hireCardFeeEnabled?: boolean;
   hireCardFee?: number;
   overdueCalculationMethod?: string;
+  overdueEscalationEnabled?: boolean;
+  overdueBaseRateMonthly?: number;
+  overdueEscalationTiers?: OverdueEscalationTier[];
+  overdueInterest?: OverdueInterestConfig;
   amountBands: AmountBand[];
   areas: string[];
   partners: string[];

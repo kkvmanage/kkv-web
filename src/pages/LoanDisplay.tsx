@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Loan } from '../types';
+import { calculateLoanOverdueAndDues } from '../utils/loanCalculationUtils';
 import {
   Receipt as ReceiptIcon,
   FileSpreadsheet,
@@ -17,6 +18,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
   X
 } from 'lucide-react';
 
@@ -29,7 +31,8 @@ export const LoanDisplay: React.FC = () => {
     setSelectedLoan,
     setCurrentPage,
     setSelectedProfileCustomerId,
-    showToast
+    showToast,
+    masterControlSettings
   } = useApp();
 
   // Selected single loan detail inspection state
@@ -189,6 +192,12 @@ export const LoanDisplay: React.FC = () => {
     const totalPaymentsReceived = loanReceipts.reduce((sum, r) => sum + (r.amount || 0), 0);
     const monthlyInterestVal = inspectingLoan.monthlyInterest || (inspectingLoan.principal * inspectingLoan.interestRate / 100);
 
+    const overdueDetails = calculateLoanOverdueAndDues({
+      loan: inspectingLoan,
+      receipts,
+      settings: masterControlSettings
+    });
+
     // Loan Activity History Events
     const loanActivities = [
       {
@@ -291,6 +300,94 @@ export const LoanDisplay: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* OVERDUE STATUS & ESCALATION CARD (Displayed when loan is overdue) */}
+        {overdueDetails.daysOverdue > 0 && inspectingLoan.status !== 'CLOSED' && (
+          <div
+            className="card"
+            style={{
+              padding: '20px 24px',
+              borderRadius: '12px',
+              border: '1.5px solid #fca5a5',
+              backgroundColor: '#fff1f2',
+              boxShadow: 'var(--shadow-sm)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px', borderBottom: '1px solid #fecdd3', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#991b1b' }}>
+                      OVERDUE LOAN ALERT
+                    </h3>
+                    {overdueDetails.escalationDetails.isEscalated && (
+                      <span className="badge badge-danger" style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 800, fontSize: '11px' }}>
+                        🔥 RATE ESCALATED ({overdueDetails.escalationDetails.currentTierLabel})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '12.5px', color: '#b91c1c', marginTop: '2px' }}>
+                    Due date was <strong>{inspectingLoan.nextDueDate || inspectingLoan.date}</strong> &bull; <strong>{overdueDetails.daysOverdue} {overdueDetails.daysOverdue === 1 ? 'day' : 'days'} overdue</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>CURRENT APPLICABLE RATE</div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#b91c1c' }}>
+                    {overdueDetails.applicableInterestRate.toFixed(2)}% <span style={{ fontSize: '13px', fontWeight: 600 }}>/ mo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', fontSize: '13px' }}>
+              <div style={{ backgroundColor: '#ffffff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                <div style={{ fontSize: '11px', color: '#991b1b', fontWeight: 700 }}>CONTRACTUAL BASE RATE</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-dark)' }}>
+                  {inspectingLoan.interestRate || 1.5}% / month
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>Original agreed monthly rate</div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                <div style={{ fontSize: '11px', color: '#991b1b', fontWeight: 700 }}>OVERDUE DURATION</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: '#dc2626' }}>
+                  {overdueDetails.daysOverdue} Days ({overdueDetails.monthsOverdue} Mo)
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>Elapsed since due date</div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                <div style={{ fontSize: '11px', color: '#991b1b', fontWeight: 700 }}>NEXT ESCALATION TIER</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: overdueDetails.escalationDetails.nextTier ? '#b45309' : '#059669' }}>
+                  {overdueDetails.escalationDetails.nextTier
+                    ? `${overdueDetails.escalationDetails.nextTier.rate.toFixed(2)}% at ${overdueDetails.escalationDetails.nextTier.overdueDays}d`
+                    : 'Max Tier Reached'}
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {overdueDetails.escalationDetails.nextTier && overdueDetails.escalationDetails.daysUntilNextTier !== undefined
+                    ? `Escalates in ${overdueDetails.escalationDetails.daysUntilNextTier} days`
+                    : 'Highest rate active'}
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '12px 14px', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                <div style={{ fontSize: '11px', color: '#991b1b', fontWeight: 700 }}>TOTAL OVERDUE AMOUNT DUE</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: '#dc2626' }}>
+                  ₹{overdueDetails.totalDue.toLocaleString('en-IN')}
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Interest: ₹{overdueDetails.remainingInterestDue.toLocaleString('en-IN')} {overdueDetails.penaltyAmount > 0 ? `+ Penalty: ₹${overdueDetails.penaltyAmount.toLocaleString('en-IN')}` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* LINKED CUSTOMER INFORMATION CARD */}
         <div className="card" style={{ padding: '20px' }}>
@@ -415,9 +512,19 @@ export const LoanDisplay: React.FC = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Monthly Interest:</span>
-                <strong style={{ color: 'var(--color-primary-dark)' }}>
-                  ₹{monthlyInterestVal.toLocaleString('en-IN')} / month
-                </strong>
+                <div style={{ textAlign: 'right' }}>
+                  <strong style={{ color: overdueDetails.escalationDetails.isEscalated ? '#dc2626' : 'var(--color-primary-dark)' }}>
+                    ₹{(overdueDetails.escalationDetails.isEscalated
+                      ? Math.round(inspectingLoan.outstandingPrincipal * overdueDetails.applicableInterestRate / 100)
+                      : monthlyInterestVal
+                    ).toLocaleString('en-IN')} / month
+                  </strong>
+                  {overdueDetails.escalationDetails.isEscalated && (
+                    <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: 700 }}>
+                      Rate: {overdueDetails.applicableInterestRate}% (Escalated)
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Total Payments Received:</span>

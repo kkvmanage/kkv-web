@@ -4,7 +4,8 @@ import {
   AmountBand,
   MasterControlSettings,
   CalculationStrategy,
-  LoanTypeConfig
+  LoanTypeConfig,
+  OverdueEscalationTier
 } from '../types';
 
 /**
@@ -362,6 +363,201 @@ export const calculateLoanTerms = (params: {
   };
 };
 
+export interface OverdueEscalationDetails {
+  daysOverdue: number;
+  baseRate: number;
+  currentRate: number;
+  isEscalated: boolean;
+  currentTierIndex: number;
+  currentTierLabel: string;
+  currentTierThreshold: number;
+  nextTier: OverdueEscalationTier | null;
+  daysUntilNextTier: number | null;
+}
+
+export interface OverduePeriodAuditItem {
+  periodIndex: number;
+  periodLabel: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  daysOverdueAtPeriod: number;
+  appliedRateMonthly: number;
+  interestAmount: number;
+}
+
+/**
+ * Centralized Overdue Interest Rate Resolver
+ * Determines applicable monthly interest rate based on days overdue and configured escalation tiers.
+ */
+export const getApplicableOverdueInterestRate = (
+  daysOverdue: number,
+  baseRate: number = 2.0,
+  settings?: MasterControlSettings | null
+): number => {
+  const safeBaseRate = typeof baseRate === 'number' && !isNaN(baseRate) && baseRate > 0 ? baseRate : (settings?.overdueBaseRateMonthly ?? 2.0);
+  if (!settings || daysOverdue <= 0) return safeBaseRate;
+
+  const isEnabled = settings.overdueEscalationEnabled ?? settings.overdueInterest?.enabled ?? false;
+  if (!isEnabled) return safeBaseRate;
+
+  const rawTiers = settings.overdueEscalationTiers || settings.overdueInterest?.escalationTiers;
+  if (!rawTiers || rawTiers.length === 0) return safeBaseRate;
+
+  const sortedTiers = [...rawTiers]
+    .map(t => ({
+      overdueDays: Math.max(0, Number(t.overdueDays) || 0),
+      rate: Math.max(0, Number(t.rate) || 0)
+    }))
+    .sort((a, b) => a.overdueDays - b.overdueDays);
+
+  let matchedRate = safeBaseRate;
+  for (const tier of sortedTiers) {
+    if (daysOverdue >= tier.overdueDays) {
+      matchedRate = tier.rate;
+    } else {
+      break;
+    }
+  }
+
+  return matchedRate;
+};
+
+/**
+ * Full details of overdue escalation tier, active rate, and countdown to next escalation
+ */
+export const getOverdueEscalationDetails = (
+  daysOverdue: number,
+  baseRate: number = 2.0,
+  settings?: MasterControlSettings | null
+): OverdueEscalationDetails => {
+  const safeBaseRate = typeof baseRate === 'number' && !isNaN(baseRate) && baseRate > 0 ? baseRate : (settings?.overdueBaseRateMonthly ?? 2.0);
+  const isEnabled = settings?.overdueEscalationEnabled ?? settings?.overdueInterest?.enabled ?? false;
+  const rawTiers = settings?.overdueEscalationTiers || settings?.overdueInterest?.escalationTiers || [];
+
+  const defaultTiers: OverdueEscalationTier[] = [
+    { overdueDays: 0, rate: safeBaseRate },
+    { overdueDays: 90, rate: roundCurrency(safeBaseRate + 0.1) },
+    { overdueDays: 180, rate: roundCurrency(safeBaseRate + 0.2) },
+    { overdueDays: 270, rate: roundCurrency(safeBaseRate + 0.3) },
+    { overdueDays: 360, rate: roundCurrency(safeBaseRate + 0.4) }
+  ];
+
+  const activeTiers = (isEnabled && rawTiers.length > 0 ? rawTiers : defaultTiers)
+    .map(t => ({
+      overdueDays: Math.max(0, Number(t.overdueDays) || 0),
+      rate: Math.max(0, Number(t.rate) || 0)
+    }))
+    .sort((a, b) => a.overdueDays - b.overdueDays);
+
+  if (!activeTiers.some(t => t.overdueDays === 0)) {
+    activeTiers.unshift({ overdueDays: 0, rate: safeBaseRate });
+  }
+
+  let currentTierIndex = 0;
+  let currentRate = safeBaseRate;
+  let currentTierThreshold = 0;
+
+  if (isEnabled && daysOverdue > 0) {
+    for (let i = 0; i < activeTiers.length; i++) {
+      if (daysOverdue >= activeTiers[i].overdueDays) {
+        currentTierIndex = i;
+        currentRate = activeTiers[i].rate;
+        currentTierThreshold = activeTiers[i].overdueDays;
+      } else {
+        break;
+      }
+    }
+  }
+
+  const nextTier = (isEnabled && currentTierIndex < activeTiers.length - 1)
+    ? activeTiers[currentTierIndex + 1]
+    : null;
+
+  const daysUntilNextTier = (nextTier && daysOverdue >= 0)
+    ? Math.max(0, nextTier.overdueDays - daysOverdue)
+    : null;
+
+  const isEscalated = isEnabled && currentRate > safeBaseRate && daysOverdue > 0;
+  const currentTierLabel = currentTierIndex === 0
+    ? 'Base Tier (0+ Days)'
+    : `Tier ${currentTierIndex} (${currentTierThreshold}+ Days)`;
+
+  return {
+    daysOverdue: Math.max(0, daysOverdue),
+    baseRate: safeBaseRate,
+    currentRate: isEnabled && daysOverdue > 0 ? currentRate : safeBaseRate,
+    isEscalated,
+    currentTierIndex,
+    currentTierLabel,
+    currentTierThreshold,
+    nextTier,
+    daysUntilNextTier
+  };
+};
+
+/**
+ * Non-retroactive multi-period overdue interest calculation.
+ * Computes interest period by period where each period uses the rate applicable
+ * at that stage of delinquency without retroactive recalculation of earlier periods.
+ */
+export const calculateNonRetroactiveOverduePeriods = (params: {
+  principal: number;
+  baseRate: number;
+  dueDate: Date;
+  asOfDate: Date;
+  settings?: MasterControlSettings | null;
+}): {
+  totalInterest: number;
+  periods: OverduePeriodAuditItem[];
+  currentApplicableRate: number;
+} => {
+  const { principal, baseRate, dueDate, asOfDate, settings } = params;
+  if (principal <= 0 || asOfDate <= dueDate) {
+    const defaultRate = getApplicableOverdueInterestRate(0, baseRate, settings);
+    return {
+      totalInterest: Math.round((principal * defaultRate) / 100),
+      periods: [],
+      currentApplicableRate: defaultRate
+    };
+  }
+
+  const totalDaysDiff = Math.max(0, Math.floor((asOfDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const totalMonths = Math.max(1, Math.ceil(totalDaysDiff / 30));
+
+  const periods: OverduePeriodAuditItem[] = [];
+  let totalInterest = 0;
+
+  for (let m = 0; m < totalMonths; m++) {
+    const periodStartDays = m * 30;
+    const periodEndDays = Math.min(totalDaysDiff, (m + 1) * 30);
+    const applicableRate = getApplicableOverdueInterestRate(periodStartDays, baseRate, settings);
+    const periodInterest = Math.round((principal * applicableRate) / 100);
+
+    const pStartDate = new Date(dueDate.getTime() + periodStartDays * 24 * 60 * 60 * 1000);
+    const pEndDate = new Date(dueDate.getTime() + periodEndDays * 24 * 60 * 60 * 1000);
+
+    periods.push({
+      periodIndex: m + 1,
+      periodLabel: `Month ${m + 1} (${periodStartDays}–${periodEndDays} days overdue)`,
+      periodStartDate: formatLoanDate(pStartDate),
+      periodEndDate: formatLoanDate(pEndDate),
+      daysOverdueAtPeriod: periodStartDays,
+      appliedRateMonthly: applicableRate,
+      interestAmount: periodInterest
+    });
+
+    totalInterest += periodInterest;
+  }
+
+  const currentApplicableRate = getApplicableOverdueInterestRate(totalDaysDiff, baseRate, settings);
+
+  return {
+    totalInterest,
+    periods,
+    currentApplicableRate
+  };
+};
+
 export interface LoanOverdueResult {
   dueDateStr: string;
   outstanding: number;
@@ -375,11 +571,13 @@ export interface LoanOverdueResult {
   penaltyRatePercent: number;
   penaltyAmount: number;
   totalDue: number;
+  applicableInterestRate: number;
+  escalationDetails: OverdueEscalationDetails;
 }
 
 /**
  * Calculate overdue interest, penalty, and total dues for a loan contract
- * Prioritizes the loan's contractual values so changing Master Control never recalculates old contracts.
+ * Prioritizes the loan's contractual values and applies progressive overdue escalation.
  */
 export const calculateLoanOverdueAndDues = (params: {
   loan: Loan;
@@ -393,9 +591,8 @@ export const calculateLoanOverdueAndDues = (params: {
     ? loan.outstandingPrincipal
     : loan.principal || 0;
 
-  // Use contractual interest rate and monthly interest snapshot
+  // Use contractual interest rate
   const contractualRate = loan.interestRate || getApplicableInterestRate(loan.principal, loan.loanType || loan.loanTypeName, settings);
-  const baseMonthlyInterest = loan.monthlyInterest || Math.round((loan.principal * contractualRate) / 100);
 
   const today = asOfDate ? parseLoanDate(asOfDate) : new Date();
 
@@ -415,6 +612,23 @@ export const calculateLoanOverdueAndDues = (params: {
     return sum;
   }, 0);
 
+  let daysOverdue = 0;
+  let monthsOverdue = 0;
+  let statusText: LoanOverdueResult['statusText'] = 'UPCOMING';
+
+  const timeDiff = today.getTime() - dueDate.getTime();
+  if (timeDiff > 0) {
+    daysOverdue = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    monthsOverdue = Math.max(1, Math.ceil(daysOverdue / 30));
+  }
+
+  // Calculate applicable escalated rate based on days overdue
+  const escalationDetails = getOverdueEscalationDetails(daysOverdue, contractualRate, settings);
+  const applicableInterestRate = escalationDetails.currentRate;
+
+  // Calculate monthly interest using applicable escalated rate
+  const baseMonthlyInterest = Math.round((outstanding * applicableInterestRate) / 100);
+
   const isInterestFullyPaid: boolean = Boolean(
     interestAlreadyPaid >= baseMonthlyInterest ||
     (loan.lastInterestPaidDate && parseLoanDate(loan.lastInterestPaidDate) >= dueDate)
@@ -424,27 +638,18 @@ export const calculateLoanOverdueAndDues = (params: {
     ? 0
     : Math.max(0, baseMonthlyInterest - (interestAlreadyPaid % baseMonthlyInterest));
 
-  let daysOverdue = 0;
-  let monthsOverdue = 0;
-  let statusText: LoanOverdueResult['statusText'] = 'UPCOMING';
-
   if (loan.status === 'CLOSED' || outstanding <= 0) {
     statusText = 'CLOSED';
   } else if (isInterestFullyPaid) {
     statusText = 'PAID';
   } else if (interestAlreadyPaid > 0 && interestAlreadyPaid < baseMonthlyInterest) {
     statusText = 'PARTIALLY PAID';
+  } else if (timeDiff > 0) {
+    statusText = 'OVERDUE';
+  } else if (timeDiff === 0 || formatLoanDate(today) === dueDateStr) {
+    statusText = 'DUE TODAY';
   } else {
-    const timeDiff = today.getTime() - dueDate.getTime();
-    if (timeDiff > 0) {
-      statusText = 'OVERDUE';
-      daysOverdue = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-      monthsOverdue = Math.max(1, Math.ceil(daysOverdue / 30));
-    } else if (timeDiff === 0 || formatLoanDate(today) === dueDateStr) {
-      statusText = 'DUE TODAY';
-    } else {
-      statusText = 'NOT DUE';
-    }
+    statusText = 'NOT DUE';
   }
 
   // Calculate Penalty based on loan's contractual penalty rules or Master Control
@@ -487,6 +692,8 @@ export const calculateLoanOverdueAndDues = (params: {
     statusText,
     penaltyRatePercent,
     penaltyAmount,
-    totalDue
+    totalDue,
+    applicableInterestRate,
+    escalationDetails
   };
 };

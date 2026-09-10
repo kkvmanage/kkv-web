@@ -28,6 +28,7 @@ import {
   getDaysDifference,
   addCalendarMonths
 } from '../utils/fdInterestUtils';
+import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
 
 export const PendingLoans: React.FC = () => {
   const {
@@ -190,8 +191,6 @@ export const PendingLoans: React.FC = () => {
       interestAlreadyPaid >= baseMonthlyInterest ||
       (l.lastInterestPaidDate && compareFDDates(normalizeDateString(l.lastInterestPaidDate), dueDateStr) >= 0);
 
-    const remainingInterestDue = isInterestFullyPaid ? 0 : Math.max(0, baseMonthlyInterest - interestAlreadyPaid);
-
     let daysOverdue = 0;
     let statusText: 'CLOSED' | 'PAID' | 'PARTIALLY PAID' | 'OVERDUE' | 'DUE TODAY' | 'UPCOMING' | 'NOT DUE' = 'UPCOMING';
 
@@ -213,24 +212,39 @@ export const PendingLoans: React.FC = () => {
       }
     }
 
+    const escalationDetails = getOverdueEscalationDetails(daysOverdue, l.interestRate || 1.5, masterControlSettings);
+    const applicableInterestRate = escalationDetails.currentRate;
+    const isEscalated = escalationDetails.isEscalated;
+
+    // When overdue with escalation active, compute monthly interest dynamically based on applicable tier rate
+    const effectiveMonthlyInterest = (statusText === 'OVERDUE' && masterControlSettings?.overdueEscalationEnabled)
+      ? Math.round((outstanding * applicableInterestRate) / 100)
+      : baseMonthlyInterest;
+
+    const dynamicRemainingInterestDue = isInterestFullyPaid ? 0 : Math.max(0, effectiveMonthlyInterest - interestAlreadyPaid);
+
     const penaltyRatePerDay = masterControlSettings?.overduePenaltyPerDayPercent ?? 0;
     const penaltyAmount = (statusText === 'OVERDUE' && penaltyRatePerDay > 0)
-      ? Math.round((remainingInterestDue * penaltyRatePerDay * daysOverdue) / 100)
+      ? Math.round((dynamicRemainingInterestDue * penaltyRatePerDay * daysOverdue) / 100)
       : 0;
 
-    const totalDue = remainingInterestDue + penaltyAmount;
+    const totalDue = dynamicRemainingInterestDue + penaltyAmount;
 
     return {
       dueDateStr,
       outstanding,
-      baseMonthlyInterest,
+      baseMonthlyInterest: effectiveMonthlyInterest,
+      contractualMonthlyInterest: baseMonthlyInterest,
       interestAlreadyPaid,
-      remainingInterestDue,
+      remainingInterestDue: dynamicRemainingInterestDue,
       isInterestFullyPaid,
       daysOverdue,
       statusText,
       penaltyAmount,
-      totalDue
+      totalDue,
+      applicableInterestRate,
+      isEscalated,
+      escalationDetails
     };
   };
 
@@ -367,8 +381,6 @@ export const PendingLoans: React.FC = () => {
       (selectedLoan.lastInterestPaidDate &&
         compareFDDates(normalizeDateString(selectedLoan.lastInterestPaidDate), dueDateStr) >= 0);
 
-    const remainingInterestDue = isPeriodAlreadyFullyPaid ? 0 : Math.max(0, baseMonthlyInterest - interestAlreadyPaid);
-
     // Compare Payment Date with Due Date
     const comp = compareFDDates(normalizedPaymentDate, dueDateStr);
     let daysOverdue = 0;
@@ -383,25 +395,39 @@ export const PendingLoans: React.FC = () => {
       timingStatus = 'EARLY PAYMENT';
     }
 
+    const escalationDetails = getOverdueEscalationDetails(daysOverdue, selectedLoan.interestRate || 1.5, masterControlSettings);
+    const applicableInterestRate = escalationDetails.currentRate;
+    const isEscalated = escalationDetails.isEscalated;
+
+    const effectiveMonthlyInterest = (timingStatus === 'OVERDUE' && masterControlSettings?.overdueEscalationEnabled)
+      ? Math.round((outstanding * applicableInterestRate) / 100)
+      : baseMonthlyInterest;
+
+    const dynamicRemainingInterestDue = isPeriodAlreadyFullyPaid ? 0 : Math.max(0, effectiveMonthlyInterest - interestAlreadyPaid);
+
     const penaltyRatePerDay = masterControlSettings?.overduePenaltyPerDayPercent ?? 0;
     const penaltyAmount = (timingStatus === 'OVERDUE' && penaltyRatePerDay > 0)
-      ? Math.round((remainingInterestDue * penaltyRatePerDay * daysOverdue) / 100)
+      ? Math.round((dynamicRemainingInterestDue * penaltyRatePerDay * daysOverdue) / 100)
       : 0;
 
-    const totalInterestDueWithPenalty = remainingInterestDue + penaltyAmount;
+    const totalInterestDueWithPenalty = dynamicRemainingInterestDue + penaltyAmount;
 
     return {
       dueDateStr,
       normalizedPaymentDate,
       outstanding,
-      baseMonthlyInterest,
+      baseMonthlyInterest: effectiveMonthlyInterest,
+      contractualMonthlyInterest: baseMonthlyInterest,
       interestAlreadyPaid,
       isPeriodAlreadyFullyPaid,
-      remainingInterestDue,
+      remainingInterestDue: dynamicRemainingInterestDue,
       timingStatus,
       daysOverdue,
       penaltyAmount,
-      totalInterestDueWithPenalty
+      totalInterestDueWithPenalty,
+      applicableInterestRate,
+      isEscalated,
+      escalationDetails
     };
   }, [selectedLoan, paymentDate, receipts, todayStr, masterControlSettings]);
 
@@ -1108,8 +1134,11 @@ export const PendingLoans: React.FC = () => {
                           </div>
                           <div>
                             <span style={{ color: 'var(--text-muted)' }}>Monthly Interest:</span>
-                            <div style={{ fontWeight: 700, color: 'var(--color-primary-accent, #059669)' }}>
-                              ₹{metrics.baseMonthlyInterest.toLocaleString('en-IN')} ({l.interestRate}%/mo)
+                            <div style={{ fontWeight: 700, color: metrics.isEscalated ? '#dc2626' : 'var(--color-primary-accent, #059669)' }}>
+                              ₹{metrics.baseMonthlyInterest.toLocaleString('en-IN')}{' '}
+                              <span style={{ fontSize: '11px', fontWeight: 600 }}>
+                                ({metrics.applicableInterestRate}%/mo{metrics.isEscalated ? ' 🔥' : ''})
+                              </span>
                             </div>
                           </div>
                           <div>
@@ -1403,11 +1432,18 @@ export const PendingLoans: React.FC = () => {
 
                   <div className="form-group">
                     <label className="form-label">SCHEDULE TIMING STATUS</label>
-                    <div style={{ height: '42px', display: 'flex', alignItems: 'center', padding: '0 12px', borderRadius: '8px', backgroundColor: collectionMetrics.timingStatus === 'OVERDUE' ? '#fef2f2' : '#f0fdf4', border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '8px', backgroundColor: collectionMetrics.timingStatus === 'OVERDUE' ? '#fef2f2' : '#f0fdf4', border: collectionMetrics.timingStatus === 'OVERDUE' ? '1px solid #fecdd3' : '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '6px' }}>
                       {collectionMetrics.timingStatus === 'OVERDUE' && (
-                        <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '12.5px' }}>
-                          ⚠ {collectionMetrics.daysOverdue} Days Overdue (Due: {collectionMetrics.dueDateStr})
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '12.5px' }}>
+                            ⚠ {collectionMetrics.daysOverdue} Days Overdue (Due: {collectionMetrics.dueDateStr})
+                          </span>
+                          {collectionMetrics.isEscalated && (
+                            <span className="badge badge-danger" style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: '#dc2626', color: '#fff' }}>
+                              🔥 Escalated Rate: {collectionMetrics.applicableInterestRate}%/mo ({collectionMetrics.escalationDetails.currentTierLabel})
+                            </span>
+                          )}
+                        </div>
                       )}
                       {collectionMetrics.timingStatus === 'DUE TODAY' && (
                         <span style={{ color: '#d97706', fontWeight: 800, fontSize: '12.5px' }}>

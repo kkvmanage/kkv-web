@@ -156,6 +156,15 @@ const defaultMasterSettings: MasterControlSettings = {
   bulkFdDateChangeEnabled: true,
   goldRate22ct: 6400,
   configurationVersion: 1,
+  overdueEscalationEnabled: false,
+  overdueBaseRateMonthly: 2.0,
+  overdueEscalationTiers: [
+    { overdueDays: 0, rate: 2.0 },
+    { overdueDays: 90, rate: 2.1 },
+    { overdueDays: 180, rate: 2.2 },
+    { overdueDays: 270, rate: 2.3 },
+    { overdueDays: 360, rate: 2.4 }
+  ],
   fdInterestRate: 12,
   fdInterestRateEffectiveFrom: '01-08-2026',
   fdDefaultTenureMonths: 12,
@@ -213,10 +222,21 @@ export class AdminService {
       };
     });
 
+    const rawTiers = raw.overdueEscalationTiers || raw.overdueInterest?.escalationTiers;
+    const resolvedTiers = (rawTiers && rawTiers.length > 0 ? rawTiers : defaultMasterSettings.overdueEscalationTiers || [])
+      .map(t => ({
+        overdueDays: Math.max(0, Number(t.overdueDays) || 0),
+        rate: Math.max(0, Number(t.rate) || 0)
+      }))
+      .sort((a, b) => a.overdueDays - b.overdueDays);
+
     return {
       ...defaultMasterSettings,
       ...raw,
       loanTypes: mergedLoanTypes,
+      overdueEscalationEnabled: raw.overdueEscalationEnabled ?? raw.overdueInterest?.enabled ?? defaultMasterSettings.overdueEscalationEnabled ?? false,
+      overdueBaseRateMonthly: raw.overdueBaseRateMonthly ?? raw.overdueInterest?.baseRate ?? defaultMasterSettings.overdueBaseRateMonthly ?? 2.0,
+      overdueEscalationTiers: resolvedTiers,
       fdAllowedTenures: raw.fdAllowedTenures && raw.fdAllowedTenures.length > 0 ? raw.fdAllowedTenures : defaultMasterSettings.fdAllowedTenures,
       fdAllowedReceivingMethods: raw.fdAllowedReceivingMethods && raw.fdAllowedReceivingMethods.length > 0 ? raw.fdAllowedReceivingMethods : defaultMasterSettings.fdAllowedReceivingMethods,
       fdInterestRateHistory: raw.fdInterestRateHistory && raw.fdInterestRateHistory.length > 0 ? raw.fdInterestRateHistory : defaultMasterSettings.fdInterestRateHistory
@@ -234,6 +254,9 @@ export class AdminService {
       (data.pronoteMonthlyRate !== undefined && data.pronoteMonthlyRate !== current.pronoteMonthlyRate) ||
       (data.hirePurchaseMonthlyRate !== undefined && data.hirePurchaseMonthlyRate !== current.hirePurchaseMonthlyRate) ||
       (data.defaultCardFee !== undefined && data.defaultCardFee !== current.defaultCardFee) ||
+      (data.overdueEscalationEnabled !== undefined && data.overdueEscalationEnabled !== current.overdueEscalationEnabled) ||
+      (data.overdueBaseRateMonthly !== undefined && data.overdueBaseRateMonthly !== current.overdueBaseRateMonthly) ||
+      (data.overdueEscalationTiers !== undefined) ||
       (data.fdInterestRate !== undefined && data.fdInterestRate !== current.fdInterestRate) ||
       (data.fdDefaultTenureMonths !== undefined && data.fdDefaultTenureMonths !== current.fdDefaultTenureMonths) ||
       (data.fdMinimumAmount !== undefined && data.fdMinimumAmount !== current.fdMinimumAmount) ||
@@ -261,6 +284,26 @@ export class AdminService {
       updatedHistory = [historyItem, ...updatedHistory];
     }
 
+    // Process & sort Overdue Escalation Tiers if updated
+    let cleanedTiers = current.overdueEscalationTiers;
+    const inputTiers = data.overdueEscalationTiers || data.overdueInterest?.escalationTiers;
+    if (inputTiers && Array.isArray(inputTiers)) {
+      const tierMap = new Map<number, number>();
+      for (const t of inputTiers) {
+        const days = Math.max(0, Math.floor(Number(t.overdueDays) || 0));
+        const rate = Math.max(0, Number(t.rate) || 0);
+        tierMap.set(days, rate);
+      }
+      // Ensure tier at 0 days exists
+      if (!tierMap.has(0)) {
+        const base = Number(data.overdueBaseRateMonthly ?? current.overdueBaseRateMonthly ?? 2.0);
+        tierMap.set(0, base);
+      }
+      cleanedTiers = Array.from(tierMap.entries())
+        .map(([overdueDays, rate]) => ({ overdueDays, rate }))
+        .sort((a, b) => a.overdueDays - b.overdueDays);
+    }
+
     // Handle password hashing if adminPassword was explicitly passed
     let adminPassword = current.adminPassword;
     if (data.adminPassword && data.adminPassword.trim() !== '') {
@@ -274,6 +317,7 @@ export class AdminService {
     const updated: MasterControlSettings = {
       ...current,
       ...data,
+      overdueEscalationTiers: cleanedTiers,
       adminPassword,
       fdInterestRateHistory: updatedHistory,
       configurationVersion: nextVersion

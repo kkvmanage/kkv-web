@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Bell, Plus, PhoneCall, CheckCircle2 } from 'lucide-react';
+import { PageHeader, Card, StatusBadge, Button } from '../components/ui';
 
 interface DailyReminderItem {
   id: string;
@@ -60,93 +61,103 @@ export const DailyReminders: React.FC = () => {
     showToast(`Notice initiated for ${r.customer}!`, 'success');
   };
 
+  const pendingCount = reminders.filter((r) => r.status === 'PENDING').length;
+  const overdueCount = reminders.filter((r) => r.status === 'OVERDUE').length;
+
   return (
     <div className="page-content">
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">
-              <Bell size={18} color="var(--color-primary-accent)" />
-              <span>Daily Follow-ups &amp; Customer Reminders</span>
-            </h2>
-            <p className="card-description">Actionable borrower contact tasks, interest collection alerts, and maturity payouts</p>
+      <PageHeader
+        title="Daily Follow-ups & Customer Reminders"
+        subtitle="Actionable borrower contact tasks, interest collection alerts, and maturity payouts"
+        icon={<Bell size={20} />}
+      />
+
+      {/* Quick Add Bar */}
+      <Card style={{ marginBottom: '20px' }}>
+        <form onSubmit={handleAdd} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 2, minWidth: '200px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'block', marginBottom: '5px' }}>
+              Customer Name &amp; Phone
+            </label>
+            <input
+              type="text"
+              className="input-control"
+              style={{ height: '38px', fontSize: '13px' }}
+              placeholder="e.g. Ramesh Kumar, 9876543210"
+              value={newCustomer}
+              onChange={(e) => setNewCustomer(e.target.value)}
+            />
           </div>
-        </div>
-
-        {/* Quick Add Bar */}
-        <form onSubmit={handleAdd} style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            className="input-control"
-            style={{ flex: 2, minWidth: '200px' }}
-            placeholder="Customer name & phone..."
-            value={newCustomer}
-            onChange={(e) => setNewCustomer(e.target.value)}
-          />
-          <input
-            type="text"
-            className="input-control"
-            style={{ flex: 1, minWidth: '150px' }}
-            placeholder="Loan / FD reference (e.g. GL-01)..."
-            value={newLoanFd}
-            onChange={(e) => setNewLoanFd(e.target.value)}
-          />
-          <button type="submit" className="btn btn-primary">
-            <Plus size={15} />
-            <span>Add Task</span>
-          </button>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'block', marginBottom: '5px' }}>
+              Loan / FD Reference
+            </label>
+            <input
+              type="text"
+              className="input-control"
+              style={{ height: '38px', fontSize: '13px' }}
+              placeholder="e.g. GL-001 or FD-005"
+              value={newLoanFd}
+              onChange={(e) => setNewLoanFd(e.target.value)}
+            />
+          </div>
+          <Button type="submit" variant="primary" icon={<Plus size={14} />}>
+            Add Task
+          </Button>
         </form>
+      </Card>
 
-        {/* Table */}
-        <div className="table-container">
-          <table className="custom-table">
+      {/* Summary row */}
+      {reminders.length > 0 && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+            {reminders.length} task(s) total
+          </span>
+          {pendingCount > 0 && <StatusBadge status="PENDING" label={`${pendingCount} Pending`} />}
+          {overdueCount > 0 && <StatusBadge status="OVERDUE" label={`${overdueCount} Overdue`} />}
+        </div>
+      )}
+
+      {/* Tasks Table */}
+      <Card noPadding>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <thead>
-              <tr>
-                <th>CUSTOMER</th>
-                <th>LOAN / FD</th>
-                <th>REMINDER TYPE</th>
-                <th>DUE DATE</th>
-                <th>STATUS</th>
-                <th style={{ textAlign: 'center' }}>ACTION</th>
+              <tr style={{ backgroundColor: 'var(--surface-secondary)', borderBottom: '1px solid var(--border)' }}>
+                {['Customer', 'Loan / FD', 'Reminder Type', 'Due Date', 'Status', 'Action'].map((h, i) => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary)', textAlign: i === 5 ? 'center' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {reminders.length > 0 ? (
                 reminders.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{r.customer}</td>
-                    <td style={{ fontWeight: 600 }}>{r.loanFd}</td>
-                    <td>
-                      <span className="badge badge-gold">{r.reminderType}</span>
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }} className="data-table-row">
+                    <td style={{ padding: '11px 14px', fontWeight: 700, color: 'var(--text-primary)' }}>{r.customer}</td>
+                    <td style={{ padding: '11px 14px', fontWeight: 600, color: 'var(--primary)' }}>{r.loanFd}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <StatusBadge status="PENDING" label={r.reminderType} />
                     </td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{r.dueDate}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          r.status === 'COMPLETED'
-                            ? 'badge-success'
-                            : r.status === 'OVERDUE'
-                            ? 'badge-danger'
-                            : 'badge-warning'
-                        }`}
-                      >
-                        {r.status}
-                      </span>
+                    <td style={{ padding: '11px 14px', color: 'var(--text-secondary)' }}>{r.dueDate}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <StatusBadge status={r.status} />
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        className={`btn btn-sm ${r.status === 'COMPLETED' ? 'btn-secondary' : 'btn-primary'}`}
+                    <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+                      <Button
+                        variant={r.status === 'COMPLETED' ? 'secondary' : 'primary'}
+                        size="sm"
+                        icon={r.status === 'COMPLETED' ? <CheckCircle2 size={13} /> : <PhoneCall size={13} />}
                         onClick={() => handleAction(r)}
                       >
-                        {r.status === 'COMPLETED' ? <CheckCircle2 size={13} /> : <PhoneCall size={13} />}
-                        <span>{r.status === 'COMPLETED' ? 'Done' : 'Contact'}</span>
-                      </button>
+                        {r.status === 'COMPLETED' ? 'Done' : 'Contact'}
+                      </Button>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
+                    <Bell size={32} style={{ opacity: 0.3, marginBottom: '8px', display: 'block', margin: '0 auto 8px' }} />
                     No daily follow-up tasks recorded. Add a task above to track follow-ups.
                   </td>
                 </tr>
@@ -154,7 +165,7 @@ export const DailyReminders: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

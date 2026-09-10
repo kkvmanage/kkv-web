@@ -29,6 +29,7 @@ import {
   addCalendarMonths
 } from '../utils/fdInterestUtils';
 import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
+import { PageHeader, StatGrid, StatCard } from '../components/ui';
 
 export const PendingLoans: React.FC = () => {
   const {
@@ -752,65 +753,39 @@ export const PendingLoans: React.FC = () => {
 
   return (
     <div className="page-content" style={{ paddingBottom: '60px' }}>
-      {/* ════════════════════════════════════════════════════════════════════════
-          PAGE HEADER
-          ════════════════════════════════════════════════════════════════════════ */}
-      <div className="card" style={{ padding: '24px', marginBottom: '20px' }}>
-        <div className="card-header" style={{ marginBottom: '18px' }}>
-          <div>
-            <h2 className="card-title" style={{ fontSize: '20px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={20} color="var(--color-primary-accent, #059669)" />
-              <span>Pending Loans &amp; Collection Center</span>
-            </h2>
-            <p className="card-description">
-              Customer ID-first loan collection flow: Search customer &rarr; Select loan &rarr; Collect payment &rarr; Generate monotonic receipt
-            </p>
-          </div>
-        </div>
+      {/* PAGE HEADER */}
+      <PageHeader
+        title="Pending Loans & Collection Center"
+        subtitle="Customer ID-first loan collection flow: Search customer → Select loan → Collect payment → Generate receipt"
+        icon={<Clock size={22} />}
+      />
 
-        {/* ── Requirement 17: Display-Only Summary Cards ──────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-          <div style={{ backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              TOTAL PENDING LOANS
-            </span>
-            <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--color-primary-dark)', marginTop: '4px' }}>
-              {summaryMetrics.totalPending}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Active loan accounts</div>
-          </div>
-
-          <div style={{ backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              OVERDUE ACCOUNTS
-            </span>
-            <div style={{ fontSize: '22px', fontWeight: 900, color: summaryMetrics.overdueAccounts > 0 ? '#dc2626' : 'var(--text-dark)', marginTop: '4px' }}>
-              {summaryMetrics.overdueAccounts}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Past contractual due date</div>
-          </div>
-
-          <div style={{ backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              TOTAL OVERDUE AMOUNT
-            </span>
-            <div style={{ fontSize: '22px', fontWeight: 900, color: summaryMetrics.totalOverdueAmount > 0 ? '#dc2626' : 'var(--text-dark)', marginTop: '4px' }}>
-              ₹{summaryMetrics.totalOverdueAmount.toLocaleString('en-IN')}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Accumulated due interest</div>
-          </div>
-
-          <div style={{ backgroundColor: 'var(--bg-surface-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              COLLECTED TODAY
-            </span>
-            <div style={{ fontSize: '22px', fontWeight: 900, color: '#059669', marginTop: '4px' }}>
-              ₹{summaryMetrics.collectedToday.toLocaleString('en-IN')}
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Date: {todayStr}</div>
-          </div>
-        </div>
-      </div>
+      {/* SUMMARY STAT CARDS */}
+      <StatGrid cols={4} style={{ marginBottom: '20px' }}>
+        <StatCard
+          label="Total Pending Loans"
+          value={summaryMetrics.totalPending}
+          subtitle="Active loan accounts"
+        />
+        <StatCard
+          label="Overdue Accounts"
+          value={summaryMetrics.overdueAccounts}
+          subtitle="Past contractual due date"
+          valueColor={summaryMetrics.overdueAccounts > 0 ? 'var(--danger)' : undefined}
+        />
+        <StatCard
+          label="Total Overdue Amount"
+          value={`₹${summaryMetrics.totalOverdueAmount.toLocaleString('en-IN')}`}
+          subtitle="Accumulated due interest"
+          valueColor={summaryMetrics.totalOverdueAmount > 0 ? 'var(--danger)' : undefined}
+        />
+        <StatCard
+          label="Collected Today"
+          value={`₹${summaryMetrics.collectedToday.toLocaleString('en-IN')}`}
+          subtitle={`Date: ${todayStr}`}
+          valueColor="var(--success)"
+        />
+      </StatGrid>
 
       {/* ════════════════════════════════════════════════════════════════════════
           STEP 1: IDENTIFY CUSTOMER (CUSTOMER ID FIRST)

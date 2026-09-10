@@ -206,19 +206,28 @@ const defaultTelegramConfig: TelegramConfig = {
 export class AdminService {
   public getMasterSettings(): MasterControlSettings {
     const raw = localFileRepository.readJson<MasterControlSettings>(SETTINGS_FILE, defaultMasterSettings);
-    const mergedLoanTypes = (raw.loanTypes && raw.loanTypes.length > 0 ? raw.loanTypes : defaultMasterSettings.loanTypes || []).map((lt: any) => {
+
+    // Merge saved loan types with defaults — saved values ALWAYS take priority.
+    // Only fill in fields that are explicitly undefined/missing in the saved record.
+    // This ensures admin-added or admin-modified loan types survive getMasterSettings() calls.
+    const savedLoanTypes = raw.loanTypes && raw.loanTypes.length > 0 ? raw.loanTypes : defaultMasterSettings.loanTypes || [];
+    const mergedLoanTypes = savedLoanTypes.map((lt: any) => {
+      // Find matching default only for fallback values; do NOT overwrite saved values
       const defaultMatch = defaultMasterSettings.loanTypes?.find((d) => d.id === lt.id);
       return {
-        ...defaultMatch,
+        // Provide default fallbacks for fields not present in the saved record
+        interestProfileId: defaultMatch?.interestProfileId || 'gold-bands',
+        repaymentSystemId: defaultMatch?.repaymentSystemId || 'monthly-interest-only',
+        configurationVersion: defaultMatch?.configurationVersion || 1,
+        // Spread saved values LAST so they override every default
         ...lt,
+        // Ensure required fields have fallback values if still missing
         defaultMonthlyRate: lt.defaultMonthlyRate !== undefined ? lt.defaultMonthlyRate : (defaultMatch?.defaultMonthlyRate ?? 2.0),
         cardFee: lt.cardFee !== undefined ? lt.cardFee : (defaultMatch?.cardFee ?? 50),
         cardFeeEnabled: lt.cardFeeEnabled !== undefined ? lt.cardFeeEnabled : (defaultMatch?.cardFeeEnabled ?? true),
-        interestProfileId: lt.interestProfileId || defaultMatch?.interestProfileId || 'gold-bands',
-        repaymentSystemId: lt.repaymentSystemId || defaultMatch?.repaymentSystemId || 'monthly-interest-only',
         active: lt.active !== undefined ? lt.active : (defaultMatch?.active ?? true),
         showOnLoanIssue: lt.showOnLoanIssue !== undefined ? lt.showOnLoanIssue : (defaultMatch?.showOnLoanIssue ?? true),
-        configurationVersion: lt.configurationVersion || defaultMatch?.configurationVersion || 1,
+        // Resolve amountBands: use per-loan-type bands, then global bands for known types, then default
         amountBands: lt.amountBands && lt.amountBands.length > 0
           ? lt.amountBands
           : (lt.id === 'gold-loan' && raw.amountBands && raw.amountBands.length > 0)
@@ -229,20 +238,20 @@ export class AdminService {
       };
     });
 
-    const rawTiers = raw.overdueEscalationTiers || raw.overdueInterest?.escalationTiers;
+    const rawTiers = raw.overdueEscalationTiers || (raw as any).overdueInterest?.escalationTiers;
     const resolvedTiers = (rawTiers && rawTiers.length > 0 ? rawTiers : defaultMasterSettings.overdueEscalationTiers || [])
-      .map(t => ({
+      .map((t: any) => ({
         overdueDays: Math.max(0, Number(t.overdueDays) || 0),
         rate: Math.max(0, Number(t.rate) || 0)
       }))
-      .sort((a, b) => a.overdueDays - b.overdueDays);
+      .sort((a: any, b: any) => a.overdueDays - b.overdueDays);
 
     return {
       ...defaultMasterSettings,
       ...raw,
       loanTypes: mergedLoanTypes,
-      overdueEscalationEnabled: raw.overdueEscalationEnabled ?? raw.overdueInterest?.enabled ?? defaultMasterSettings.overdueEscalationEnabled ?? false,
-      overdueBaseRateMonthly: raw.overdueBaseRateMonthly ?? raw.overdueInterest?.baseRate ?? defaultMasterSettings.overdueBaseRateMonthly ?? 2.0,
+      overdueEscalationEnabled: raw.overdueEscalationEnabled ?? (raw as any).overdueInterest?.enabled ?? defaultMasterSettings.overdueEscalationEnabled ?? false,
+      overdueBaseRateMonthly: raw.overdueBaseRateMonthly ?? (raw as any).overdueInterest?.baseRate ?? defaultMasterSettings.overdueBaseRateMonthly ?? 2.0,
       overdueEscalationTiers: resolvedTiers,
       fdAllowedTenures: raw.fdAllowedTenures && raw.fdAllowedTenures.length > 0 ? raw.fdAllowedTenures : defaultMasterSettings.fdAllowedTenures,
       fdAllowedReceivingMethods: raw.fdAllowedReceivingMethods && raw.fdAllowedReceivingMethods.length > 0 ? raw.fdAllowedReceivingMethods : defaultMasterSettings.fdAllowedReceivingMethods,

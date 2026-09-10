@@ -1,6 +1,25 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Download, FileSpreadsheet, Plus, X, ArrowUpRight, ArrowDownLeft, ShieldCheck } from 'lucide-react';
+import {
+  Download,
+  FileSpreadsheet,
+  Plus,
+  X,
+  ArrowUpRight,
+  ArrowDownLeft,
+  ShieldCheck,
+  Wallet,
+  Building2,
+  Receipt,
+  Scale,
+  TrendingUp,
+  Landmark,
+  BadgePercent
+} from 'lucide-react';
+import { PageHeader } from '../components/ui/PageHeader';
+import { StatCard, StatGrid } from '../components/ui/StatCard';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 export const Accounts: React.FC = () => {
   const { currentPage, dayBookEntries, cashInHand, cashAtBank, addDayBookEntry, loans, fixedDeposits, showToast } = useApp();
@@ -11,6 +30,7 @@ export const Accounts: React.FC = () => {
       setActiveTab(currentPage as any);
     }
   }, [currentPage]);
+
   const todayISO = new Date().toISOString().split('T')[0];
   const [fromDate, setFromDate] = useState(todayISO);
   const [toDate, setToDate] = useState(todayISO);
@@ -50,7 +70,7 @@ export const Accounts: React.FC = () => {
     const billNo = `MAN-${Date.now().toString().slice(-4)}`;
     addDayBookEntry({
       billNo,
-      particulars,
+      particulars: particulars.trim(),
       accountHead,
       mode: entryType.startsWith('CASH') ? 'Cash' : 'Bank',
       cashIn: entryType === 'CASH_IN' ? amount : 0,
@@ -63,6 +83,7 @@ export const Accounts: React.FC = () => {
     setParticulars('');
     setAmount(500);
     setShowAddEntryModal(false);
+    showToast('Manual accounting entry recorded successfully', 'success');
   };
 
   const handleExportExcel = () => {
@@ -83,404 +104,394 @@ export const Accounts: React.FC = () => {
     });
   };
 
-  return (
-    <div className="page-content">
-      {/* Top Accounts Navigation Tabs */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            className={`btn btn-sm ${activeTab === 'day-book' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('day-book')}
-          >
-            Day Book
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'trial-balance' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('trial-balance')}
-          >
-            Trial Balance
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'profit-loss' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('profit-loss')}
-          >
-            Profit &amp; Loss
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'balance-sheet' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setActiveTab('balance-sheet')}
-          >
-            Balance Sheet
-          </button>
-        </div>
+  const tabs = [
+    { id: 'day-book', label: 'Day Book', icon: Receipt },
+    { id: 'trial-balance', label: 'Trial Balance', icon: Scale },
+    { id: 'profit-loss', label: 'Profit & Loss', icon: TrendingUp },
+    { id: 'balance-sheet', label: 'Balance Sheet', icon: Landmark }
+  ];
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowTdsModal(true)}>
-            <span>TDS Ledger</span>
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>
-            <FileSpreadsheet size={13} />
-            <span>Export Excel</span>
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={handleExportPDF}>
-            <Download size={13} />
-            <span>Print / PDF</span>
-          </button>
-        </div>
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="General Ledger & Accounts"
+        description="Comprehensive double-entry day book, trial balances, profit/loss statements, and balance sheet auditing."
+        breadcrumbs={[{ label: 'Home' }, { label: 'Accounting' }]}
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<BadgePercent className="w-4 h-4 text-primary-500" />}
+              onClick={() => setShowTdsModal(true)}
+            >
+              TDS Ledger
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
+              onClick={handleExportExcel}
+            >
+              Export Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Download className="w-4 h-4 text-slate-600" />}
+              onClick={handleExportPDF}
+            >
+              Print / PDF
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Navigation Tabs Bar */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2">
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+                isActive
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400 bg-primary-50/50 dark:bg-primary-950/20 rounded-t-lg'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* TDS LEDGER MODAL */}
       {showTdsModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
-          <div className="card" style={{ maxWidth: '600px', width: '100%', padding: '24px', position: 'relative' }}>
-            <button style={{ position: 'absolute', right: '16px', top: '16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setShowTdsModal(false)}>
-              <X size={18} />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+            <button
+              className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+              onClick={() => setShowTdsModal(false)}
+            >
+              <X className="w-5 h-5" />
             </button>
-            <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>TDS Deductions Ledger</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>Section 194A Tax Deducted at Source on Interest Payments</p>
-            <div className="table-container" style={{ marginBottom: '16px' }}>
-              <table className="custom-table">
-                <thead>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2.5 bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400 rounded-xl">
+                <BadgePercent className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">TDS Deductions Ledger</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Section 194A Tax Deducted at Source on Interest Payments</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl my-4">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold">
                   <tr>
-                    <th>DATE</th>
-                    <th>BILL NO</th>
-                    <th>CUSTOMER</th>
-                    <th>GROSS INTEREST</th>
-                    <th>TDS (10%)</th>
+                    <th className="px-3.5 py-2.5">Date</th>
+                    <th className="px-3.5 py-2.5">Bill No</th>
+                    <th className="px-3.5 py-2.5">Customer</th>
+                    <th className="px-3.5 py-2.5 text-right">Gross Interest</th>
+                    <th className="px-3.5 py-2.5 text-right">TDS (10%)</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr>
-                    <td>25-08-2026</td>
-                    <td>RCPT-104</td>
-                    <td>Thayba Begum</td>
-                    <td>₹1,500.00</td>
-                    <td>₹150.00</td>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">25-08-2026</td>
+                    <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400">RCPT-104</td>
+                    <td className="px-3.5 py-2.5 font-medium text-slate-900 dark:text-white">Thayba Begum</td>
+                    <td className="px-3.5 py-2.5 text-right font-medium">₹1,500.00</td>
+                    <td className="px-3.5 py-2.5 text-right font-bold text-rose-600 dark:text-rose-400">₹150.00</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <button type="button" className="btn btn-primary" onClick={() => setShowTdsModal(false)}>Close</button>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="primary" onClick={() => setShowTdsModal(false)}>
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* DAY BOOK TAB */}
       {activeTab === 'day-book' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="space-y-6">
           {/* 4 Summary Metric Cards */}
-          <div className="grid-4">
-            <div className="stat-card">
-              <div className="stat-label">CASH IN HAND</div>
-              <div className="stat-value" style={{ color: cashInHand >= 0 ? 'var(--color-primary-dark)' : 'var(--badge-danger-text)' }}>
-                ₹{formatMoney(cashInHand)}
-              </div>
-              <div className="stat-helper">Physical counter vault balance</div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-label">CASH AT BANK</div>
-              <div className="stat-value" style={{ color: cashAtBank >= 0 ? 'var(--color-primary-dark)' : 'var(--badge-danger-text)' }}>
-                ₹{formatMoney(cashAtBank)}
-              </div>
-              <div className="stat-helper">HDFC Branch Current A/c</div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-label">TODAY IN</div>
-              <div className="stat-value" style={{ color: 'var(--badge-success-text)' }}>
-                <ArrowDownLeft size={20} style={{ display: 'inline', marginRight: '4px' }} />
-                ₹{formatMoney(todayIn)}
-              </div>
-              <div className="stat-helper">Total receipts &amp; credits</div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-label">TODAY OUT</div>
-              <div className="stat-value" style={{ color: 'var(--badge-danger-text)' }}>
-                <ArrowUpRight size={20} style={{ display: 'inline', marginRight: '4px' }} />
-                ₹{formatMoney(todayOut)}
-              </div>
-              <div className="stat-helper">Total disbursements &amp; debits</div>
-            </div>
-          </div>
+          <StatGrid columns={4}>
+            <StatCard
+              title="Cash In Hand (Vault)"
+              value={`₹${formatMoney(cashInHand)}`}
+              subtitle="Physical counter vault balance"
+              icon={<Wallet className="w-5 h-5 text-emerald-500" />}
+              variant={cashInHand >= 0 ? 'emerald' : 'rose'}
+            />
+            <StatCard
+              title="Cash At Bank"
+              value={`₹${formatMoney(cashAtBank)}`}
+              subtitle="Branch Current A/c"
+              icon={<Building2 className="w-5 h-5 text-indigo-500" />}
+              variant={cashAtBank >= 0 ? 'indigo' : 'rose'}
+            />
+            <StatCard
+              title="Today Receipts (In)"
+              value={`₹${formatMoney(todayIn)}`}
+              subtitle="Total receipts & credits"
+              icon={<ArrowDownLeft className="w-5 h-5 text-teal-500" />}
+              variant="teal"
+            />
+            <StatCard
+              title="Today Disbursed (Out)"
+              value={`₹${formatMoney(todayOut)}`}
+              subtitle="Total disbursements & debits"
+              icon={<ArrowUpRight className="w-5 h-5 text-amber-500" />}
+              variant="amber"
+            />
+          </StatGrid>
 
           {/* Main Day Book Card */}
-          <div className="card">
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h2 className="card-title">Day Book</h2>
-                <p className="card-description">Cash in hand, cash at bank, and daily ledger</p>
-              </div>
-
-              {/* Toolbar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '10px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>SHOW PAISE</span>
+          <Card
+            title="Daily Transaction Journal"
+            subtitle="Real-time cash in hand, bank transfers, receipts and disbursement ledger"
+            headerRight={
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
+                  <span className="text-[11px] font-bold text-slate-500">PAISE</span>
                   <button
                     type="button"
-                    className={`btn btn-sm ${showPaise ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ borderRadius: 'var(--radius-full)', padding: '2px 10px', fontSize: '11px' }}
+                    className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-all ${
+                      showPaise
+                        ? 'bg-primary-500 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400'
+                    }`}
                     onClick={() => setShowPaise(!showPaise)}
                   >
-                    {showPaise ? 'On' : 'Off'}
+                    {showPaise ? 'ON' : 'OFF'}
                   </button>
                 </div>
 
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>FROM</span>
-                <input
-                  type="date"
-                  className="input-control"
-                  style={{ width: '135px', padding: '6px 10px', height: '34px', fontSize: '12px' }}
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                />
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>TO</span>
-                <input
-                  type="date"
-                  className="input-control"
-                  style={{ width: '135px', padding: '6px 10px', height: '34px', fontSize: '12px' }}
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                />
-                <button className="btn btn-secondary btn-sm" onClick={() => { setFromDate(todayISO); setToDate(todayISO); }}>
-                  Today
-                </button>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowAddEntryModal(true)}>
-                  <Plus size={14} />
-                  <span>+ Add Entry</span>
-                </button>
-              </div>
-            </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-slate-500">FROM</span>
+                  <input
+                    type="date"
+                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                  />
+                  <span className="font-semibold text-slate-500">TO</span>
+                  <input
+                    type="date"
+                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setFromDate(todayISO); setToDate(todayISO); }}
+                  >
+                    Today
+                  </Button>
+                </div>
 
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Plus className="w-4 h-4" />}
+                  onClick={() => setShowAddEntryModal(true)}
+                >
+                  Add Entry
+                </Button>
+              </div>
+            }
+          >
             {/* Day Book Table */}
-            <div className="table-container">
-              <table className="custom-table">
-                <thead>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th>TIME</th>
-                    <th>BILL #</th>
-                    <th>PARTICULARS</th>
-                    <th style={{ textAlign: 'right' }}>CASH IN</th>
-                    <th style={{ textAlign: 'right' }}>CASH OUT</th>
-                    <th style={{ textAlign: 'right' }}>BANK IN</th>
-                    <th style={{ textAlign: 'right' }}>BANK OUT</th>
-                    <th style={{ textAlign: 'right' }}>CASH BAL</th>
-                    <th style={{ textAlign: 'right' }}>BANK BAL</th>
+                    <th className="px-3.5 py-3">Time</th>
+                    <th className="px-3.5 py-3">Bill #</th>
+                    <th className="px-3.5 py-3">Particulars & Head</th>
+                    <th className="px-3.5 py-3 text-right">Cash In</th>
+                    <th className="px-3.5 py-3 text-right">Cash Out</th>
+                    <th className="px-3.5 py-3 text-right">Bank In</th>
+                    <th className="px-3.5 py-3 text-right">Bank Out</th>
+                    <th className="px-3.5 py-3 text-right">Cash Bal</th>
+                    <th className="px-3.5 py-3 text-right">Bank Bal</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {/* Opening Balance Row */}
-                  <tr style={{ backgroundColor: 'var(--bg-surface-secondary)', fontWeight: 700 }}>
-                    <td>-</td>
-                    <td>-</td>
-                    <td style={{ color: 'var(--color-primary-dark)' }}>Opening Balance</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>₹0.00</td>
-                    <td style={{ textAlign: 'right' }}>₹0.00</td>
+                  <tr className="bg-slate-50/70 dark:bg-slate-800/30 font-semibold text-slate-600 dark:text-slate-300">
+                    <td className="px-3.5 py-2.5 text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400">Opening Balance</td>
+                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-2.5 text-right font-bold">₹0.00</td>
+                    <td className="px-3.5 py-2.5 text-right font-bold">₹0.00</td>
                   </tr>
 
                   {/* Transaction Entries */}
                   {dayBookEntries.map((e) => (
-                    <tr key={e.id}>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{e.time}</td>
-                      <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{e.billNo}</td>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{e.particulars}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{e.accountHead} &bull; {e.mode}</div>
+                    <tr key={e.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="px-3.5 py-2.5 text-slate-400 font-mono text-[11px]">{e.time}</td>
+                      <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400 font-mono">{e.billNo}</td>
+                      <td className="px-3.5 py-2.5">
+                        <div className="font-semibold text-slate-900 dark:text-white">{e.particulars}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                          {e.accountHead} • <span className="text-primary-600 dark:text-primary-400">{e.mode}</span>
+                        </div>
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: e.cashIn > 0 ? 'var(--badge-success-text)' : 'inherit' }}>
+                      <td className="px-3.5 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
                         {e.cashIn > 0 ? `₹${e.cashIn.toLocaleString('en-IN')}` : '-'}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: e.cashOut > 0 ? 'var(--badge-danger-text)' : 'inherit' }}>
+                      <td className="px-3.5 py-2.5 text-right font-semibold text-rose-600 dark:text-rose-400">
                         {e.cashOut > 0 ? `₹${e.cashOut.toLocaleString('en-IN')}` : '-'}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: e.bankIn > 0 ? 'var(--badge-success-text)' : 'inherit' }}>
+                      <td className="px-3.5 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
                         {e.bankIn > 0 ? `₹${e.bankIn.toLocaleString('en-IN')}` : '-'}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: e.bankOut > 0 ? 'var(--badge-danger-text)' : 'inherit' }}>
+                      <td className="px-3.5 py-2.5 text-right font-semibold text-rose-600 dark:text-rose-400">
                         {e.bankOut > 0 ? `₹${e.bankOut.toLocaleString('en-IN')}` : '-'}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
+                      <td className="px-3.5 py-2.5 text-right font-bold text-slate-900 dark:text-white">
                         ₹{e.cashBal.toLocaleString('en-IN')}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
+                      <td className="px-3.5 py-2.5 text-right font-bold text-slate-900 dark:text-white">
                         ₹{e.bankBal.toLocaleString('en-IN')}
                       </td>
                     </tr>
                   ))}
 
                   {/* Closing Balance Row */}
-                  <tr style={{ backgroundColor: 'var(--color-light-accent)', fontWeight: 800 }}>
-                    <td>-</td>
-                    <td>-</td>
-                    <td style={{ color: 'var(--color-primary-dark)' }}>Closing Balance</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right' }}>-</td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-primary-dark)', fontSize: '14px' }}>
+                  <tr className="bg-primary-50/50 dark:bg-primary-950/30 font-bold border-t-2 border-primary-200 dark:border-primary-800 text-slate-900 dark:text-white">
+                    <td className="px-3.5 py-3 text-slate-400">-</td>
+                    <td className="px-3.5 py-3 text-slate-400">-</td>
+                    <td className="px-3.5 py-3 font-extrabold text-primary-700 dark:text-primary-300">Closing Balance</td>
+                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
+                    <td className="px-3.5 py-3 text-right text-primary-700 dark:text-primary-300 text-sm">
                       ₹{cashInHand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--color-primary-dark)', fontSize: '14px' }}>
+                    <td className="px-3.5 py-3 text-right text-primary-700 dark:text-primary-300 text-sm">
                       ₹{cashAtBank.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* TDS Ledger Card */}
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <h3 className="card-title">TDS Ledger</h3>
-                <p className="card-description">TDS noted on receipts &mdash; for your claim. NOT part of the Day Book cash flow.</p>
-              </div>
-              <span className="badge badge-info">Tax Compliance</span>
-            </div>
-
-            <div className="table-container">
-              <table className="custom-table">
-                <thead>
-                  <tr>
-                    <th>DATE</th>
-                    <th>BILL #</th>
-                    <th>LOAN NO</th>
-                    <th>CUSTOMER</th>
-                    <th style={{ textAlign: 'right' }}>TDS AMOUNT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dayBookEntries.filter(e => (e.tdsAmount || 0) > 0).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                        No TDS recorded in this period
-                      </td>
-                    </tr>
-                  ) : (
-                    dayBookEntries
-                      .filter(e => (e.tdsAmount || 0) > 0)
-                      .map(e => (
-                        <tr key={e.id}>
-                          <td>{e.date}</td>
-                          <td style={{ fontWeight: 700 }}>{e.billNo}</td>
-                          <td>{e.loanNo || '-'}</td>
-                          <td>{e.customerName || '-'}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
-                            ₹{(e.tdsAmount || 0).toLocaleString('en-IN')}
-                          </td>
-                        </tr>
-                      ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          </Card>
         </div>
       )}
 
-      {/* Trial Balance */}
+      {/* TRIAL BALANCE TAB */}
       {activeTab === 'trial-balance' && (
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Trial Balance</h2>
-              <p className="card-description">Summary of all debit and credit ledger balances</p>
-            </div>
-            <span className="badge badge-success">
-              <ShieldCheck size={14} />
-              <span>Balanced</span>
+        <Card
+          title="Trial Balance Ledger"
+          subtitle="Summary of active debit and credit balances for dual entry verification"
+          headerRight={
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+              <ShieldCheck className="w-4 h-4" />
+              Books Balanced
             </span>
-          </div>
-
-          <div className="table-container">
-            <table className="custom-table">
-              <thead>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold">
                 <tr>
-                  <th>ACCOUNT HEAD</th>
-                  <th>GROUP</th>
-                  <th style={{ textAlign: 'right' }}>DEBIT (₹)</th>
-                  <th style={{ textAlign: 'right' }}>CREDIT (₹)</th>
+                  <th className="px-4 py-3">Account Head</th>
+                  <th className="px-4 py-3">Group Category</th>
+                  <th className="px-4 py-3 text-right">Debit (₹)</th>
+                  <th className="px-4 py-3 text-right">Credit (₹)</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>Gold Loan Principal Portfolio</td>
-                  <td>Current Assets</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</td>
-                  <td style={{ textAlign: 'right' }}>-</td>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Gold Loan Principal Portfolio</td>
+                  <td className="px-4 py-3 text-slate-500">Current Assets</td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</td>
+                  <td className="px-4 py-3 text-right text-slate-400">-</td>
                 </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>Cash In Hand (Vault)</td>
-                  <td>Current Assets</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</td>
-                  <td style={{ textAlign: 'right' }}>-</td>
+                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Cash In Hand (Vault Reserve)</td>
+                  <td className="px-4 py-3 text-slate-500">Current Assets</td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</td>
+                  <td className="px-4 py-3 text-right text-slate-400">-</td>
                 </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>Fixed Deposits Liability</td>
-                  <td>Current Liabilities</td>
-                  <td style={{ textAlign: 'right' }}>-</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{totalFDPrincipal.toLocaleString('en-IN')}</td>
+                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Fixed Deposits Liability</td>
+                  <td className="px-4 py-3 text-slate-500">Current Liabilities</td>
+                  <td className="px-4 py-3 text-right text-slate-400">-</td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalFDPrincipal.toLocaleString('en-IN')}</td>
                 </tr>
-                <tr>
-                  <td style={{ fontWeight: 600 }}>Interest &amp; Processing Income</td>
-                  <td>Revenue</td>
-                  <td style={{ textAlign: 'right' }}>-</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{totalIncome.toLocaleString('en-IN')}</td>
+                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Interest &amp; Processing Income</td>
+                  <td className="px-4 py-3 text-slate-500">Revenue</td>
+                  <td className="px-4 py-3 text-right text-slate-400">-</td>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalIncome.toLocaleString('en-IN')}</td>
                 </tr>
-                <tr style={{ backgroundColor: 'var(--color-light-accent)', fontWeight: 800 }}>
-                  <td colSpan={2} style={{ color: 'var(--color-primary-dark)' }}>TOTAL TRIAL BALANCE</td>
-                  <td style={{ textAlign: 'right', color: 'var(--color-primary-dark)' }}>
+                <tr className="bg-primary-50/60 dark:bg-primary-950/40 font-bold border-t-2 border-primary-300 dark:border-primary-700">
+                  <td colSpan={2} className="px-4 py-3.5 text-primary-900 dark:text-primary-200 uppercase tracking-wider">
+                    Total Trial Balance
+                  </td>
+                  <td className="px-4 py-3.5 text-right text-primary-800 dark:text-primary-300 font-extrabold text-sm">
                     ₹{(totalGoldLoansOutstanding + Math.max(0, cashInHand)).toLocaleString('en-IN')}
                   </td>
-                  <td style={{ textAlign: 'right', color: 'var(--color-primary-dark)' }}>
+                  <td className="px-4 py-3.5 text-right text-primary-800 dark:text-primary-300 font-extrabold text-sm">
                     ₹{(totalFDPrincipal + totalIncome).toLocaleString('en-IN')}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Profit & Loss - Modeled Exactly after Demo1 Frame 5 */}
+      {/* PROFIT & LOSS TAB */}
       {activeTab === 'profit-loss' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className="card">
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h2 className="card-title">Profit &amp; Loss</h2>
-                <p className="card-description">Trial balance, profit &amp; loss and balance sheet &mdash; built automatically from your day book</p>
-              </div>
-
-              {/* Date filters */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>FROM</span>
+        <div className="space-y-6">
+          <Card
+            title="Profit & Loss Statement"
+            subtitle="Automated revenue and expenditure breakdown calculated from ledger transactions"
+            headerRight={
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-500">FROM</span>
                 <input
                   type="date"
-                  className="input-control"
-                  style={{ width: '130px', padding: '5px 8px', height: '32px', fontSize: '12px' }}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
                 />
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>TO</span>
+                <span className="text-xs font-semibold text-slate-500">TO</span>
                 <input
                   type="date"
-                  className="input-control"
-                  style={{ width: '130px', padding: '5px 8px', height: '32px', fontSize: '12px' }}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
                 />
-                <div style={{ display: 'flex', gap: '4px' }}>
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
                   {(['this-month', 'last-month', 'this-year', 'all-time'] as const).map((p) => (
                     <button
                       key={p}
-                      className={`btn btn-xs ${pnlPeriod === p ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ textTransform: 'capitalize' }}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-md capitalize transition-all ${
+                        pnlPeriod === p
+                          ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400'
+                      }`}
                       onClick={() => setPnlPeriod(p)}
                     >
                       {p.replace('-', ' ')}
@@ -488,154 +499,145 @@ export const Accounts: React.FC = () => {
                   ))}
                 </div>
               </div>
-            </div>
-
-            <div className="grid-2" style={{ gap: '20px' }}>
+            }
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left: Income */}
-              <div style={{ padding: '20px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--badge-success-text)', margin: 0 }}>
-                    Income
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+                    Income &amp; Revenues
                   </h3>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>all recorded transactions</span>
+                  <span className="text-[11px] text-slate-400">All credited streams</span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '13px' }}>
-                  <span>Interest Earned on Loans (incl. advance interest)</span>
-                  <strong style={{ fontWeight: 700 }}>₹{totalInterestEarned.toLocaleString('en-IN')}</strong>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '13px' }}>
-                  <span>Card Fees Earned</span>
-                  <strong style={{ fontWeight: 700 }}>₹{cardFeesEarned.toLocaleString('en-IN')}</strong>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0 6px', fontSize: '14px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                  <span>Total Income</span>
-                  <span style={{ color: 'var(--badge-success-text)' }}>₹{totalIncome.toLocaleString('en-IN')}</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-300">Interest Earned on Loans</span>
+                    <strong className="font-bold text-slate-900 dark:text-white">₹{totalInterestEarned.toLocaleString('en-IN')}</strong>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-300">Card &amp; Processing Fees</span>
+                    <strong className="font-bold text-slate-900 dark:text-white">₹{cardFeesEarned.toLocaleString('en-IN')}</strong>
+                  </div>
+                  <div className="flex justify-between pt-2 text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                    <span>Total Income</span>
+                    <span>₹{totalIncome.toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
               </div>
 
               {/* Right: Expenses */}
-              <div style={{ padding: '20px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <h3 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--badge-danger-text)', margin: 0 }}>
-                    Expenses
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wide">
+                    Expenses &amp; Outflows
                   </h3>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>all recorded transactions</span>
+                  <span className="text-[11px] text-slate-400">All operational debits</span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: '13px' }}>
-                  <span>Interest Paid on Deposits</span>
-                  <strong style={{ fontWeight: 700 }}>₹{interestPaidOnDeposits.toLocaleString('en-IN')}</strong>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 0 6px', fontSize: '14px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                  <span>Total Expenses</span>
-                  <span style={{ color: 'var(--badge-danger-text)' }}>₹{totalExpenses.toLocaleString('en-IN')}</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-300">Interest Paid on Fixed Deposits</span>
+                    <strong className="font-bold text-slate-900 dark:text-white">₹{interestPaidOnDeposits.toLocaleString('en-IN')}</strong>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-600 dark:text-slate-300">Office &amp; Administrative</span>
+                    <strong className="font-bold text-slate-900 dark:text-white">₹0.00</strong>
+                  </div>
+                  <div className="flex justify-between pt-2 text-sm font-extrabold text-rose-600 dark:text-rose-400">
+                    <span>Total Expenses</span>
+                    <span>₹{totalExpenses.toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Bottom Net Profit Banner */}
-            <div
-              style={{
-                marginTop: '20px',
-                padding: '18px 24px',
-                backgroundColor: 'var(--color-light-accent)',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                border: '1.5px solid var(--border-subtle)'
-              }}
-            >
+            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-primary-500/10 border border-emerald-500/20 flex items-center justify-between">
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-primary-dark)', letterSpacing: '0.5px' }}>
-                  NET PROFIT
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                  Net Operating Profit
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  Total income minus total expenses, everything up to 25/08/2026
-                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Total revenue surplus after operational cost subtractions
+                </p>
               </div>
-
-              <div style={{ fontSize: '28px', fontWeight: 900, color: 'var(--badge-success-text)' }}>
+              <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
                 ₹{netProfit.toLocaleString('en-IN')}
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 
-      {/* Balance Sheet */}
+      {/* BALANCE SHEET TAB */}
       {activeTab === 'balance-sheet' && (
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Balance Sheet</h2>
-              <p className="card-description">Assets, liabilities, and equity structure</p>
+        <Card
+          title="Balance Sheet"
+          subtitle="Financial structure of assets, liabilities, and retained capital reserves"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+              <h4 className="text-sm font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wide">
+                Assets Portfolio
+              </h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">Active Gold Loan Advances</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</strong>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">Cash In Vault</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</strong>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">Pledged Gold Collateral Value</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">₹{loans.reduce((acc, l) => acc + l.marketValue, 0).toLocaleString('en-IN')}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+              <h4 className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                Liabilities &amp; Capital
+              </h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">Depositor Fixed Deposits Liability</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">₹{totalFDPrincipal.toLocaleString('en-IN')}</strong>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">Branch Capital &amp; Reserves</span>
+                  <strong className="font-bold text-slate-900 dark:text-white">₹5,00,000</strong>
+                </div>
+              </div>
             </div>
           </div>
-
-          <div className="grid-2" style={{ gap: '20px' }}>
-            <div style={{ padding: '18px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <h4 style={{ color: 'var(--color-primary-dark)', marginBottom: '14px', fontWeight: 800 }}>ASSETS</h4>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span>Active Gold Loan Advances</span>
-                <strong>₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span>Cash In Vault</span>
-                <strong>₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span>Pledged Gold Value (@ ₹6,400/g)</span>
-                <strong>₹{loans.reduce((acc, l) => acc + l.marketValue, 0).toLocaleString('en-IN')}</strong>
-              </div>
-            </div>
-
-            <div style={{ padding: '18px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <h4 style={{ color: 'var(--color-primary-dark)', marginBottom: '14px', fontWeight: 800 }}>LIABILITIES &amp; CAPITAL</h4>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span>Depositor Fixed Deposits</span>
-                <strong>₹{totalFDPrincipal.toLocaleString('en-IN')}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span>Branch Capital &amp; Reserves</span>
-                <strong>₹5,00,000</strong>
-              </div>
-            </div>
-          </div>
-        </div>
+        </Card>
       )}
 
       {/* Add Day Book Entry Modal */}
       {showAddEntryModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(22, 63, 53, 0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            backdropFilter: 'blur(3px)'
-          }}
-        >
-          <div className="card" style={{ width: '480px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="card-header">
-              <h3 className="card-title">Add Day Book Entry</h3>
-              <button className="icon-button" onClick={() => setShowAddEntryModal(false)}>
-                <X size={16} />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Day Book Entry</h3>
+              <button
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                onClick={() => setShowAddEntryModal(false)}
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateEntry} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div className="form-group">
-                <label className="form-label required">Transaction Type</label>
+            <form onSubmit={handleCreateEntry} className="space-y-4 pt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Transaction Type <span className="text-rose-500">*</span>
+                </label>
                 <select
-                  className="select-control"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                   value={entryType}
                   onChange={(e) => setEntryType(e.target.value as any)}
                 >
@@ -646,11 +648,13 @@ export const Accounts: React.FC = () => {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label required">Particulars / Description</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Particulars / Description <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
-                  className="input-control"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="e.g. Tea & Refreshments / Office Rent / Bank Deposit"
                   value={particulars}
                   onChange={(e) => setParticulars(e.target.value)}
@@ -658,10 +662,12 @@ export const Accounts: React.FC = () => {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label required">Account Head</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Head <span className="text-rose-500">*</span>
+                </label>
                 <select
-                  className="select-control"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                   value={accountHead}
                   onChange={(e) => setAccountHead(e.target.value)}
                 >
@@ -674,35 +680,39 @@ export const Accounts: React.FC = () => {
                 </select>
               </div>
 
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label required">Amount (₹)</label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Amount (₹) <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="number"
-                    className="input-control"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     value={amount}
                     onChange={(e) => setAmount(Number(e.target.value))}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label required">Date</label>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Date <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
-                    className="input-control"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     value={entryDate}
                     onChange={(e) => setEntryDate(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddEntryModal(false)}>
+              <div className="flex justify-end gap-2.5 pt-3">
+                <Button variant="outline" type="button" onClick={() => setShowAddEntryModal(false)}>
                   Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
+                </Button>
+                <Button variant="primary" type="submit">
                   Save Entry
-                </button>
+                </Button>
               </div>
             </form>
           </div>

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Download, MessageCircle, AlertTriangle, Clock, CheckCircle2, FileText, User } from 'lucide-react';
+import { Download, MessageCircle, AlertTriangle, Clock, CheckCircle2, FileText, User, AlertCircle } from 'lucide-react';
 import { Loan, Customer } from '../types';
+import { PageHeader, StatGrid, StatCard, Button } from '../components/ui';
 
 export interface ReminderRecord {
   id: string;
@@ -353,54 +354,54 @@ export const RCRenewalReminders: React.FC = () => {
 
   return (
     <div className="page-content">
-      {/* PAGE TITLE */}
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-dark)' }}>
-          RC &amp; Renewal Reminders
-        </h1>
-        <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-          Track vehicle RC books, Insurance, Road Tax, Permit, FC expiries, and interest renewal due dates in real-time.
-        </p>
-      </div>
-
-      {/* 4 Summary Stat Cards */}
-      <div className="grid-4" style={{ marginBottom: '18px' }}>
-        <div className="stat-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="stat-label">EXPIRED</span>
-            <AlertTriangle size={16} color="var(--badge-danger-text, #dc2626)" />
+      {/* PAGE HEADER */}
+      <PageHeader
+        title="RC & Renewal Reminders"
+        subtitle="Track vehicle RC books, Insurance, Road Tax, Permit, FC expiries, and interest renewal due dates in real-time."
+        icon={<AlertCircle size={20} />}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={handleExportCSV}>
+              Export CSV
+            </Button>
+            <Button variant="primary" size="sm" icon={<MessageCircle size={14} />} onClick={handleSendAllReminders}>
+              Send Reminders
+            </Button>
           </div>
-          <div className="stat-value" style={{ color: 'var(--badge-danger-text, #dc2626)' }}>{expiredCount}</div>
-          <div className="stat-helper">Requires urgent follow-up</div>
-        </div>
+        }
+      />
 
-        <div className="stat-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="stat-label">DUE IN 30 DAYS</span>
-            <Clock size={16} color="var(--badge-warning-text, #d97706)" />
-          </div>
-          <div className="stat-value" style={{ color: 'var(--badge-warning-text, #d97706)' }}>{due30Count}</div>
-          <div className="stat-helper">Immediate notice period</div>
-        </div>
-
-        <div className="stat-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="stat-label">UPCOMING</span>
-            <FileText size={16} color="var(--color-primary-accent, #059669)" />
-          </div>
-          <div className="stat-value">{upcomingCount}</div>
-          <div className="stat-helper">30 to 90 days out</div>
-        </div>
-
-        <div className="stat-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="stat-label">ALL GOOD</span>
-            <CheckCircle2 size={16} color="var(--badge-success-text, #166534)" />
-          </div>
-          <div className="stat-value" style={{ color: 'var(--badge-success-text, #166534)' }}>{allGoodCount}</div>
-          <div className="stat-helper">Fully compliant pledges</div>
-        </div>
-      </div>
+      {/* Summary Stat Cards */}
+      <StatGrid columns={4} style={{ marginBottom: '18px' }}>
+        <StatCard
+          label="Expired"
+          value={expiredCount}
+          subValue="Requires urgent follow-up"
+          colorTheme="danger"
+          icon={<AlertTriangle size={18} />}
+        />
+        <StatCard
+          label="Due in 30 Days"
+          value={due30Count}
+          subValue="Immediate notice period"
+          colorTheme="warning"
+          icon={<Clock size={18} />}
+        />
+        <StatCard
+          label="Upcoming"
+          value={upcomingCount}
+          subValue="30 to 90 days out"
+          colorTheme="primary"
+          icon={<FileText size={18} />}
+        />
+        <StatCard
+          label="All Good"
+          value={allGoodCount}
+          subValue="Fully compliant pledges"
+          colorTheme="success"
+          icon={<CheckCircle2 size={18} />}
+        />
+      </StatGrid>
 
       {/* Main Table Card */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>

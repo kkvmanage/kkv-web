@@ -7,10 +7,23 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Proxy all /api/* requests to the backend on port 8080.
+    // This eliminates CORS entirely in local development because
+    // both the frontend and API appear to be on the same origin (5173).
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.error('[Vite Proxy Error]', err.message);
+          });
+          proxy.on('proxyReq', (_proxyReq, req) => {
+            console.log('[Vite Proxy →]', req.method, req.url);
+          });
+        }
       }
     }
   }

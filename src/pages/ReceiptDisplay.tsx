@@ -1,7 +1,8 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Printer, ArrowLeft } from 'lucide-react';
-
+import { Printer, ArrowLeft, Share2 } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Button } from '../components/ui/Button';
 import { KKVLogo } from '../components/common/KKVLogo';
 
 export const ReceiptDisplay: React.FC = () => {
@@ -16,16 +17,19 @@ export const ReceiptDisplay: React.FC = () => {
 
   if (!receipt) {
     return (
-      <div className="page-content">
-        <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
-          <p style={{ color: 'var(--text-muted)' }}>No receipt selected.</p>
-          <button
-            className="btn btn-secondary"
-            style={{ marginTop: '12px' }}
+      <div className="space-y-6">
+        <PageHeader
+          title="Payment Voucher"
+          breadcrumbs={[{ label: 'Home' }, { label: 'Receipts', onClick: () => setCurrentPage('all-receipts') }, { label: 'Voucher' }]}
+        />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center max-w-md mx-auto">
+          <p className="text-slate-500 mb-4">No receipt selected or found.</p>
+          <Button
+            variant="primary"
             onClick={() => setCurrentPage('all-receipts')}
           >
             Back to All Receipts
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -45,187 +49,174 @@ export const ReceiptDisplay: React.FC = () => {
   };
 
   return (
-    <div className="page-content">
+    <div className="space-y-6">
       {/* Top Action Bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={() => setCurrentPage('all-receipts')}
-        >
-          <ArrowLeft size={14} />
-          <span>Back to Receipts</span>
-        </button>
+      <PageHeader
+        title={`Payment Voucher #${receipt.receiptNo}`}
+        description={`Receipt issued to ${receipt.customerName} on ${receipt.date}`}
+        breadcrumbs={[
+          { label: 'Home' },
+          { label: 'Receipts', onClick: () => setCurrentPage('all-receipts') },
+          { label: `Receipt #${receipt.receiptNo}` }
+        ]}
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<ArrowLeft className="w-4 h-4" />}
+              onClick={() => setCurrentPage('all-receipts')}
+            >
+              Back to Receipts
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              icon={<Share2 className="w-4 h-4 text-emerald-500" />}
+              onClick={handleWhatsAppShare}
+            >
+              WhatsApp Voucher
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={handlePrint}
+            >
+              Print Voucher
+            </Button>
+          </div>
+        }
+      />
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="btn btn-secondary" style={{ color: '#25D366', borderColor: '#25D366' }} onClick={handleWhatsAppShare}>
-            <span>WhatsApp Voucher</span>
-          </button>
-          <button className="btn btn-primary" onClick={handlePrint}>
-            <Printer size={15} />
-            <span>Print Voucher</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Official Printable Voucher Card */}
-      <div
-        className="card"
-        style={{
-          maxWidth: '740px',
-          margin: '0 auto',
-          padding: '36px',
-          border: '1.5px solid var(--border-subtle)',
-          boxShadow: 'var(--shadow-md)',
-          backgroundColor: '#FFFFFF'
-        }}
-      >
+      {/* Official Printable Voucher Sheet */}
+      <div className="max-w-3xl mx-auto bg-white text-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-10 shadow-lg print:shadow-none print:border-none print:m-0 print:p-0">
         {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            paddingBottom: '20px',
-            borderBottom: '2px solid var(--color-primary-dark)'
-          }}
-        >
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-            <KKVLogo size={58} />
+        <div className="flex flex-col sm:flex-row justify-between items-start pb-6 border-b-2 border-primary-800 gap-4">
+          <div className="flex gap-4 items-center">
+            <KKVLogo size={56} />
             <div>
-              <h1 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-primary-dark)', margin: 0, letterSpacing: '0.5px' }}>
+              <h1 className="text-xl font-black text-primary-900 tracking-tight m-0">
                 KKV GOLD FINANCE
               </h1>
-              <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
-                MAIN BRANCH &mdash; 104 G.S.T Road, Chennai - 600045 | Ph: +91 44 2233 4455
+              <p className="text-xs text-slate-600 mt-0.5">
+                MAIN BRANCH — 104 G.S.T Road, Chennai - 600045 | Ph: +91 44 2233 4455
               </p>
-              <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+              <span className="text-[11px] text-slate-500 font-medium">
                 Reg No: TN-CHE-2018-GF492 | GSTIN: 33AAAAA0000A1Z5
               </span>
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <span
-              style={{
-                display: 'inline-block',
-                backgroundColor: 'var(--color-light-accent)',
-                color: 'var(--color-primary-dark)',
-                fontWeight: 800,
-                fontSize: '11px',
-                padding: '4px 10px',
-                borderRadius: '4px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}
-            >
+          <div className="sm:text-right">
+            <span className="inline-block bg-primary-100 text-primary-900 font-extrabold text-[11px] px-3 py-1 rounded-md uppercase tracking-wider">
               OFFICIAL PAYMENT VOUCHER
             </span>
-            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '6px' }}>
+            <div className="text-base font-extrabold text-primary-900 mt-2 font-mono">
               RECEIPT #{receipt.receiptNo}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Date: <strong>{receipt.date}</strong>
+            <div className="text-xs text-slate-600 mt-0.5">
+              Date: <strong className="text-slate-900">{receipt.date}</strong>
             </div>
           </div>
         </div>
 
         {/* Metadata Grid */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '20px',
-            padding: '20px 0',
-            borderBottom: '1px solid var(--border-subtle)'
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-5 border-b border-slate-200 text-xs">
           <div>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>
+            <div className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">
               Received From / Customer Details
             </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '4px' }}>
+            <div className="text-base font-black text-slate-900 mt-1">
               {receipt.customerName}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Customer ID: {receipt.customerId}
+            <div className="text-slate-600 mt-0.5">
+              Customer ID: <span className="font-semibold text-slate-800">{receipt.customerId}</span>
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>
+          <div className="sm:text-right">
+            <div className="text-[11px] uppercase font-bold text-slate-500 tracking-wider">
               Loan Reference &amp; Type
             </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '4px' }}>
-              {receipt.loanNo} &mdash; {receipt.loanType}
+            <div className="text-base font-black text-slate-900 mt-1">
+              {receipt.loanNo} — {receipt.loanType}
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              Transaction Kind: <strong>{receipt.kind}</strong>
+            <div className="text-slate-600 mt-0.5">
+              Transaction Kind: <strong className="text-slate-800">{receipt.kind}</strong>
             </div>
           </div>
         </div>
 
         {/* Amount Breakdown Table */}
-        <div style={{ padding: '20px 0' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <div className="py-5">
+          <table className="w-full text-xs">
             <thead>
-              <tr style={{ backgroundColor: 'var(--bg-surface-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
-                <th style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--color-primary-dark)' }}>DESCRIPTION</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center', color: 'var(--color-primary-dark)' }}>PAYMENT MODE</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--color-primary-dark)' }}>AMOUNT (INR)</th>
+              <tr className="bg-slate-100 text-slate-700 uppercase font-bold border-b border-slate-200">
+                <th className="px-4 py-2.5 text-left">Description</th>
+                <th className="px-4 py-2.5 text-center">Payment Mode</th>
+                <th className="px-4 py-2.5 text-right">Amount (INR)</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-200">
               {receipt.principalComponent > 0 && (
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 600 }}>Principal Repayment Component</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Direct reduction of outstanding loan balance</div>
+                <tr>
+                  <td className="px-4 py-3">
+                    <div className="font-bold text-slate-900">Principal Repayment Component</div>
+                    <div className="text-[11px] text-slate-500">Direct reduction of outstanding loan balance</div>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                    <span className="badge badge-info">{receipt.paymentMode}</span>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                      {receipt.paymentMode}
+                    </span>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 text-sm">
                     ₹{receipt.principalComponent.toLocaleString('en-IN')}
                   </td>
                 </tr>
               )}
 
               {receipt.interestComponent > 0 && (
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 600 }}>Monthly Interest Payment</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Pledge interest cleared for the period</div>
+                <tr>
+                  <td className="px-4 py-3">
+                    <div className="font-bold text-slate-900">Monthly Interest Payment</div>
+                    <div className="text-[11px] text-slate-500">Pledge interest cleared for the period</div>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                    <span className="badge badge-info">{receipt.paymentMode}</span>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                      {receipt.paymentMode}
+                    </span>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 text-sm">
                     ₹{receipt.interestComponent.toLocaleString('en-IN')}
                   </td>
                 </tr>
               )}
 
               {receipt.principalComponent === 0 && receipt.interestComponent === 0 && (
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 600 }}>{receipt.kind} Disbursement / Settlement</div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{receipt.notes || 'Gold pledge transaction'}</div>
+                <tr>
+                  <td className="px-4 py-3">
+                    <div className="font-bold text-slate-900">{receipt.kind} Disbursement / Settlement</div>
+                    <div className="text-[11px] text-slate-500">{receipt.notes || 'Gold pledge transaction'}</div>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                    <span className="badge badge-info">{receipt.paymentMode}</span>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                      {receipt.paymentMode}
+                    </span>
                   </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>
+                  <td className="px-4 py-3 text-right font-bold text-slate-900 text-sm">
                     ₹{receipt.amount.toLocaleString('en-IN')}
                   </td>
                 </tr>
               )}
 
               {/* Total Row */}
-              <tr style={{ backgroundColor: 'var(--color-light-accent)', fontWeight: 800 }}>
-                <td colSpan={2} style={{ padding: '14px', color: 'var(--color-primary-dark)', fontSize: '14px' }}>
+              <tr className="bg-primary-50 font-extrabold border-t-2 border-primary-300">
+                <td colSpan={2} className="px-4 py-3 text-primary-950 text-sm uppercase tracking-wide">
                   NET RECEIVED TOTAL
                 </td>
-                <td style={{ padding: '14px', textAlign: 'right', color: 'var(--color-primary-dark)', fontSize: '17px' }}>
+                <td className="px-4 py-3 text-right text-primary-950 text-base font-black">
                   ₹{receipt.amount.toLocaleString('en-IN')}
                 </td>
               </tr>
@@ -235,111 +226,64 @@ export const ReceiptDisplay: React.FC = () => {
 
         {/* Payment Reference Details */}
         {(receipt.transactionReference || receipt.bankName || receipt.upiId) && (
-          <div
-            style={{
-              padding: '10px 14px',
-              backgroundColor: 'var(--bg-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)',
-              marginBottom: '16px',
-              fontSize: '12px',
-              display: 'flex',
-              gap: '16px',
-              flexWrap: 'wrap'
-            }}
-          >
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 mb-4 text-xs flex gap-4 flex-wrap text-slate-700">
             {receipt.bankName && (
-              <span>
-                <strong>Bank:</strong> {receipt.bankName}
-              </span>
+              <span><strong>Bank:</strong> {receipt.bankName}</span>
             )}
             {receipt.transactionReference && (
-              <span>
-                <strong>Ref / UTR:</strong> {receipt.transactionReference}
-              </span>
+              <span><strong>Ref / UTR:</strong> {receipt.transactionReference}</span>
             )}
             {receipt.upiId && (
-              <span>
-                <strong>UPI ID:</strong> {receipt.upiId}
-              </span>
+              <span><strong>UPI ID:</strong> {receipt.upiId}</span>
             )}
             {receipt.processedBy && (
-              <span>
-                <strong>Processed By:</strong> {receipt.processedBy}
-              </span>
+              <span><strong>Processed By:</strong> {receipt.processedBy}</span>
             )}
           </div>
         )}
 
         {/* Collateral & Balance Details if available */}
         {associatedLoan && (
-          <div
-            style={{
-              padding: '14px 16px',
-              backgroundColor: 'var(--bg-surface-secondary)',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)',
-              marginBottom: '20px',
-              fontSize: '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mb-6 text-xs space-y-2.5">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <span>
-                <strong>Pledged Gold Collateral:</strong> {associatedLoan.items.map((i) => i.item).join(', ')}
+                <strong className="text-slate-900">Pledged Gold Collateral:</strong> {associatedLoan.items.map((i) => i.item).join(', ')}
               </span>
               <span>
-                <strong>Net Wt:</strong> {associatedLoan.totalNetWeight.toFixed(3)} g
+                <strong className="text-slate-900">Net Wt:</strong> {associatedLoan.totalNetWeight.toFixed(3)} g
               </span>
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                paddingTop: '8px',
-                borderTop: '1px dashed var(--border-subtle)',
-                flexWrap: 'wrap',
-                gap: '8px'
-              }}
-            >
+            <div className="flex justify-between pt-2 border-t border-dashed border-slate-200 flex-wrap gap-2">
               {receipt.outstandingBefore !== undefined && (
                 <span>
-                  Balance Before: <strong>₹{receipt.outstandingBefore.toLocaleString('en-IN')}</strong>
+                  Balance Before: <strong className="text-slate-900">₹{receipt.outstandingBefore.toLocaleString('en-IN')}</strong>
                 </span>
               )}
               <span>
-                Amount Paid: <strong style={{ color: 'var(--color-primary-dark)' }}>₹{receipt.amount.toLocaleString('en-IN')}</strong>
+                Amount Paid: <strong className="text-primary-700">₹{receipt.amount.toLocaleString('en-IN')}</strong>
               </span>
               <span>
-                Remaining Balance: <strong style={{ color: 'var(--color-primary-dark)' }}>₹{(receipt.outstandingAfter ?? associatedLoan.outstandingPrincipal).toLocaleString('en-IN')}</strong>
+                Remaining Balance: <strong className="text-primary-700">₹{(receipt.outstandingAfter ?? associatedLoan.outstandingPrincipal).toLocaleString('en-IN')}</strong>
               </span>
             </div>
 
             {/* Pledged Gold Photos Gallery on Voucher */}
             {associatedLoan.photos && associatedLoan.photos.length > 0 && (
-              <div style={{ marginTop: '6px', paddingTop: '8px', borderTop: '1px dashed var(--border-subtle)' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>
+              <div className="pt-2 border-t border-dashed border-slate-200">
+                <div className="text-[10px] font-bold text-slate-500 uppercase mb-2">
                   Pledged Collateral Photos ({associatedLoan.photos.length})
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="flex gap-2 flex-wrap">
                   {associatedLoan.photos.map((url, idx) => (
                     <div
                       key={`gold-photo-${idx}`}
-                      style={{
-                        width: '64px',
-                        height: '64px',
-                        borderRadius: '6px',
-                        overflow: 'hidden',
-                        border: '1px solid var(--border-subtle)'
-                      }}
+                      className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-white"
                     >
                       <img
                         src={url}
                         alt={`Pledged Gold ${idx + 1}`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        className="w-full h-full object-cover"
                       />
                     </div>
                   ))}
@@ -350,17 +294,17 @@ export const ReceiptDisplay: React.FC = () => {
         )}
 
         {/* Signature Area */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '48px', paddingTop: '20px' }}>
-          <div style={{ textAlign: 'center', width: '180px' }}>
-            <div style={{ borderTop: '1px solid var(--color-primary-dark)', paddingTop: '6px', fontSize: '11px', fontWeight: 600, color: 'var(--color-primary-dark)' }}>
+        <div className="flex justify-between mt-12 pt-4">
+          <div className="text-center w-44">
+            <div className="border-t border-slate-800 pt-1.5 text-xs font-semibold text-slate-800">
               Customer's Signature
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', width: '220px' }}>
-            <div style={{ borderTop: '1px solid var(--color-primary-dark)', paddingTop: '6px', fontSize: '11px', fontWeight: 600, color: 'var(--color-primary-dark)' }}>
+          <div className="text-center w-52">
+            <div className="border-t border-slate-800 pt-1.5 text-xs font-semibold text-slate-800">
               For KKV GOLD FINANCE
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>Authorized Signatory &amp; Seal</div>
+              <div className="text-[10px] text-slate-500 font-normal">Authorized Signatory &amp; Seal</div>
             </div>
           </div>
         </div>

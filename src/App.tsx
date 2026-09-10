@@ -197,7 +197,27 @@ export const App: React.FC = () => {
         if (!hasPermission('rental', 'view')) {
           return <AccessDenied requestedArea="Rental Complexes" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
         }
-        return <RentalComplexes onSelectComplex={() => setCurrentPage('rental-complex-detail')} />;
+        return (
+          <RentalComplexes
+            onManageShops={(complexId) => {
+              (window as any).__selectedRentalComplexId = complexId;
+              try {
+                sessionStorage.setItem('kkv_selected_rental_complex_id', complexId);
+                const url = new URL(window.location.href);
+                url.searchParams.set('complexId', complexId);
+                window.history.replaceState({}, '', url.toString());
+              } catch (e) {}
+              setCurrentPage('rental-shops');
+            }}
+            onSelectComplex={(complexId) => {
+              (window as any).__selectedRentalComplexId = complexId;
+              try {
+                sessionStorage.setItem('kkv_selected_rental_complex_id', complexId);
+              } catch (e) {}
+              setCurrentPage('rental-complex-detail');
+            }}
+          />
+        );
 
       case 'rental-complex-detail':
         if (!hasPermission('rental', 'view')) {

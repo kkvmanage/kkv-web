@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ShieldCheck, HardDrive, Key, UserCheck, Trash2, IndianRupee } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageHeader';
+import { StatCard, StatGrid } from '../components/ui/StatCard';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 interface LockerData {
     id: string; // e.g. A-1, B-5
@@ -88,7 +92,7 @@ export const Lockers: React.FC = () => {
         e.preventDefault();
         if (!selectedLocker) return;
 
-        if (!custName) {
+        if (!custName.trim()) {
             showToast('Please specify a holder name', 'error');
             return;
         }
@@ -98,11 +102,11 @@ export const Lockers: React.FC = () => {
                 return {
                     ...l,
                     status: 'Occupied' as const,
-                    customerName: custName,
-                    customerPhone: custPhone,
+                    customerName: custName.trim(),
+                    customerPhone: custPhone.trim(),
                     issueDate,
                     annualRent: rent,
-                    notes: noteText
+                    notes: noteText.trim()
                 };
             }
             return l;
@@ -158,271 +162,337 @@ export const Lockers: React.FC = () => {
             billNo: `LR-${Date.now().toString().slice(-4)}`
         });
 
-        showToast(`Recorded rent payment of ₹${payAmount} for Locker ${selectedLocker.id}`, 'success');
+        showToast(`Recorded rent payment of ₹${payAmount.toLocaleString('en-IN')} for Locker ${selectedLocker.id}`, 'success');
         setSelectedLocker(null);
     };
 
     const cabinetLockers = lockers.filter(l => l.cabinet === activeCabinet);
     const occupiedCount = lockers.filter(l => l.status === 'Occupied').length;
     const availableCount = lockers.length - occupiedCount;
+    const occupancyRate = Math.round((occupiedCount / lockers.length) * 100);
 
     return (
-        <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="space-y-6">
+            <PageHeader
+                title="Safe Vault & Lockers"
+                description="Manage secure vault storage lockers, allocation records, and annual lease rent collections."
+                breadcrumbs={[{ label: 'Home' }, { label: 'Lockers & Vault' }]}
+            />
 
-            {/* KPI Info Widgets */}
-            <div className="dashboard-kpis grid-3" style={{ gap: '15px' }}>
-                <div className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '16px 20px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light)' }}>
-                    <div style={{ backgroundColor: 'var(--color-primary-accent-op)', padding: '10px', borderRadius: '10px', color: 'var(--color-primary-dark)' }}>
-                        <HardDrive size={22} />
-                    </div>
-                    <div>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, margin: 0 }}>Total Cabinets</p>
-                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0', color: 'var(--text-primary)' }}>2 Cabinets (61 total)</h3>
-                    </div>
-                </div>
-
-                <div className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '16px 20px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light)' }}>
-                    <div style={{ backgroundColor: 'rgba(235, 94, 40, 0.1)', padding: '10px', borderRadius: '10px', color: '#EB5E28' }}>
-                        <Key size={22} />
-                    </div>
-                    <div>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, margin: 0 }}>Occupied Lockers</p>
-                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0', color: '#EB5E28' }}>{occupiedCount} Allocated</h3>
-                    </div>
-                </div>
-
-                <div className="kpi-card" style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '16px 20px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-light)' }}>
-                    <div style={{ backgroundColor: 'rgba(79, 175, 134, 0.1)', padding: '10px', borderRadius: '10px', color: '#4FAF86' }}>
-                        <ShieldCheck size={22} />
-                    </div>
-                    <div>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, margin: 0 }}>Available Lockers</p>
-                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0', color: '#4FAF86' }}>{availableCount} Empty</h3>
-                    </div>
-                </div>
-            </div>
+            {/* KPI Overview */}
+            <StatGrid columns={3}>
+                <StatCard
+                    title="Total Locker Capacity"
+                    value="61 Lockers"
+                    subtitle="Cabinet A (30) + Cabinet B (31)"
+                    icon={<HardDrive className="w-5 h-5 text-indigo-500" />}
+                    variant="indigo"
+                />
+                <StatCard
+                    title="Allocated / Occupied"
+                    value={`${occupiedCount} Lockers`}
+                    subtitle={`${occupancyRate}% vault occupancy`}
+                    icon={<Key className="w-5 h-5 text-amber-500" />}
+                    variant="amber"
+                />
+                <StatCard
+                    title="Available / Vacant"
+                    value={`${availableCount} Lockers`}
+                    subtitle="Ready for immediate lease"
+                    icon={<ShieldCheck className="w-5 h-5 text-emerald-500" />}
+                    variant="emerald"
+                />
+            </StatGrid>
 
             {/* Main Panel Content Grid */}
-            <div style={{ display: 'flex', gap: '20px' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                 {/* Locker Grid View */}
-                <div className="card" style={{ flex: 1, padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                        <div>
-                            <h2 className="card-title" style={{ fontSize: '16px', fontWeight: 800 }}>Locker Grid View</h2>
-                            <p className="card-description">Select cabinet &amp; click any locker to inspect allocations</p>
-                        </div>
-
-                        <div className="subchip-container" style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-surface-secondary)', padding: '4px', borderRadius: 'var(--radius-sm)' }}>
-                            <button
-                                className={`subchip-btn ${activeCabinet === 'A' ? 'active' : ''}`}
-                                onClick={() => setActiveCabinet('A')}
-                                style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', backgroundColor: activeCabinet === 'A' ? 'var(--bg-card)' : 'transparent', color: activeCabinet === 'A' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                            >
-                                Cabinet A (30 Lockers)
-                            </button>
-                            <button
-                                className={`subchip-btn ${activeCabinet === 'B' ? 'active' : ''}`}
-                                onClick={() => setActiveCabinet('B')}
-                                style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 700, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', backgroundColor: activeCabinet === 'B' ? 'var(--bg-card)' : 'transparent', color: activeCabinet === 'B' ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                            >
-                                Cabinet B (31 Lockers)
-                            </button>
-                        </div>
-                    </div>
-
-                    <div
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(68px, 1fr))',
-                            gap: '12px',
-                            padding: '10px 0'
-                        }}
+                <div className="lg:col-span-8">
+                    <Card
+                        title="Vault Locker Grid"
+                        subtitle={`Cabinet ${activeCabinet} • Click any locker slot to view details or allocate`}
+                        headerRight={
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                                <button
+                                    onClick={() => setActiveCabinet('A')}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                                        activeCabinet === 'A'
+                                            ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                    }`}
+                                >
+                                    Cabinet A (30)
+                                </button>
+                                <button
+                                    onClick={() => setActiveCabinet('B')}
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                                        activeCabinet === 'B'
+                                            ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                    }`}
+                                >
+                                    Cabinet B (31)
+                                </button>
+                            </div>
+                        }
                     >
-                        {cabinetLockers.map(l => (
-                            <button
-                                key={l.id}
-                                onClick={() => handleLockerClick(l)}
-                                style={{
-                                    height: '60px',
-                                    borderRadius: 'var(--radius-md)',
-                                    border: selectedLocker?.id === l.id ? '2px solid var(--color-primary-dark)' : '1px solid var(--border-subtle)',
-                                    backgroundColor: l.status === 'Occupied' ? 'rgba(235, 94, 40, 0.08)' : 'var(--bg-surface-secondary)',
-                                    color: l.status === 'Occupied' ? '#EB5E28' : 'var(--text-primary)',
-                                    fontWeight: 800,
-                                    fontSize: '12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '4px',
-                                    boxShadow: 'var(--shadow-sm)'
-                                }}
-                            >
-                                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>#{l.number}</span>
-                                <span>{l.id}</span>
-                            </button>
-                        ))}
-                    </div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-4 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800 text-xs font-medium text-slate-500">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300 dark:bg-emerald-950/50 dark:border-emerald-700"></span>
+                                Available
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300 dark:bg-amber-950/50 dark:border-amber-700"></span>
+                                Occupied
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 rounded ring-2 ring-primary-500"></span>
+                                Selected
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3 py-2">
+                            {cabinetLockers.map(l => {
+                                const isSelected = selectedLocker?.id === l.id;
+                                const isOccupied = l.status === 'Occupied';
+                                return (
+                                    <button
+                                        key={l.id}
+                                        onClick={() => handleLockerClick(l)}
+                                        className={`group relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all duration-150 ${
+                                            isSelected
+                                                ? 'ring-2 ring-primary-500 border-primary-500 bg-primary-50 dark:bg-primary-950/40 shadow-md scale-105 z-10'
+                                                : isOccupied
+                                                ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-300 hover:border-amber-300'
+                                                : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-emerald-300 dark:hover:border-emerald-800 hover:bg-emerald-50/40'
+                                        }`}
+                                    >
+                                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                                            #{l.number}
+                                        </span>
+                                        <span className="text-sm font-bold tracking-tight mt-0.5">
+                                            {l.id}
+                                        </span>
+                                        <div className="mt-1">
+                                            {isOccupied ? (
+                                                <Key className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                                            ) : (
+                                                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </Card>
                 </div>
 
                 {/* Locker Detail Inspector */}
-                <div className="card" style={{ width: '380px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    <div>
-                        <h2 className="card-title" style={{ fontSize: '16px', fontWeight: 800 }}>Locker Inspector</h2>
-                        <p className="card-description">Manage operations for locker selection</p>
-                    </div>
-
-                    {selectedLocker ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            <div style={{ display: 'flex', padding: '12px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-md)', alignItems: 'center', gap: '10px' }}>
-                                <Key size={18} color="var(--color-primary-dark)" />
-                                <div>
-                                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800 }}>Locker {selectedLocker.id}</h4>
-                                    <span style={{ fontSize: '11px', color: selectedLocker.status === 'Occupied' ? '#EB5E28' : '#4FAF86', fontWeight: 700 }}>
-                                        {selectedLocker.status === 'Occupied' ? 'ALLOCATED / OCCUPIED' : 'VACANT / AVAILABLE'}
-                                    </span>
+                <div className="lg:col-span-4">
+                    <Card
+                        title="Locker Inspector"
+                        subtitle={selectedLocker ? `Details for ${selectedLocker.id}` : 'Select a locker slot to inspect'}
+                    >
+                        {selectedLocker ? (
+                            <div className="space-y-4">
+                                <div className={`flex items-center justify-between p-3.5 rounded-xl border ${
+                                    selectedLocker.status === 'Occupied'
+                                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                                        : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                                }`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${
+                                            selectedLocker.status === 'Occupied'
+                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                                                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
+                                        }`}>
+                                            <Key className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-900 dark:text-white">
+                                                Locker {selectedLocker.id}
+                                            </div>
+                                            <div className="text-xs font-semibold capitalize mt-0.5">
+                                                <span className={selectedLocker.status === 'Occupied' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}>
+                                                    {selectedLocker.status === 'Occupied' ? 'Allocated / Occupied' : 'Vacant / Available'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {selectedLocker.status === 'Available' ? (
-                                /* Issue Locker Form */
-                                <form onSubmit={handleIssueLocker} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    <div className="form-group">
-                                        <label className="form-label required">Customer Name</label>
-                                        <input
-                                            type="text"
-                                            className="input-control"
-                                            list="customer-list"
-                                            placeholder="Type name or select borrower..."
-                                            value={custName}
-                                            onChange={(e) => {
-                                                setCustName(e.target.value);
-                                                // Auto-fill phone matching customer
-                                                const matched = customers.find(c => c.name.toLowerCase() === e.target.value.toLowerCase());
-                                                if (matched) setCustPhone(matched.phone);
-                                            }}
-                                            required
-                                        />
-                                        <datalist id="customer-list">
-                                            {customers.map(c => <option key={c.id} value={c.name} />)}
-                                        </datalist>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">Phone Number</label>
-                                        <input
-                                            type="tel"
-                                            className="input-control"
-                                            placeholder="e.g. 9876543210"
-                                            value={custPhone}
-                                            onChange={e => setCustPhone(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div className="form-groupGrid grid-2" style={{ display: 'flex', gap: '10px' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <label className="form-label">Issue Date</label>
+                                {selectedLocker.status === 'Available' ? (
+                                    /* Issue Locker Form */
+                                    <form onSubmit={handleIssueLocker} className="space-y-3.5 pt-1">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                Customer Name <span className="text-rose-500">*</span>
+                                            </label>
                                             <input
-                                                type="date"
-                                                className="input-control"
-                                                value={issueDate}
-                                                onChange={e => setIssueDate(e.target.value)}
+                                                type="text"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                                list="locker-customer-list"
+                                                placeholder="Type name or select customer..."
+                                                value={custName}
+                                                onChange={(e) => {
+                                                    setCustName(e.target.value);
+                                                    const matched = customers.find(c => c.name.toLowerCase() === e.target.value.toLowerCase());
+                                                    if (matched) setCustPhone(matched.phone);
+                                                }}
+                                                required
                                             />
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <label className="form-label">Annual Rent (₹)</label>
-                                            <input
-                                                type="number"
-                                                className="input-control"
-                                                value={rent}
-                                                onChange={e => setRent(Number(e.target.value))}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">Notes</label>
-                                        <textarea
-                                            className="input-control"
-                                            rows={2}
-                                            placeholder="Item tags, security key details..."
-                                            value={noteText}
-                                            onChange={e => setNoteText(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}>
-                                        <UserCheck size={14} />
-                                        <span>Issue Locker Key</span>
-                                    </button>
-                                </form>
-                            ) : (
-                                /* Occupied Actions (Record Rent / Vacate) */
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '6px', fontSize: '12px' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>Holder:</span>
-                                        <strong style={{ color: 'var(--text-primary)' }}>{selectedLocker.customerName}</strong>
-                                        <span style={{ color: 'var(--text-muted)' }}>Phone:</span>
-                                        <span style={{ color: 'var(--text-primary)' }}>{selectedLocker.customerPhone || 'N/A'}</span>
-                                        <span style={{ color: 'var(--text-muted)' }}>Issued:</span>
-                                        <span style={{ color: 'var(--text-primary)' }}>{selectedLocker.issueDate}</span>
-                                        <span style={{ color: 'var(--text-muted)' }}>Annual Rent:</span>
-                                        <strong style={{ color: 'var(--text-primary)' }}>₹{selectedLocker.annualRent}</strong>
-                                        <span style={{ color: 'var(--text-muted)' }}>Notes:</span>
-                                        <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)' }}>{selectedLocker.notes || 'None'}</p>
-                                    </div>
-
-                                    {/* Record Rent Payout Form */}
-                                    <form onSubmit={handlePayRent} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        <h4 style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)' }}>Record Rent Receipt</h4>
-
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <input
-                                                type="number"
-                                                className="input-control"
-                                                style={{ width: '90px' }}
-                                                value={payAmount}
-                                                onChange={e => setPayAmount(Number(e.target.value))}
-                                            />
-                                            <select
-                                                className="input-control"
-                                                style={{ flex: 1 }}
-                                                value={payMode}
-                                                onChange={e => setPayMode(e.target.value as any)}
-                                            >
-                                                <option value="Cash">Cash Counter</option>
-                                                <option value="Bank">Bank Deposit</option>
-                                                <option value="UPI">Business UPI</option>
-                                            </select>
+                                            <datalist id="locker-customer-list">
+                                                {customers.map(c => <option key={c.id} value={c.name} />)}
+                                            </datalist>
                                         </div>
 
-                                        <button type="submit" className="btn btn-primary btn-sm" style={{ width: '100%', justifyContent: 'center' }}>
-                                            <IndianRupee size={12} />
-                                            <span>Collect Rent Voucher</span>
-                                        </button>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                Phone Number
+                                            </label>
+                                            <input
+                                                type="tel"
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                                placeholder="e.g. 9876543210"
+                                                value={custPhone}
+                                                onChange={e => setCustPhone(e.target.value)}
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                    Issue Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                                    value={issueDate}
+                                                    onChange={e => setIssueDate(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                    Annual Rent (₹)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                                    value={rent}
+                                                    onChange={e => setRent(Number(e.target.value))}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                Notes / Key Tag
+                                            </label>
+                                            <textarea
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                                                rows={2}
+                                                placeholder="Item tags, security key details..."
+                                                value={noteText}
+                                                onChange={e => setNoteText(e.target.value)}
+                                            />
+                                        </div>
+
+                                        <Button
+                                            type="submit"
+                                            variant="primary"
+                                            icon={<UserCheck className="w-4 h-4" />}
+                                            className="w-full justify-center mt-2"
+                                        >
+                                            Issue Locker Key
+                                        </Button>
                                     </form>
+                                ) : (
+                                    /* Occupied Details & Actions */
+                                    <div className="space-y-4 pt-1">
+                                        <div className="space-y-2 text-xs bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Holder:</span>
+                                                <span className="font-bold text-slate-900 dark:text-white">{selectedLocker.customerName}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Phone:</span>
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedLocker.customerPhone || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Issue Date:</span>
+                                                <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedLocker.issueDate}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Annual Rent:</span>
+                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{selectedLocker.annualRent?.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            {selectedLocker.notes && (
+                                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 italic">
+                                                    "{selectedLocker.notes}"
+                                                </div>
+                                            )}
+                                        </div>
 
-                                    {/* Vacate Call */}
-                                    <button
-                                        type="button"
-                                        className="btn btn-secondary btn-sm"
-                                        style={{ width: '100%', justifyContent: 'center', borderColor: 'var(--color-primary-dark)', color: 'var(--color-primary-dark)' }}
-                                        onClick={handleVacateLocker}
-                                    >
-                                        <Trash2 size={12} />
-                                        <span>Vacate &amp; Release Locker</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div style={{ padding: '40px 10px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <Key size={30} style={{ opacity: 0.3, marginBottom: '8px' }} />
-                            <p style={{ fontSize: '12px', margin: 0 }}>Select any cabinet cell to inspect accounts, register handovers, or terminate locker leases.</p>
-                        </div>
-                    )}
+                                        {/* Record Rent Payout Form */}
+                                        <form onSubmit={handlePayRent} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+                                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                                <IndianRupee className="w-3.5 h-3.5 text-emerald-500" />
+                                                Collect Rent Payment
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
+                                                    value={payAmount}
+                                                    onChange={e => setPayAmount(Number(e.target.value))}
+                                                />
+                                                <select
+                                                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
+                                                    value={payMode}
+                                                    onChange={e => setPayMode(e.target.value as any)}
+                                                >
+                                                    <option value="Cash">Cash Counter</option>
+                                                    <option value="Bank">Bank Transfer</option>
+                                                    <option value="UPI">Business UPI</option>
+                                                </select>
+                                            </div>
+
+                                            <Button
+                                                type="submit"
+                                                variant="primary"
+                                                size="sm"
+                                                className="w-full justify-center"
+                                            >
+                                                Record Rent Voucher
+                                            </Button>
+                                        </form>
+
+                                        {/* Vacate Button */}
+                                        <Button
+                                            type="button"
+                                            variant="danger"
+                                            size="sm"
+                                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                                            onClick={handleVacateLocker}
+                                            className="w-full justify-center"
+                                        >
+                                            Vacate & Release Locker
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="py-12 text-center text-slate-400 dark:text-slate-600">
+                                <Key className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                                <p className="text-xs font-medium max-w-xs mx-auto">
+                                    Select any locker slot in Cabinet A or B to inspect records, register handovers, or record lease rent.
+                                </p>
+                            </div>
+                        )}
+                    </Card>
                 </div>
             </div>
         </div>

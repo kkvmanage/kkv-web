@@ -2,16 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Download,
-  Send,
   RefreshCw,
   HardDrive,
   FileArchive,
   AlertTriangle,
   RotateCcw,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  SendHorizontal
 } from 'lucide-react';
 import { apiService } from '../services/api';
+import { PageHeader } from '../components/ui/PageHeader';
+import { StatCard, StatGrid } from '../components/ui/StatCard';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 import { WipeAllDataModal } from '../components/admin/WipeAllDataModal';
 import { SystemRestoreModal } from '../components/admin/SystemRestoreModal';
 
@@ -150,371 +154,257 @@ export const BackupRestore: React.FC = () => {
     (dayBookEntries?.length || 0);
 
   return (
-    <div className="page-content">
+    <div className="space-y-6">
       {/* PAGE HEADER */}
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">Backup &amp; Disaster Recovery</h2>
-          <p className="page-description">
-            Complete data protection suite with portable archives, integrity verification, and atomic restoration.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
+      <PageHeader
+        title="Backup & Disaster Recovery"
+        description="Comprehensive data protection suite with portable archives, integrity verification, and atomic restoration."
+        breadcrumbs={[{ label: 'Home' }, { label: 'Admin Panel' }, { label: 'Backup & Restore' }]}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw className={`w-4 h-4 ${loadingHistory ? 'animate-spin' : ''}`} />}
             onClick={() => {
               loadHistory();
               loadRestoreHistory();
             }}
           >
-            <RefreshCw size={15} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
+            Refresh History
+          </Button>
+        }
+      />
 
       {/* THREE TOP STAT CARDS */}
-      <div className="grid-3" style={{ gap: '16px', marginBottom: '24px' }}>
-        {/* CARD 1: DATABASE STATUS */}
-        <div className="card" style={{ padding: '18px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Operational Records
-            </span>
-            <HardDrive size={16} color="var(--color-primary)" />
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {totalOperationalRecords.toLocaleString()}{' '}
-            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)' }}>Records</span>
-          </div>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Across {customers?.length || 0} customers, {loans?.length || 0} loans, {receipts?.length || 0} receipts
-          </p>
-        </div>
-
-        {/* CARD 2: BACKUP ARCHIVES */}
-        <div className="card" style={{ padding: '18px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Server Backup Archives
-            </span>
-            <FileArchive size={16} color="var(--color-primary)" />
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)' }}>
-            {backupHistory.length} <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)' }}>Packages</span>
-          </div>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            {backupHistory.length > 0
-              ? `Latest: ${new Date(backupHistory[0].createdAt).toLocaleDateString()}`
-              : 'No backups generated yet'}
-          </p>
-        </div>
-
-        {/* CARD 3: SYSTEM INTEGRITY */}
-        <div className="card" style={{ padding: '18px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Data Vault Integrity
-            </span>
-            <ShieldCheck size={16} color="#16A34A" />
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: '#166534' }}>
-            ✓ Authoritative Storage Active
-          </div>
-          <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            MongoDB Replica &amp; Local Encrypted Vault
-          </p>
-        </div>
-      </div>
+      <StatGrid columns={3}>
+        <StatCard
+          title="Operational Records"
+          value={`${totalOperationalRecords.toLocaleString()} Records`}
+          subtitle={`Across ${customers?.length || 0} customers, ${loans?.length || 0} loans`}
+          icon={<HardDrive className="w-5 h-5 text-indigo-500" />}
+          variant="indigo"
+        />
+        <StatCard
+          title="Server Backup Archives"
+          value={`${backupHistory.length} Packages`}
+          subtitle={backupHistory.length > 0 ? `Latest: ${new Date(backupHistory[0].createdAt).toLocaleDateString()}` : 'No backups generated yet'}
+          icon={<FileArchive className="w-5 h-5 text-teal-500" />}
+          variant="teal"
+        />
+        <StatCard
+          title="Data Vault Integrity"
+          value="Authoritative Storage"
+          subtitle="Encrypted Local + Server Mirror"
+          icon={<ShieldCheck className="w-5 h-5 text-emerald-500" />}
+          variant="emerald"
+        />
+      </StatGrid>
 
       {/* MAIN TWO-COLUMN LAYOUT */}
-      <div className="grid-2" style={{ gap: '20px' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: BACKUP MANAGEMENT & RESTORE */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="lg:col-span-7 space-y-6">
           {/* CREATE BACKUP CARD */}
-          <div className="card" style={{ padding: '24px' }}>
-            <div className="card-header" style={{ marginBottom: '16px' }}>
-              <div>
-                <h3 className="card-title" style={{ fontSize: '17px', fontWeight: 800 }}>
-                  Create Complete Backup Package
-                </h3>
-                <p className="card-description">
-                  Generates an encrypted, portable ZIP archive with JSON snapshot, CSV exports, manifest, and SHA-256 checksums.
-                </p>
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: '14px',
-                backgroundColor: 'var(--bg-surface-secondary, #F8FAFC)',
-                border: '1px solid var(--border-light, #E2E8F0)',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '12.5px'
-              }}
-            >
-              <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+          <Card
+            title="Create Complete Backup Package"
+            subtitle="Generates an encrypted portable ZIP archive with JSON snapshot, CSV exports, manifest, and SHA-256 checksums"
+          >
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs space-y-2 mb-4">
+              <div className="font-bold text-slate-900 dark:text-white">
                 Included in Backup Archive:
               </div>
-              <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
-                <li>Authoritative database snapshot (<code>snapshot.json</code>)</li>
-                <li>Individual entity CSV exports (<code>data/*.csv</code>)</li>
-                <li>Cryptographic integrity manifest (<code>manifest.json</code> &amp; <code>SHA256SUMS.txt</code>)</li>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-400">
+                <li>Authoritative database snapshot (<code className="text-primary-600 dark:text-primary-400">snapshot.json</code>)</li>
+                <li>Individual entity CSV exports (<code className="text-primary-600 dark:text-primary-400">data/*.csv</code>)</li>
+                <li>Cryptographic integrity manifest (<code className="text-primary-600 dark:text-primary-400">manifest.json</code> &amp; <code className="text-primary-600 dark:text-primary-400">SHA256SUMS.txt</code>)</li>
               </ul>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="primary"
+                icon={creatingBackup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />}
                 disabled={creatingBackup}
                 onClick={handleCreateFullBackup}
               >
-                {creatingBackup ? <RefreshCw size={16} className="spin" /> : <FileArchive size={16} />}
-                <span>{creatingBackup ? 'Creating Package...' : 'Create Backup Package (.ZIP)'}</span>
-              </button>
+                {creatingBackup ? 'Creating Package...' : 'Create Backup Package (.ZIP)'}
+              </Button>
 
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+              <Button
+                variant="outline"
+                icon={<RotateCcw className="w-4 h-4" />}
                 onClick={() => setShowRestoreModal(true)}
               >
-                <RotateCcw size={15} />
-                <span>Restore From Backup</span>
-              </button>
+                Restore From Backup
+              </Button>
             </div>
-          </div>
+          </Card>
 
           {/* BACKUP HISTORY TABLE */}
-          <div className="card" style={{ padding: '24px' }}>
-            <div className="card-header" style={{ marginBottom: '16px' }}>
-              <div>
-                <h3 className="card-title" style={{ fontSize: '17px', fontWeight: 800 }}>
-                  Backup History &amp; Downloads
-                </h3>
-                <p className="card-description">
-                  Verified server archives available for download.
-                </p>
-              </div>
-            </div>
-
+          <Card
+            title="Backup History & Downloads"
+            subtitle="Verified server archives available for instant retrieval and offline storage"
+          >
             {loadingHistory ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                <RefreshCw size={20} className="spin" style={{ margin: '0 auto 8px' }} />
-                <span>Loading backup history...</span>
+              <div className="text-center py-8 text-slate-500">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-primary-500" />
+                <span className="text-xs">Loading backup history...</span>
               </div>
             ) : backupHistory.length === 0 ? (
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '24px',
-                  backgroundColor: 'var(--bg-surface-secondary, #F8FAFC)',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-light, #E2E8F0)',
-                  color: 'var(--text-muted)',
-                  fontSize: '13px'
-                }}
-              >
+              <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
                 No backup packages generated yet. Click "Create Backup Package" above.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                 {backupHistory.map((b) => (
                   <div
                     key={b.backupId}
-                    style={{
-                      padding: '12px 14px',
-                      backgroundColor: 'var(--bg-surface-secondary, #F8FAFC)',
-                      border: '1px solid var(--border-light, #E2E8F0)',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: '12px'
-                    }}
+                    className="p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs"
                   >
                     <div>
-                      <strong style={{ color: 'var(--text-primary)', display: 'block', fontSize: '13px' }}>
+                      <strong className="text-slate-900 dark:text-white block font-mono text-xs">
                         {b.fileName}
                       </strong>
-                      <span style={{ color: 'var(--text-muted)' }}>
-                        {new Date(b.createdAt).toLocaleString()} | {(b.fileSize / 1024).toFixed(1)} KB | {b.totalRecords || 0} records
+                      <span className="text-slate-500 text-[11px] mt-0.5 block">
+                        {new Date(b.createdAt).toLocaleString()} • {(b.fileSize / 1024).toFixed(1)} KB • {b.totalRecords || 0} records
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ padding: '6px 10px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        onClick={() => handleDownloadBackup(b.backupId)}
-                      >
-                        <Download size={13} />
-                        <span>Download</span>
-                      </button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={<Download className="w-3.5 h-3.5" />}
+                      onClick={() => handleDownloadBackup(b.backupId)}
+                    >
+                      Download
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* RESTORE AUDIT HISTORY */}
-          <div className="card" style={{ padding: '24px' }}>
-            <div className="card-header" style={{ marginBottom: '16px' }}>
-              <div>
-                <h3 className="card-title" style={{ fontSize: '17px', fontWeight: 800 }}>
-                  Restoration Audit Log
-                </h3>
-                <p className="card-description">
-                  Historical log of database restorations, rollbacks, and schema integrity validations.
-                </p>
-              </div>
-            </div>
-
+          <Card
+            title="Restoration Audit Log"
+            subtitle="Historical log of database restorations, rollbacks, and schema integrity validations"
+          >
             {loadingRestoreHistory ? (
-              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                <RefreshCw size={20} className="spin" style={{ margin: '0 auto 8px' }} />
-                <span>Loading restore logs...</span>
+              <div className="text-center py-8 text-slate-500">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-primary-500" />
+                <span className="text-xs">Loading restore logs...</span>
               </div>
             ) : restoreHistory.length === 0 ? (
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '24px',
-                  backgroundColor: 'var(--bg-surface-secondary, #F8FAFC)',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-light, #E2E8F0)',
-                  color: 'var(--text-muted)',
-                  fontSize: '13px'
-                }}
-              >
+              <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
                 No system restorations recorded in audit log.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
+              <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
                 {restoreHistory.map((r) => (
                   <div
                     key={r.restoreId}
-                    style={{
-                      padding: '12px 14px',
-                      backgroundColor: 'var(--bg-surface-secondary, #F8FAFC)',
-                      border: '1px solid var(--border-light, #E2E8F0)',
-                      borderRadius: '8px',
-                      fontSize: '12px'
-                    }}
+                    className="p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl text-xs space-y-1"
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <strong style={{ color: 'var(--text-primary)' }}>{r.backupFileName || r.restoreId}</strong>
-                      <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <CheckCircle2 size={11} /> {r.status || 'VERIFIED'}
+                    <div className="flex justify-between items-center">
+                      <strong className="text-slate-900 dark:text-white font-mono">{r.backupFileName || r.restoreId}</strong>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        <CheckCircle2 className="w-3 h-3" /> {r.status || 'VERIFIED'}
                       </span>
                     </div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                    <div className="text-slate-500 text-[11px]">
                       Restored by {r.restoredBy || 'Admin'} on {new Date(r.createdAt || r.restoredAt).toLocaleString()}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </div>
 
         {/* RIGHT COLUMN: TELEGRAM + DANGER ZONE */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="lg:col-span-5 space-y-6">
           {/* TELEGRAM SETUP */}
-          <div className="card" style={{ padding: '24px' }}>
-            <div className="card-header" style={{ marginBottom: '16px' }}>
+          <Card
+            title="Telegram Auto-Backup"
+            subtitle="Dispatches scheduled database snapshots automatically to your secure Telegram bot channel"
+          >
+            <div className="space-y-4">
               <div>
-                <h3 className="card-title" style={{ fontSize: '17px', fontWeight: 800 }}>Telegram Auto-Backup</h3>
-                <p className="card-description">Dispatches daily database snapshots automatically to your Telegram channel.</p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="form-group">
-                <label className="form-label">Bot Token:</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Bot Token
+                </label>
                 <input
                   type="password"
-                  className="input-control"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
                   placeholder="123456:ABC-DEF..."
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Chat ID:</label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Chat ID / Channel ID
+                </label>
                 <input
                   type="text"
-                  className="input-control"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
                   placeholder="-100123456789"
                   value={chatId}
                   onChange={(e) => setChatId(e.target.value)}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                  Auto-backup on application start
-                </span>
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoBackupOnOpen}
                   onChange={(e) => setAutoBackupOnOpen(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500"
                 />
-              </div>
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Auto-backup snapshot upon application initialization
+                </span>
+              </label>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={handleTestTelegram}>
-                  <Send size={14} />
-                  <span>Test Message</span>
-                </button>
-                <button type="button" className="btn btn-primary" onClick={handleSaveTelegram}>
-                  <span>Save Settings</span>
-                </button>
+              <div className="flex gap-2.5 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<SendHorizontal className="w-4 h-4" />}
+                  onClick={handleTestTelegram}
+                >
+                  Test Dispatch
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveTelegram}
+                >
+                  Save Configuration
+                </Button>
               </div>
             </div>
-          </div>
+          </Card>
 
           {/* DANGER ZONE: WIPE ALL DATA */}
-          <div
-            className="card"
-            style={{
-              padding: '24px',
-              border: '1px solid #FCA5A5',
-              backgroundColor: '#FEF2F2'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', color: '#991B1B' }}>
-              <AlertTriangle size={20} />
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Danger Zone</h3>
+          <div className="p-6 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/20 space-y-4">
+            <div className="flex items-center gap-2.5 text-rose-800 dark:text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+              <h3 className="text-base font-extrabold m-0">Danger Zone</h3>
             </div>
-            <p style={{ fontSize: '12.5px', color: '#7F1D1D', lineHeight: '1.5', margin: '0 0 16px' }}>
+            <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
               Wipes all operational customer, loan, payment, receipt, and ledger records. Requires creating, downloading, and acknowledging a complete verified backup before destruction.
             </p>
 
-            <button
-              type="button"
-              className="btn"
-              style={{
-                backgroundColor: '#DC2626',
-                color: '#FFFFFF',
-                fontWeight: 800,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
+            <Button
+              variant="danger"
+              icon={<AlertTriangle className="w-4 h-4" />}
               onClick={() => setShowWipeModal(true)}
+              className="w-full justify-center"
             >
-              <AlertTriangle size={16} />
-              <span>Wipe All Operational Data</span>
-            </button>
+              Wipe All Operational Data
+            </Button>
           </div>
         </div>
       </div>
@@ -544,4 +434,5 @@ export const BackupRestore: React.FC = () => {
     </div>
   );
 };
+
 export default BackupRestore;

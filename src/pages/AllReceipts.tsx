@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Receipt } from '../types';
-import { SearchInput } from '../components/common/SearchInput';
-import { FileSpreadsheet, FileText, Printer, Edit3, Copy } from 'lucide-react';
+import { FileSpreadsheet, FileText, Eye, Copy, Search, Receipt as ReceiptIcon, TrendingUp, DollarSign } from 'lucide-react';
+import { PageHeader, StatGrid, StatCard, FilterBar, DataTable, StatusBadge, Button, ColumnDef } from '../components/ui';
 
 export const AllReceipts: React.FC = () => {
   const { receipts, setSelectedReceipt, setCurrentPage, showToast } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
+  const [kindFilter, setKindFilter] = useState<string>('ALL');
 
   const filteredReceipts = receipts.filter((r) => {
-    const term = searchTerm.toLowerCase();
-    return (
+    const term = searchTerm.toLowerCase().trim();
+    const matchesSearch =
+      !term ||
       r.receiptNo.toString().includes(term) ||
       r.loanNo.toLowerCase().includes(term) ||
       r.customerName.toLowerCase().includes(term) ||
-      r.kind.toLowerCase().includes(term)
-    );
+      r.kind.toLowerCase().includes(term);
+
+    const matchesKind = kindFilter === 'ALL' || r.kind === kindFilter;
+    return matchesSearch && matchesKind;
   });
+
+  const totalCollected = receipts
+    .filter(r => r.kind !== 'NEW LOAN')
+    .reduce((sum, r) => sum + (r.amount || 0), 0);
+
+  const totalDisbursed = receipts
+    .filter(r => r.kind === 'NEW LOAN')
+    .reduce((sum, r) => sum + (r.amount || 0), 0);
 
   const handleViewReceipt = (receipt: Receipt) => {
     setSelectedReceipt(receipt);
@@ -36,121 +48,191 @@ export const AllReceipts: React.FC = () => {
     showToast(`Copied details for Receipt #${receipt.receiptNo}`, 'success');
   };
 
+  const columns: ColumnDef<Receipt>[] = [
+    {
+      key: 'receiptNo',
+      label: 'RECEIPT #',
+      render: (r) => (
+        <strong style={{ color: 'var(--primary, #176B52)' }}>
+          #{r.receiptNo}
+        </strong>
+      )
+    },
+    {
+      key: 'kind',
+      label: 'TRANSACTION KIND',
+      render: (r) => (
+        <StatusBadge
+          status={r.kind === 'NEW LOAN' ? 'ACTIVE' : r.kind === 'LOAN CLOSURE' ? 'CLOSED' : 'PAID'}
+          label={r.kind}
+        />
+      )
+    },
+    {
+      key: 'loanType',
+      label: 'LOAN TYPE',
+      render: (r) => <span style={{ color: 'var(--text-secondary)' }}>{r.loanType || 'Gold Loan'}</span>
+    },
+    {
+      key: 'customerName',
+      label: 'BORROWER',
+      render: (r) => <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.customerName}</span>
+    },
+    {
+      key: 'loanNo',
+      label: 'LOAN ACCOUNT',
+      render: (r) => <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{r.loanNo}</span>
+    },
+    {
+      key: 'amount',
+      label: 'VOUCHER AMOUNT',
+      align: 'right',
+      render: (r) => (
+        <strong style={{ color: 'var(--text-primary)', fontWeight: 800 }}>
+          ₹{(r.amount || 0).toLocaleString('en-IN')}
+        </strong>
+      )
+    },
+    {
+      key: 'date',
+      label: 'PAYMENT DATE',
+      render: (r) => <span style={{ color: 'var(--text-muted)' }}>{r.date}</span>
+    },
+    {
+      key: 'actions',
+      label: 'ACTIONS',
+      align: 'right',
+      render: (r) => (
+        <div style={{ display: 'inline-flex', gap: '6px' }}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            style={{ padding: '0 6px', height: '28px', color: 'var(--primary, #176B52)' }}
+            title="View Receipt Document"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleViewReceipt(r);
+            }}
+          >
+            <Eye size={14} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            style={{ padding: '0 6px', height: '28px', color: 'var(--text-secondary)' }}
+            title="Copy Receipt Summary"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCopy(r);
+            }}
+          >
+            <Copy size={13} />
+          </Button>
+        </div>
+      )
+    }
+  ];
+
   return (
     <div className="page-content">
-      <div className="card">
-        {/* Card Header matching Screenshot 174044 */}
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">All Receipts</h2>
-            <p className="card-description">Loan disbursements and payment receipts only.</p>
-          </div>
+      <PageHeader
+        title="All Payment Receipts"
+        subtitle="Official chronological register of all loan disbursements, repayments, interest collections, and closures"
+        icon={<ReceiptIcon size={17} />}
+        actions={
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>
-              <FileSpreadsheet size={14} />
-              <span>Export Excel</span>
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={handleExportPDF}>
-              <FileText size={14} />
-              <span>Export PDF</span>
-            </button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<FileSpreadsheet size={14} />}
+              onClick={handleExportExcel}
+            >
+              Export Excel
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<FileText size={14} />}
+              onClick={handleExportPDF}
+            >
+              Export PDF
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<ReceiptIcon size={14} />}
+              onClick={() => setCurrentPage('loan-receipts')}
+            >
+              + Issue Receipt
+            </Button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Search Bar */}
-        <div style={{ marginBottom: '18px', maxWidth: '420px' }}>
-          <SearchInput
+      {/* Summary Stat Cards */}
+      <StatGrid columns={3}>
+        <StatCard
+          label="Total Receipts Recorded"
+          value={receipts.length}
+          subValue="All transaction vouchers"
+          colorTheme="primary"
+          icon={<ReceiptIcon size={18} />}
+        />
+        <StatCard
+          label="Repayments & Interest Collected"
+          value={`₹${totalCollected.toLocaleString('en-IN')}`}
+          subValue="Credits to branch accounts"
+          colorTheme="success"
+          icon={<TrendingUp size={18} />}
+        />
+        <StatCard
+          label="Principal Disbursed"
+          value={`₹${totalDisbursed.toLocaleString('en-IN')}`}
+          subValue="Disbursements via new loans"
+          colorTheme="info"
+          icon={<DollarSign size={18} />}
+        />
+      </StatGrid>
+
+      {/* Filter Toolbar */}
+      <FilterBar onReset={searchTerm || kindFilter !== 'ALL' ? () => { setSearchTerm(''); setKindFilter('ALL'); } : undefined}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '220px', maxWidth: '400px' }}>
+          <Search size={14} style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            className="input-control"
+            style={{ paddingLeft: '34px', height: '36px', fontSize: '12.5px' }}
             value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search receipt, loan, or customer..."
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search receipt #, loan account, borrower name, kind..."
           />
         </div>
 
-        {/* Receipts Table */}
-        <div className="table-container">
-          <table className="custom-table">
-            <thead>
-              <tr>
-                <th style={{ width: '100px' }}>RECEIPT #</th>
-                <th style={{ width: '130px' }}>KIND</th>
-                <th style={{ width: '130px' }}>LOAN TYPE</th>
-                <th>CUSTOMER</th>
-                <th>LOAN</th>
-                <th style={{ textAlign: 'right' }}>AMOUNT</th>
-                <th style={{ width: '110px' }}>DATE</th>
-                <th style={{ width: '130px', textAlign: 'center' }}>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReceipts.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                    No receipts found matching your search.
-                  </td>
-                </tr>
-              ) : (
-                filteredReceipts.map((r, idx) => (
-                  <tr key={`all-rcpt-${r.id}-${idx}`}>
-                    <td style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>
-                      #{r.receiptNo}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          r.kind === 'NEW LOAN'
-                            ? 'badge-info'
-                            : r.kind === 'REPAYMENT'
-                            ? 'badge-success'
-                            : 'badge-gold'
-                        }`}
-                      >
-                        {r.kind}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="badge badge-gold">{r.loanType}</span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{r.customerName}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--color-primary-dark)' }}>{r.loanNo}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--color-primary-dark)' }}>
-                      ₹{r.amount.toLocaleString('en-IN')}
-                    </td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{r.date}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', gap: '5px' }}>
-                        <button
-                          className="icon-button"
-                          style={{ width: '28px', height: '28px' }}
-                          title="View & Print Official Receipt"
-                          onClick={() => handleViewReceipt(r)}
-                        >
-                          <Printer size={13} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          style={{ width: '28px', height: '28px' }}
-                          title="Edit Receipt"
-                          onClick={() => showToast(`Edit receipt #${r.receiptNo}`, 'info')}
-                        >
-                          <Edit3 size={13} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          style={{ width: '28px', height: '28px' }}
-                          title="Copy Receipt Summary"
-                          onClick={() => handleCopy(r)}
-                        >
-                          <Copy size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <select
+          className="select-control"
+          style={{ width: '180px', height: '36px', fontSize: '12px' }}
+          value={kindFilter}
+          onChange={(e) => setKindFilter(e.target.value)}
+        >
+          <option value="ALL">All Transaction Kinds</option>
+          <option value="NEW LOAN">New Loan Disbursement</option>
+          <option value="INTEREST PAYMENT">Interest Payment</option>
+          <option value="REPAYMENT">Part Principal Repayment</option>
+          <option value="LOAN CLOSURE">Loan Closure</option>
+        </select>
+      </FilterBar>
+
+      {/* DataTable */}
+      <DataTable
+        columns={columns}
+        data={filteredReceipts}
+        keyExtractor={(r, idx) => `all-rcpt-${r.id || idx}`}
+        onRowClick={handleViewReceipt}
+        emptyTitle="No receipts found"
+        emptyDescription="No payment vouchers match your search or filter criteria."
+      />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Search, Edit2, CheckCircle2, Ban, ArrowUpRight } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, CheckCircle2, Ban, ArrowRight } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import { rentalApi } from '../services/rentalApi';
 import { RentalComplex, RentalShop, RentalStatus } from '../types/rental.types';
@@ -8,9 +8,10 @@ import { ComplexModal } from '../components/ComplexModal';
 
 interface RentalComplexesProps {
   onSelectComplex?: (complexId: string) => void;
+  onManageShops?: (complexId: string) => void;
 }
 
-export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComplex }) => {
+export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComplex, onManageShops }) => {
   const { setCurrentPage, showToast } = useApp();
 
   const [complexes, setComplexes] = useState<RentalComplex[]>([]);
@@ -35,6 +36,40 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
       console.error('Error fetching complexes:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchComplexes();
+  }, []);
+
+  const handleManageShops = (complexId: string) => {
+    (window as any).__selectedRentalComplexId = complexId;
+    try {
+      sessionStorage.setItem('kkv_selected_rental_complex_id', complexId);
+    } catch (e) {}
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('complexId', complexId);
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {}
+
+    if (onManageShops) {
+      onManageShops(complexId);
+    } else {
+      setCurrentPage('rental-shops');
+    }
+  };
+
+  const handleSelectComplex = (complexId: string) => {
+    (window as any).__selectedRentalComplexId = complexId;
+    try {
+      sessionStorage.setItem('kkv_selected_rental_complex_id', complexId);
+    } catch (e) {}
+    if (onSelectComplex) {
+      onSelectComplex(complexId);
+    } else {
+      setCurrentPage('rental-complex-detail');
     }
   };
 
@@ -206,7 +241,11 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
                       >
                         {complex.complexId}
                       </span>
-                      <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '2px 0 0 0', color: 'var(--text-primary)' }}>
+                      <h3
+                        style={{ fontSize: '16px', fontWeight: 800, margin: '2px 0 0 0', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        onClick={() => handleSelectComplex(complex.complexId)}
+                        title={`View ${complex.complexName} details`}
+                      >
                         {complex.complexName}
                       </h3>
                     </div>
@@ -295,18 +334,12 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
                   <button
                     type="button"
                     className="btn btn-sm btn-primary"
-                    style={{ padding: '3px 10px', fontSize: '11px' }}
-                    onClick={() => {
-                      if (onSelectComplex) {
-                        onSelectComplex(complex.complexId);
-                      } else {
-                        (window as any).__selectedRentalComplexId = complex.complexId;
-                        setCurrentPage('rental-complex-detail' as any);
-                      }
-                    }}
+                    style={{ padding: '4px 12px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    onClick={() => handleManageShops(complex.complexId)}
+                    title={`Manage shops and tenants for ${complex.complexName}`}
                   >
                     <span>Manage Shops</span>
-                    <ArrowUpRight size={12} />
+                    <ArrowRight size={13} />
                   </button>
                 </div>
               </div>

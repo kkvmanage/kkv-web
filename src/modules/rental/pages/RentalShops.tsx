@@ -7,7 +7,10 @@ import {
   Phone,
   CreditCard,
   Ban,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
+  Building2,
+  X
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import { rentalApi } from '../services/rentalApi';
@@ -18,16 +21,31 @@ import { PaymentModal } from '../components/PaymentModal';
 
 interface RentalShopsProps {
   onSelectShop?: (shopId: string) => void;
+  initialComplexId?: string;
 }
 
-export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
+export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialComplexId }) => {
   const { setCurrentPage, showToast } = useApp();
+
+  const getInitialComplexId = () => {
+    if (initialComplexId) return initialComplexId;
+    if ((window as any).__selectedRentalComplexId) return (window as any).__selectedRentalComplexId;
+    try {
+      const stored = sessionStorage.getItem('kkv_selected_rental_complex_id');
+      if (stored) return stored;
+    } catch (e) {}
+    try {
+      const param = new URLSearchParams(window.location.search).get('complexId');
+      if (param) return param;
+    } catch (e) {}
+    return '';
+  };
 
   const [shops, setShops] = useState<RentalShop[]>([]);
   const [complexes, setComplexes] = useState<RentalComplex[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedComplexFilter, setSelectedComplexFilter] = useState('');
+  const [selectedComplexFilter, setSelectedComplexFilter] = useState(getInitialComplexId);
   const [statusFilter, setStatusFilter] = useState<'ALL' | RentalStatus>('ALL');
 
   // Modals
@@ -55,6 +73,36 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
   useEffect(() => {
     fetchShops();
   }, []);
+
+  // Update complex filter if prop changes or window context changes
+  useEffect(() => {
+    const ctxId = initialComplexId || (window as any).__selectedRentalComplexId || '';
+    if (ctxId && ctxId !== selectedComplexFilter) {
+      setSelectedComplexFilter(ctxId);
+    }
+  }, [initialComplexId]);
+
+  const handleComplexFilterChange = (complexId: string) => {
+    setSelectedComplexFilter(complexId);
+    (window as any).__selectedRentalComplexId = complexId;
+    try {
+      if (complexId) {
+        sessionStorage.setItem('kkv_selected_rental_complex_id', complexId);
+        const url = new URL(window.location.href);
+        url.searchParams.set('complexId', complexId);
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        sessionStorage.removeItem('kkv_selected_rental_complex_id');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('complexId');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {}
+  };
+
+  const clearComplexFilter = () => {
+    handleComplexFilterChange('');
+  };
 
   const handleSaveShop = async (data: any) => {
     if (editingShop) {
@@ -105,6 +153,8 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
     return matchesSearch && matchesComplex && matchesStatus;
   });
 
+  const activeComplexObj = complexes.find((c) => c.complexId === selectedComplexFilter);
+
   return (
     <div className="page-content">
       <RentalHeader
@@ -124,6 +174,57 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
           </button>
         }
       />
+
+      {/* Active Complex Filter Context Banner */}
+      {selectedComplexFilter && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            backgroundColor: 'rgba(218, 165, 32, 0.08)',
+            border: '1px solid rgba(218, 165, 32, 0.3)',
+            borderRadius: 'var(--radius-md)',
+            padding: '10px 16px',
+            marginBottom: '14px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 size={16} color="var(--color-gold-light)" />
+            <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Showing shops for complex:</span>
+            <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+              {activeComplexObj?.complexName || selectedComplexFilter}
+            </strong>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({selectedComplexFilter})</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => setCurrentPage('rental-complexes')}
+              style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              title="Return to Complexes list"
+            >
+              <ArrowLeft size={12} />
+              <span>Back to Complexes</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={clearComplexFilter}
+              style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              title="Clear complex filter to view all shops"
+            >
+              <X size={12} />
+              <span>Clear Filter</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div
@@ -155,7 +256,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
             className="select-control"
             style={{ width: '180px', height: '34px', fontSize: '12px' }}
             value={selectedComplexFilter}
-            onChange={(e) => setSelectedComplexFilter(e.target.value)}
+            onChange={(e) => handleComplexFilterChange(e.target.value)}
           >
             <option value="">All Complexes</option>
             {complexes.map((c) => (
@@ -188,9 +289,57 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
             Loading shops...
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            <Store size={36} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontWeight: 600 }}>No shops found matching your criteria</p>
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <Store size={40} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+            {selectedComplexFilter ? (
+              <div>
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '14.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  No shops found for this complex.
+                </h4>
+                <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {activeComplexObj
+                    ? `No shops are currently registered under "${activeComplexObj.complexName}".`
+                    : 'No shops found matching the selected complex.'}
+                </p>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setEditingShop(null);
+                      setIsShopModalOpen(true);
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>+ Add Shop</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={clearComplexFilter}
+                  >
+                    <span>View All Shops</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ margin: '0 0 14px 0', fontWeight: 600, fontSize: '13px' }}>
+                  No shops found matching your criteria
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setEditingShop(null);
+                    setIsShopModalOpen(true);
+                  }}
+                >
+                  <Plus size={14} />
+                  <span>+ Add Shop</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="table-responsive">
@@ -327,6 +476,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop }) => {
         onSave={handleSaveShop}
         complexes={complexes}
         shopToEdit={editingShop}
+        defaultComplexId={selectedComplexFilter}
       />
 
       <PaymentModal

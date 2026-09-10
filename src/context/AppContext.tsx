@@ -504,15 +504,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [masterControlOpen, setMasterControlOpen] = useState<boolean>(false);
   const [masterControlUnlocked, setMasterControlUnlocked] = useState<boolean>(false);
+  // ── Master Settings: initialize from defaults only — backend is the source of truth ──
+  // Do NOT bootstrap from localStorage: stale cached config would mask backend changes.
+  // reloadAllData() (called on mount + login) always fetches the authoritative backend value.
   const [masterControlSettings, setMasterControlSettings] = useState<MasterControlSettings>(() => {
-    const stored = getStored('masterSettings', defaultMasterSettings);
-    const migratedLoanTypes = migrateLoanTypeAmountBands(stored);
+    // Use localStorage as a quick first-render cache only if available,
+    // but immediately overwrite from backend on mount via reloadAllData.
+    const cached = getStored<MasterControlSettings | null>('masterSettings', null);
+    if (cached && cached.loanTypes && cached.loanTypes.length > 0) {
+      const migratedLoanTypes = migrateLoanTypeAmountBands(cached);
+      return {
+        ...defaultMasterSettings,
+        ...cached,
+        loanTypes: migratedLoanTypes,
+        repaymentSystems: cached.repaymentSystems && cached.repaymentSystems.length > 0 ? cached.repaymentSystems : defaultRepaymentSystems,
+        purityOptions: cached.purityOptions && cached.purityOptions.length > 0 ? cached.purityOptions : defaultPurityOptions,
+        goldRate22ct: cached.goldRate22ct ?? 6400
+      };
+    }
+    // Fall back to hardcoded defaults if no cache exists
     return {
-      ...stored,
-      loanTypes: migratedLoanTypes,
-      repaymentSystems: stored.repaymentSystems && stored.repaymentSystems.length > 0 ? stored.repaymentSystems : defaultRepaymentSystems,
-      purityOptions: stored.purityOptions && stored.purityOptions.length > 0 ? stored.purityOptions : defaultPurityOptions,
-      goldRate22ct: stored.goldRate22ct ?? 6400
+      ...defaultMasterSettings,
+      repaymentSystems: defaultRepaymentSystems,
+      purityOptions: defaultPurityOptions
     };
   });
   const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplates>(() => getStored('waTemplates', defaultWhatsAppTemplates));
@@ -618,9 +632,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         promises.push(apiService.getDayBook());
         fetchKeys.push('dayBook');
       }
+
+      // ── Master Settings: fetch for ALL roles (Admin + Staff + Rental Staff) ────
+      // Uses GET /api/config/settings — a read-only endpoint accessible to all roles.
+      // This ensures staff always see the latest admin configuration after page load.
+      // Admin additionally fetches full settings (includes sensitive fields) via getMasterSettings().
+      promises.push(apiService.getPublicSettings());
+      fetchKeys.push('masterSettings');
+
       if (isAdmin) {
-        promises.push(apiService.getMasterSettings());
-        fetchKeys.push('masterSettings');
         promises.push(apiService.getWhatsAppTemplates());
         fetchKeys.push('waTemplates');
         promises.push(apiService.getTelegramConfig());
@@ -638,18 +658,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           else if (key === 'fd' && Array.isArray(val)) setFixedDeposits(val);
           else if (key === 'fdCustomers' && Array.isArray(val)) setFdCustomers(val);
           else if (key === 'dayBook' && Array.isArray(val)) setDayBookEntries(val);
-          else if (key === 'masterSettings' && val) {
-            setMasterControlSettings(prev => {
-              const migratedLoanTypes = migrateLoanTypeAmountBands(val);
-              return {
-                ...prev,
-                ...val,
-                loanTypes: migratedLoanTypes,
-                repaymentSystems: val.repaymentSystems && val.repaymentSystems.length > 0 ? val.repaymentSystems : defaultRepaymentSystems,
-                purityOptions: val.purityOptions && val.purityOptions.length > 0 ? val.purityOptions : defaultPurityOptions,
-                goldRate22ct: val.goldRate22ct ?? 6400
-              };
-            });
+          else if (key === 'masterSettings') {
+            // val may be the response body — extract .data if present
+            const settingsData = (val && typeof val === 'object' && val.data) ? val.data : val;
+            if (settingsData && typeof settingsData === 'object') {
+              setMasterControlSettings(prev => {
+                const migratedLoanTypes = migrateLoanTypeAmountBands(settingsData);
+                const next = {
+                  ...prev,
+                  ...settingsData,
+                  loanTypes: migratedLoanTypes,
+                  repaymentSystems: settingsData.repaymentSystems && settingsData.repaymentSystems.length > 0 ? settingsData.repaymentSystems : defaultRepaymentSystems,
+                  purityOptions: settingsData.purityOptions && settingsData.purityOptions.length > 0 ? settingsData.purityOptions : (prev.purityOptions || defaultPurityOptions),
+                  goldRate22ct: settingsData.goldRate22ct ?? prev.goldRate22ct ?? 6400
+                };
+                console.log(`[AppContext] Master settings loaded from backend: ${next.loanTypes?.length} loan types, FD rate: ${next.fdInterestRate}% p.a.`);
+                return next;
+              });
+            }
           } else if (key === 'waTemplates' && val) setWhatsAppTemplates(val);
           else if (key === 'tgConfig' && val) setTelegramConfig(val);
         }

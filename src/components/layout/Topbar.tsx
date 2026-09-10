@@ -193,13 +193,20 @@ const pageTitles: Record<NavPage, PageMetadata> = {
   }
 };
 
-export const Topbar: React.FC = () => {
+interface TopbarProps {
+  showNewLoan?: boolean;
+}
+
+export const Topbar: React.FC<TopbarProps> = ({ showNewLoan }) => {
   const { currentPage, setCurrentPage, unreadNotificationCount, toggleNotificationOpen, toggleMobileMenu } = useApp();
 
   const meta = pageTitles[currentPage] || {
     title: 'KKV Gold Finance',
     subtitle: 'Branch Management System'
   };
+
+  const isRentalModule = typeof currentPage === 'string' && (currentPage.startsWith('rental') || currentPage === 'rental');
+  const shouldShowNewLoan = showNewLoan !== undefined ? showNewLoan : !isRentalModule;
 
   return (
     <header className="topbar">
@@ -222,7 +229,7 @@ export const Topbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right: Search, Notification Icon, + New Loan Button */}
+      {/* Right: Search, Notification Icon, + New Loan Button (Loan/Finance pages only) */}
       <div className="topbar-right">
         {/* Global Search Bar */}
         <GlobalSearch />
@@ -244,14 +251,17 @@ export const Topbar: React.FC = () => {
           )}
         </button>
 
-        {/* + New Loan Button */}
-        <button
-          className="btn btn-primary topbar-new-loan-btn"
-          onClick={() => setCurrentPage('loan-issue')}
-        >
-          <Plus size={15} />
-          <span className="btn-label-desktop">New Loan</span>
-        </button>
+        {/* + New Loan Button (Rendered only on Finance/Loan pages, hidden on Rental Portal) */}
+        {shouldShowNewLoan && (
+          <button
+            className="btn btn-primary topbar-new-loan-btn"
+            onClick={() => setCurrentPage('loan-issue')}
+            title="Issue New Loan"
+          >
+            <Plus size={15} />
+            <span className="btn-label-desktop">New Loan</span>
+          </button>
+        )}
       </div>
     </header>
   );

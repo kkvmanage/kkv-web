@@ -22,10 +22,149 @@
 }
 
 /* ============================================================
-   CSS DESIGN TOKENS — DARK GREEN PRIMARY SYSTEM
+   CSS DESIGN TOKENS — CLEAN FINANCE THEME (Rent Payments Benchmark)
    ============================================================ */
 :root {
-  /* ── App Backgrounds ── */
+  /* ── Core Standard Design Tokens ── */
+  --primary:              #176B52;
+  --primary-hover:        #0F513C;
+  --primary-active:       #0A382A;
+  --primary-soft:         rgba(23, 107, 82, 0.08);
+  --primary-soft-hover:   rgba(23, 107, 82, 0.14);
+  
+  --secondary:            #88BBA7;
+  --secondary-soft:       rgba(136, 187, 167, 0.15);
+
+  --background:           #F8FAF9;
+  --background-subtle:    #F1F5F3;
+  --surface:              #FFFFFF;
+  --surface-elevated:     #FFFFFF;
+  --surface-secondary:    #F4F7F5;
+  --surface-muted:        #EBF1ED;
+
+  --border:               #E2E8E5;
+  --border-subtle:        #EDF2EE;
+  --border-light:         #E2E8E5;
+  --border-input:         #D0DCD4;
+  --border-focus:         #176B52;
+  --ring-focus:           rgba(23, 107, 82, 0.22);
+
+  --text-primary:         #1A2E26;
+  --text-secondary:       #64748B;
+  --text-muted:           #8A9E95;
+  --text-dark:            #1A2E26;
+  --text-inverse:         #FFFFFF;
+  --text-brand:           #176B52;
+
+  --success:              #16A34A;
+  --success-soft:         rgba(22, 163, 74, 0.10);
+  --warning:              #D97706;
+  --warning-soft:         rgba(217, 119, 6, 0.10);
+  --danger:               #DC2626;
+  --danger-soft:          rgba(220, 38, 38, 0.10);
+  --info:                 #2563EB;
+  --info-soft:            rgba(37, 99, 235, 0.10);
+  --gold:                 #C9A227;
+  --gold-soft:            rgba(201, 162, 39, 0.12);
+
+  /* ── Legacy Mappings for Seamless Compatibility ── */
+  --bg-app:               var(--background);
+  --bg-sidebar:           var(--surface);
+  --bg-topbar:            var(--surface);
+  --bg-card:              var(--surface);
+  --bg-card-elevated:     var(--surface);
+  --bg-surface:           var(--surface);
+  --bg-surface-secondary: var(--surface-secondary);
+  --bg-surface-subtle:    var(--background-subtle);
+  --bg-input:             #FFFFFF;
+  --bg-hover:             var(--primary-soft);
+  --bg-overlay:           rgba(15, 35, 28, 0.60);
+
+  --color-primary-dark:        #0B3D2E;
+  --color-primary-dark-hover:  #0F513C;
+  --color-primary-accent:      var(--primary);
+  --color-primary-accent-hover:var(--primary-hover);
+  --color-primary-accent-active:var(--primary-active);
+  --color-soft-green:          var(--secondary);
+  --color-muted-green:         #629A87;
+  --color-light-accent:        var(--primary-soft);
+  --color-light-accent-hover:  var(--primary-soft-hover);
+
+  --color-gold:        var(--gold);
+  --color-gold-light:  #F5E7B2;
+  --color-gold-muted:  #A88620;
+  --color-gold-subtle: var(--gold-soft);
+  --color-gold-primary:var(--gold);
+
+  --sidebar-text:            var(--text-secondary);
+  --sidebar-active-text:     var(--primary);
+  --sidebar-active-bg:       var(--primary-soft);
+  --sidebar-active-indicator:var(--primary);
+  --sidebar-section-color:   var(--text-muted);
+
+  --color-success:  var(--success);
+  --color-warning:  var(--warning);
+  --color-danger:   var(--danger);
+  --color-info:     var(--info);
+
+  --badge-success-bg:   var(--success-soft);
+  --badge-success-text: var(--success);
+  --badge-warning-bg:   var(--warning-soft);
+  --badge-warning-text: var(--warning);
+  --badge-danger-bg:    var(--danger-soft);
+  --badge-danger-text:  var(--danger);
+  --badge-info-bg:      var(--info-soft);
+  --badge-info-text:    var(--info);
+  --badge-gold-bg:      var(--gold-soft);
+  --badge-gold-text:    #947110;
+
+  --shadow-sm:   0 1px 3px rgba(15, 45, 35, 0.05);
+  --shadow-card: 0 1px 3px rgba(15, 45, 35, 0.04), 0 4px 12px rgba(15, 45, 35, 0.02);
+  --shadow-md:   0 4px 16px rgba(15, 45, 35, 0.08);
+  --shadow-lg:   0 10px 30px rgba(15, 45, 35, 0.12);
+  --shadow-gold: 0 0 20px rgba(201, 162, 39, 0.15);
+
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  --sidebar-width:  255px;
+  --topbar-height:  64px;
+
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.18s ease;
+  --transition-slow: 0.25s ease;
+}
+
+body.dark-mode {
+  --background:           #071A14;
+  --background-subtle:    #0A211A;
+  --surface:              #102A21;
+  --surface-elevated:     #14372B;
+  --surface-secondary:    #0F2F25;
+  --surface-muted:        #0C2820;
+
+  --border:               #1E4035;
+  --border-subtle:        #16352B;
+  --border-light:         #285142;
+  --border-input:         #31584A;
+  --border-focus:         #2F6F5B;
+  --ring-focus:           rgba(47, 111, 91, 0.35);
+
+  --text-primary:         #F4F7F5;
+  --text-secondary:       #C2D5CD;
+  --text-muted:           #94ADA2;
+  --text-dark:            #F4F7F5;
+  --text-inverse:         #071A14;
+  --text-brand:           #88BBA7;
+
+  --primary:              #2F6F5B;
+  --primary-hover:        #367F6A;
+  --primary-active:       #265E4C;
+  --primary-soft:         rgba(47, 111, 91, 0.25);
+
   --bg-app:               #071A14;
   --bg-sidebar:           #0A211A;
   --bg-topbar:            #0C241C;
@@ -38,148 +177,16 @@
   --bg-hover:             #193F31;
   --bg-overlay:           rgba(7, 26, 20, 0.88);
 
-  /* ── Borders ── */
-  --border-subtle:  #1E4035;
-  --border-light:   #285142;
-  --border-focus:   #2F6F5B;
-  --border-input:   #31584A;
-  --ring-focus:     rgba(47, 111, 91, 0.35);
-
-  /* ── Brand Greens ── */
-  --color-primary-dark:        #88BBA7;
-  --color-primary-dark-hover:  #9BCAB7;
-  --color-primary-accent:      #2F6F5B;
-  --color-primary-accent-hover:#367F6A;
-  --color-primary-accent-active:#265E4C;
-  --color-soft-green:          #88BBA7;
-  --color-muted-green:         #629A87;
-  --color-light-accent:        #1C4035;
-  --color-light-accent-hover:  #224A3E;
-
-  /* ── Gold Accents ── */
-  --color-gold:        #DFB83D;
-  --color-gold-light:  #F3CE61;
-  --color-gold-muted:  #BFA028;
-  --color-gold-subtle: rgba(223, 184, 61, 0.15);
-  --color-gold-primary:#DFB83D;
-
-  /* ── Typography ── */
-  --text-primary:   #F4F7F5;
-  --text-secondary: #C2D5CD;
-  --text-muted:     #94ADA2;
-  --text-dark:      #F4F7F5;
-  --text-inverse:   #071A14;
-  --text-brand:     #88BBA7;
-
-  /* ── Sidebar Specific ── */
   --sidebar-text:            #A5C4B9;
   --sidebar-active-text:     #F4F7F5;
   --sidebar-active-bg:       rgba(47, 111, 91, 0.25);
   --sidebar-active-indicator:#4FAF86;
   --sidebar-section-color:   #7FA597;
 
-  /* ── Semantic Colors ── */
-  --color-success:  #5CD19F;
-  --color-warning:  #E5BE42;
-  --color-danger:   #F87171;
-  --color-info:     #67BAE0;
-
-  /* ── Semantic Badges ── */
-  --badge-success-bg:   rgba(92, 209, 159, 0.16);
-  --badge-success-text: #5CD19F;
-  --badge-warning-bg:   rgba(229, 190, 66, 0.16);
-  --badge-warning-text: #E5BE42;
-  --badge-danger-bg:    rgba(248, 113, 113, 0.16);
-  --badge-danger-text:  #F87171;
-  --badge-info-bg:      rgba(103, 186, 224, 0.16);
-  --badge-info-text:    #67BAE0;
-  --badge-gold-bg:      rgba(223, 184, 61, 0.16);
-  --badge-gold-text:    #F3CE61;
-
-  /* ── Shadows ── */
   --shadow-sm:   0 1px 4px rgba(0, 0, 0, 0.4);
   --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.5);
   --shadow-md:   0 6px 20px rgba(0, 0, 0, 0.55);
   --shadow-lg:   0 12px 40px rgba(0, 0, 0, 0.65);
-  --shadow-gold: 0 0 20px rgba(201, 162, 39, 0.15);
-
-  /* ── Radii ── */
-  --radius-sm:   6px;
-  --radius-md:   10px;
-  --radius-lg:   14px;
-  --radius-xl:   18px;
-  --radius-full: 9999px;
-
-  /* ── Layout ── */
-  --sidebar-width:  260px;
-  --topbar-height:  64px;
-
-  /* ── Transitions ── */
-  --transition-fast: 0.12s ease;
-  --transition-base: 0.18s ease;
-  --transition-slow: 0.3s ease;
-}
-
-/* "Light mode" toggle — Premium Finance Light Theme */
-body.light-mode {
-  --bg-app:               #F4F6F3;
-  --bg-sidebar:           #FFFFFF;
-  --bg-topbar:            #FFFFFF;
-  --bg-card:              #FFFFFF;
-  --bg-card-elevated:     #FFFFFF;
-  --bg-surface:           #FFFFFF;
-  --bg-surface-secondary: #EBF1ED;
-  --bg-surface-subtle:    #F4F8F5;
-  --bg-input:             #F4F6F3;
-  --bg-hover:             #E2ECE6;
-
-  --border-subtle:  #E5ECE7;
-  --border-light:   #DDE5DF;
-  --border-focus:   #176B52;
-  --border-input:   #D0DCD4;
-  --ring-focus:     rgba(23, 107, 82, 0.25);
-
-  --color-primary-dark:       #0B3D2E;
-  --color-primary-dark-hover: #0F513C;
-  --color-primary-accent:     #176B52;
-  --color-primary-accent-hover:#0F513C;
-  --color-light-accent:       rgba(23, 107, 82, 0.1);
-  --color-light-accent-hover: rgba(23, 107, 82, 0.16);
-
-  --color-gold:        #C9A227;
-  --color-gold-light:  #F5E7B2;
-  --color-gold-muted:  #A88620;
-  --color-gold-subtle: rgba(201, 162, 39, 0.15);
-  --color-gold-primary:#C9A227;
-
-  --text-primary:   #1F2D26;
-  --text-secondary: #66756D;
-  --text-muted:     #889890;
-  --text-dark:      #1F2D26;
-  --text-inverse:   #FFFFFF;
-  --text-brand:     #176B52;
-
-  --sidebar-text:            #66756D;
-  --sidebar-active-text:     #176B52;
-  --sidebar-active-bg:       rgba(23, 107, 82, 0.12);
-  --sidebar-active-indicator:#176B52;
-  --sidebar-section-color:   #889890;
-
-  --badge-success-bg:   rgba(23, 107, 82, 0.12);
-  --badge-success-text: #176B52;
-  --badge-warning-bg:   rgba(201, 162, 39, 0.15);
-  --badge-warning-text: #947110;
-  --badge-danger-bg:    rgba(185, 56, 47, 0.12);
-  --badge-danger-text:  #B9382F;
-  --badge-info-bg:      rgba(23, 107, 82, 0.12);
-  --badge-info-text:    #176B52;
-  --badge-gold-bg:      rgba(201, 162, 39, 0.15);
-  --badge-gold-text:    #947110;
-
-  --shadow-sm:   0 2px 8px rgba(15, 60, 45, 0.06);
-  --shadow-card: 0 4px 16px rgba(15, 60, 45, 0.08);
-  --shadow-md:   0 6px 20px rgba(15, 60, 45, 0.10);
-  --shadow-lg:   0 12px 40px rgba(15, 60, 45, 0.14);
 }
 
 /* ============================================================

@@ -5,6 +5,7 @@ import { ViewCustomerModal } from '../components/common/ViewCustomerModal';
 import { Customer } from '../types';
 import { formatIdProofDisplay } from '../utils/kycValidation';
 import { getCanonicalCustomerId, isMatchingCustomerId } from '../utils/customerUtils';
+import { PageHeader, Card, StatusBadge, Button } from '../components/ui';
 
 export const SearchCustomer: React.FC = () => {
   const {
@@ -19,7 +20,6 @@ export const SearchCustomer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VERIFIED' | 'PENDING'>('ALL');
-
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -37,18 +37,15 @@ export const SearchCustomer: React.FC = () => {
     return customers.filter((c) => !c.isDeleted);
   }, [customers]);
 
-  // ── Quick Chips for Quick Testing ──────────────────────────────────────────
   const sampleCustomerChips = useMemo(() => {
     return activeCustomers.slice(0, 4).map((c) => ({
       id: c.id,
       canonicalId: getCanonicalCustomerId(c),
       name: c.name,
-      phone: c.phone,
       customer: c
     }));
   }, [activeCustomers]);
 
-  // ── Filtered Customers (prioritizing Customer ID, Name, Phone, Loan No, FD No) ─
   const filteredCustomers = useMemo(() => {
     const query = (activeQuery || searchTerm).toLowerCase().trim();
 
@@ -58,12 +55,9 @@ export const SearchCustomer: React.FC = () => {
       const name = (c.name || '').toLowerCase();
       const phone = (c.phone || '').toLowerCase();
 
-      // Check if user searched for a loan number directly (e.g. GL-001)
       const matchesLoanNo = loans.some(
         (l) => isMatchingCustomerId(l.customerId, c) && l.loanNo.toLowerCase().includes(query)
       );
-
-      // Check if user searched for an FD number directly (e.g. FD-001)
       const matchesFDNo = fixedDeposits.some(
         (f) => isMatchingCustomerId(f.customerId, c) && f.fdNo.toLowerCase().includes(query)
       );
@@ -86,7 +80,6 @@ export const SearchCustomer: React.FC = () => {
     });
   }, [activeCustomers, activeQuery, searchTerm, statusFilter, loans, fixedDeposits]);
 
-  // Top Customer Match for the highlight card
   const topMatchCustomer = useMemo(() => {
     const query = (activeQuery || searchTerm).trim();
     if (!query || filteredCustomers.length === 0) return null;
@@ -101,65 +94,39 @@ export const SearchCustomer: React.FC = () => {
   return (
     <div className="page-content">
       {/* PAGE HEADER */}
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-dark)' }}>
-          Search Customers
-        </h1>
-        <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-          Master customer directory &mdash; Search by Customer ID, Name, Mobile, Loan No, or FD No.
-        </p>
-      </div>
+      <PageHeader
+        title="Search Customers"
+        subtitle="Master customer directory — Search by Customer ID, Name, Mobile, Loan No, or FD No."
+        icon={<Search size={20} />}
+      />
 
-      {/* SEARCH BAR CARD */}
-      <div
-        className="card"
-        style={{
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid var(--border-light, #e2e8f0)',
-          borderRadius: 'var(--radius-lg, 12px)',
-          boxShadow: 'var(--shadow-sm)'
-        }}
-      >
+      {/* SEARCH BAR */}
+      <Card style={{ marginBottom: '20px' }}>
         <form onSubmit={handleSearchSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-            SEARCH MASTER CUSTOMER DIRECTORY
+          <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.7px' }}>
+            Search Master Customer Directory
           </label>
 
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
               <input
                 type="text"
                 className="input-control"
-                style={{
-                  height: '46px',
-                  paddingLeft: '44px',
-                  paddingRight: '16px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md, 8px)'
-                }}
-                placeholder="Search Customer ID (e.g. CUST-0006), Name, Mobile, Loan No, or FD No..."
+                style={{ height: '40px', paddingLeft: '36px', fontSize: '13.5px' }}
+                placeholder="Search by Customer ID, Name, Mobile, Loan No, or FD No..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 autoFocus
               />
               <Search
-                size={18}
-                style={{
-                  position: 'absolute',
-                  left: '14px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--text-muted)',
-                  pointerEvents: 'none'
-                }}
+                size={15}
+                style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}
               />
             </div>
 
             <select
               className="select-control"
-              style={{ width: '160px', height: '46px', fontSize: '13.5px', borderRadius: 'var(--radius-md, 8px)' }}
+              style={{ width: '155px', height: '40px', fontSize: '13px' }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
             >
@@ -168,52 +135,44 @@ export const SearchCustomer: React.FC = () => {
               <option value="PENDING">Pending KYC</option>
             </select>
 
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ height: '46px', padding: '0 24px', fontSize: '14px', fontWeight: 700, gap: '8px' }}
-            >
-              <Search size={16} />
-              <span>Search</span>
-            </button>
+            <Button type="submit" variant="primary" icon={<Search size={14} />}>Search</Button>
 
             {(searchTerm || activeQuery || statusFilter !== 'ALL') && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ height: '46px', padding: '0 18px' }}
-                onClick={handleClear}
-              >
-                <RotateCcw size={15} />
-                <span>Reset</span>
-              </button>
+              <Button type="button" variant="secondary" icon={<RotateCcw size={13} />} onClick={handleClear}>
+                Reset
+              </Button>
             )}
           </div>
 
           {/* Quick Pick Chips */}
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>Quick Pick:</span>
-            {sampleCustomerChips.map((ch) => (
-              <button
-                key={ch.id}
-                type="button"
-                onClick={() => {
-                  setSearchTerm(ch.canonicalId);
-                  setActiveQuery(ch.canonicalId);
-                }}
-                className="badge badge-info"
-                style={{ cursor: 'pointer', padding: '5px 10px', fontSize: '11.5px', border: 'none' }}
-              >
-                <strong>{ch.canonicalId}</strong> &mdash; {ch.name}
-              </button>
-            ))}
-          </div>
+          {sampleCustomerChips.length > 0 && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>Quick Pick:</span>
+              {sampleCustomerChips.map((ch) => (
+                <button
+                  key={ch.id}
+                  type="button"
+                  onClick={() => { setSearchTerm(ch.canonicalId); setActiveQuery(ch.canonicalId); }}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '3px 10px',
+                    fontSize: '11.5px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '20px',
+                    backgroundColor: 'var(--surface-secondary)',
+                    color: 'var(--primary)',
+                    fontWeight: 600
+                  }}
+                >
+                  <strong>{ch.canonicalId}</strong> — {ch.name}
+                </button>
+              ))}
+            </div>
+          )}
         </form>
-      </div>
+      </Card>
 
-      {/* ════════════════════════════════════════════════════════════════════════
-          SECTION 3: CUSTOMER FOUND HIGHLIGHT CARD (When Query Matches)
-          ════════════════════════════════════════════════════════════════════════ */}
+      {/* CUSTOMER FOUND HIGHLIGHT CARD */}
       {topMatchCustomer && (activeQuery || searchTerm) && (() => {
         const c = topMatchCustomer;
         const custCanonicalId = getCanonicalCustomerId(c);
@@ -221,103 +180,65 @@ export const SearchCustomer: React.FC = () => {
         const custFDs = fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, c) && f.status === 'ACTIVE');
 
         return (
-          <div
-            className="card"
-            style={{
-              padding: '20px 24px',
-              marginBottom: '24px',
-              borderLeft: '5px solid var(--color-primary-accent, #059669)',
-              backgroundColor: 'var(--bg-card)',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-          >
+          <Card style={{ marginBottom: '20px', borderLeft: '4px solid var(--primary)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'var(--badge-success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: 'var(--badge-success-text)', border: '1px solid var(--badge-success-border)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: 'var(--surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--primary)', overflow: 'hidden', flexShrink: 0 }}>
                   {c.customerPhoto ? (
                     <img src={c.customerPhoto} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    <User size={28} />
+                    <User size={24} color="var(--primary)" />
                   )}
                 </div>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span className="badge badge-success" style={{ fontWeight: 800, fontSize: '11px' }}>
-                      CUSTOMER FOUND
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#059669', fontWeight: 700 }}>✓ Verified</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <StatusBadge status="VERIFIED" label="Customer Found" />
                   </div>
-                  <h3 style={{ fontSize: '19px', fontWeight: 900, color: 'var(--color-primary-dark)', margin: '4px 0 2px 0' }}>
-                    {c.name}
-                  </h3>
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span>Customer ID: <strong style={{ color: 'var(--color-primary-dark)' }}>{custCanonicalId}</strong></span>
-                    <span>&bull;</span>
-                    <span>Mobile: <strong>+91 {c.phone}</strong></span>
-                    <span>&bull;</span>
-                    <span style={{ fontWeight: 700, color: 'var(--color-primary-accent, #059669)' }}>{custLoans.length} Active Loan(s)</span>
-                    <span>&bull;</span>
-                    <span style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>{custFDs.length} Active FD(s)</span>
+                  <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 3px 0' }}>{c.name}</h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <span>ID: <strong style={{ color: 'var(--primary)' }}>{custCanonicalId}</strong></span>
+                    <span>•</span>
+                    <span>+91 {c.phone}</span>
+                    <span>•</span>
+                    <span style={{ color: 'var(--success, #16a34a)', fontWeight: 700 }}>{custLoans.length} Active Loan(s)</span>
+                    <span>•</span>
+                    <span style={{ color: 'var(--gold, #C9A227)', fontWeight: 700 }}>{custFDs.length} Active FD(s)</span>
                   </div>
                 </div>
               </div>
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handleSelectCustomer(c)}
-                style={{ fontWeight: 800, padding: '10px 22px', fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                <span>Select Customer &rarr;</span>
-              </button>
+              <Button variant="primary" onClick={() => handleSelectCustomer(c)}>
+                Select Customer →
+              </Button>
             </div>
-          </div>
+          </Card>
         );
       })()}
 
-      {/* SEARCH RESULTS TABLE CARD */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: 'var(--bg-surface-secondary, #f8fafc)'
-          }}
-        >
+      {/* SEARCH RESULTS TABLE */}
+      <Card noPadding>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--surface-secondary)' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-dark)' }}>
-              Customer Directory Results
-            </h3>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Found {filteredCustomers.length} matching borrower profiles
+            <h3 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>Customer Directory</h3>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+              {filteredCustomers.length} of {activeCustomers.length} customers
             </span>
           </div>
-
-          <span className="badge badge-info" style={{ fontSize: '12px' }}>
-            Total Customers: {activeCustomers.length}
-          </span>
+          <StatusBadge status="ACTIVE" label={`${activeCustomers.length} Total`} />
         </div>
 
-        <div className="table-container">
-          <table className="custom-table">
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
             <thead>
-              <tr>
-                <th>CUSTOMER ID</th>
-                <th>CUSTOMER NAME</th>
-                <th>PHONE</th>
-                <th>ID PROOF</th>
-                <th>LOANS</th>
-                <th>FIXED DEPOSITS</th>
-                <th style={{ textAlign: 'center', width: '160px' }}>ACTIONS</th>
+              <tr style={{ backgroundColor: 'var(--surface-secondary)', borderBottom: '1px solid var(--border)' }}>
+                {['Customer ID', 'Customer Name', 'Phone', 'ID Proof', 'Loans', 'Fixed Deposits', 'Actions'].map((h, i) => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary)', textAlign: i === 6 ? 'center' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
                     No customer records found matching your search query.
                   </td>
                 </tr>
@@ -328,85 +249,45 @@ export const SearchCustomer: React.FC = () => {
                   const fdCount = fixedDeposits.filter((f) => isMatchingCustomerId(f.customerId, c) && f.status === 'ACTIVE').length;
 
                   return (
-                    <tr key={`search-cust-${c.id}`}>
-                      <td style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                        <span className="badge badge-info" style={{ fontSize: '11px', fontWeight: 800 }}>
-                          {custCanonicalId}
-                        </span>
+                    <tr
+                      key={`search-cust-${c.id}`}
+                      style={{ borderBottom: '1px solid var(--border-subtle)', transition: 'background-color 0.12s ease' }}
+                      className="data-table-row"
+                    >
+                      <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '12px' }}>
+                        {custCanonicalId}
                       </td>
-                      <td>
+                      <td style={{ padding: '11px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           {c.customerPhoto ? (
-                            <img
-                              src={c.customerPhoto}
-                              alt={c.name}
-                              style={{
-                                width: '34px',
-                                height: '34px',
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                border: '1.5px solid var(--color-primary-accent, #059669)',
-                                flexShrink: 0
-                              }}
-                            />
+                            <img src={c.customerPhoto} alt={c.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid var(--border)', flexShrink: 0 }} />
                           ) : (
-                            <div
-                              style={{
-                                width: '34px',
-                                height: '34px',
-                                borderRadius: '50%',
-                                backgroundColor: 'var(--color-light-accent, #e6f4f1)',
-                                color: 'var(--color-primary-dark, #163f35)',
-                                fontWeight: 700,
-                                fontSize: '13px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0
-                              }}
-                            >
+                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--surface-secondary)', color: 'var(--primary)', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border)' }}>
                               {c.name.charAt(0).toUpperCase()}
                             </div>
                           )}
-                          <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{c.name}</span>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</span>
                         </div>
                       </td>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>+91 {c.phone}</td>
-                      <td>
+                      <td style={{ padding: '11px 14px', color: 'var(--text-primary)', fontWeight: 500 }}>+91 {c.phone}</td>
+                      <td style={{ padding: '11px 14px' }}>
                         <div style={{ fontSize: '12px' }}>
-                          <strong style={{ color: 'var(--color-primary-dark)' }}>{c.idProof}:</strong>{' '}
-                          <span>{formatIdProofDisplay(c.idProof, c.idNumber)}</span>
+                          <strong style={{ color: 'var(--text-primary)' }}>{c.idProof}:</strong>{' '}
+                          <span style={{ color: 'var(--text-secondary)' }}>{formatIdProofDisplay(c.idProof, c.idNumber)}</span>
                         </div>
                       </td>
-                      <td>
-                        <span className="badge badge-success" style={{ fontSize: '11px' }}>
-                          {loanCount} Active
-                        </span>
+                      <td style={{ padding: '11px 14px' }}>
+                        <StatusBadge status={loanCount > 0 ? 'ACTIVE' : 'CLOSED'} label={`${loanCount} Active`} />
                       </td>
-                      <td>
-                        <span className="badge badge-gold" style={{ fontSize: '11px' }}>
-                          {fdCount} Active
-                        </span>
+                      <td style={{ padding: '11px 14px' }}>
+                        <StatusBadge status={fdCount > 0 ? 'ACTIVE' : 'CLOSED'} label={`${fdCount} Active`} />
                       </td>
-                      <td style={{ textAlign: 'center' }}>
+                      <td style={{ padding: '11px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            style={{ height: '30px', padding: '0 8px', fontSize: '11.5px', gap: '4px' }}
-                            title="Edit Customer Profile"
-                            onClick={() => startEditCustomer(c.id)}
-                          >
-                            <Edit3 size={12} />
-                          </button>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            style={{ height: '30px', padding: '0 12px', fontSize: '11.5px', gap: '4px', fontWeight: 700 }}
-                            title="View Customer Overview"
-                            onClick={() => handleSelectCustomer(c)}
-                          >
-                            <Eye size={12} />
-                            <span>Overview &rarr;</span>
-                          </button>
+                          <Button variant="secondary" size="sm" icon={<Edit3 size={12} />} title="Edit Customer" onClick={() => startEditCustomer(c.id)} />
+                          <Button variant="primary" size="sm" icon={<Eye size={12} />} onClick={() => handleSelectCustomer(c)}>
+                            Overview
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -416,9 +297,9 @@ export const SearchCustomer: React.FC = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
-      {/* View Customer Quick Modal */}
+      {/* View Customer Modal */}
       {viewingCustomer && (
         <ViewCustomerModal
           isOpen={Boolean(viewingCustomer)}

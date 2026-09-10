@@ -523,7 +523,16 @@ export const Sidebar: React.FC = () => {
                     </button>
                     <button
                       className={`sidebar-sublink ${['rental-shops', 'rental-shop-detail'].includes(currentPage) ? 'active' : ''}`}
-                      onClick={() => setCurrentPage('rental-shops')}
+                      onClick={() => {
+                        (window as any).__selectedRentalComplexId = '';
+                        try {
+                          sessionStorage.removeItem('kkv_selected_rental_complex_id');
+                          const url = new URL(window.location.href);
+                          url.searchParams.delete('complexId');
+                          window.history.replaceState({}, '', url.toString());
+                        } catch (e) {}
+                        setCurrentPage('rental-shops');
+                      }}
                     >
                       <Home size={14} style={{ marginRight: '6px' }} />
                       Shops &amp; Tenants

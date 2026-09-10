@@ -147,19 +147,49 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T 
 export const apiService = {
   // ── Authentication & Identity ──────────────────────────────────────────────
   async login(credentials: { email?: string; username?: string; password?: string }) {
-    const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials)
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      throw new Error(json.message || 'Invalid credentials.');
+    let res: Response;
+    try {
+      res = await fetch(`${getApiBaseUrl()}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+    } catch (networkErr: any) {
+      // Network-level failure (backend down, CORS blocked at network layer, etc.)
+      throw new Error('Unable to connect to the server. Please check that the backend is running and try again.');
     }
-    if (json.token) {
-      setStoredAuthToken(json.token);
+
+    let json: any = {};
+    try {
+      json = await res.json();
+    } catch {
+      json = {};
     }
-    return json;
+
+    if (res.ok && json.success) {
+      if (json.token) {
+        setStoredAuthToken(json.token);
+      }
+      return json;
+    }
+
+    // Map specific HTTP status codes to user-friendly messages
+    switch (res.status) {
+      case 400:
+        throw new Error(json.message || 'Invalid login request. Please enter your email/staff ID and password.');
+      case 401:
+        throw new Error(json.message || 'Invalid email/staff ID or password. Please try again.');
+      case 403:
+        throw new Error(json.message || 'Access denied. Your account may be deactivated. Please contact an administrator.');
+      case 422:
+        throw new Error(json.message || 'Invalid login request. Please check your input and try again.');
+      case 503:
+        throw new Error(json.message || 'Database service is temporarily unavailable. Please try again shortly.');
+      case 500:
+        throw new Error(json.message || 'Server error. Please try again in a moment.');
+      default:
+        throw new Error(json.message || `Login failed (${res.status}). Please try again.`);
+    }
   },
 
   async getMe() {
@@ -413,6 +443,12 @@ export const apiService = {
   // ── Admin & Settings ───────────────────────────────────────────────────────
   async getMasterSettings() {
     return fetchJson<any>('/admin/settings');
+  },
+  // Read-only settings accessible to ADMIN + STAFF + RENTAL_STAFF.
+  // Returns loan types, FD config, repayment systems — no passwords.
+  // Call this on every page load for ALL roles to ensure fresh config.
+  async getPublicSettings() {
+    return fetchJson<any>('/config/settings');
   },
   async updateMasterSettings(settings: any) {
     return fetchJson<any>('/admin/settings', {

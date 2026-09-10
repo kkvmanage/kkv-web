@@ -1,17 +1,17 @@
 {
   "loanTypes": [
     {
+      "interestProfileId": "gold-bands",
+      "repaymentSystemId": "monthly-interest-only",
+      "configurationVersion": 1,
       "id": "gold-loan",
       "name": "Gold Loan",
       "description": "Standard gold ornament backed financing",
       "defaultMonthlyRate": 2,
       "cardFee": 75,
       "cardFeeEnabled": true,
-      "interestProfileId": "gold-bands",
-      "repaymentSystemId": "monthly-interest-only",
       "active": true,
       "showOnLoanIssue": true,
-      "configurationVersion": 1,
       "sortOrder": 1,
       "cardProcessingFee": 75,
       "interestRate": 2,
@@ -32,17 +32,17 @@
       ]
     },
     {
+      "interestProfileId": "silver-bands",
+      "repaymentSystemId": "monthly-interest-only",
+      "configurationVersion": 1,
       "id": "silver-loan",
       "name": "Silver Loan",
       "description": "Silver article backed loan",
       "defaultMonthlyRate": 3,
       "cardFee": 60,
       "cardFeeEnabled": true,
-      "interestProfileId": "silver-bands",
-      "repaymentSystemId": "monthly-interest-only",
       "active": true,
       "showOnLoanIssue": true,
-      "configurationVersion": 1,
       "sortOrder": 2,
       "cardProcessingFee": 60,
       "interestRate": 3,
@@ -293,7 +293,7 @@
   "performanceModeEnabled": false,
   "bulkFdDateChangeEnabled": true,
   "goldRate22ct": 7000,
-  "configurationVersion": 33,
+  "configurationVersion": 39,
   "overdueEscalationEnabled": false,
   "overdueBaseRateMonthly": 2,
   "overdueEscalationTiers": [
@@ -481,5 +481,6 @@
         "rate": 2.4
       }
     ]
-  }
+  },
+  "businessName": "KKV Gold Finance Pvt Ltd"
 }

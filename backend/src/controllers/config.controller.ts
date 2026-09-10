@@ -3,6 +3,44 @@ import { adminService } from '../services/admin.service.js';
 import { googleDriveRepository } from '../repositories/googleDrive.repository.js';
 import { LoanTypeConfig } from '../types/index.js';
 
+// ── Public Configuration Endpoint (ADMIN + STAFF) ──────────────────────────
+// Returns all operational configuration needed by staff pages.
+// Sensitive admin-only fields (passwords, tokens) are explicitly excluded.
+export const getPublicSettings = (req: Request, res: Response) => {
+  try {
+    const settings = adminService.getMasterSettings();
+
+    // Strip sensitive / admin-only fields before sending to staff
+    const {
+      adminPassword: _adminPw,
+      managerPassword: _managerPw,
+      operatorPassword: _opPw,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ...publicSettings
+    } = settings as any;
+
+    // Enrich loan types with resolved rates/profiles
+    const enrichedLoanTypes = (publicSettings.loanTypes || []).map(
+      (t: LoanTypeConfig) => resolveLoanTypePayload(t, settings)
+    );
+
+    console.log(
+      `[Config] GET /config/settings → ${enrichedLoanTypes.length} loan types, FD rate: ${settings.fdInterestRate}% p.a. (user: ${(req as any).user?.email || 'unknown'})`
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        ...publicSettings,
+        loanTypes: enrichedLoanTypes
+      }
+    });
+  } catch (err: any) {
+    console.error('[Config] getPublicSettings error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 const AUDIT_FILE = 'audit_logs.json';
 
 const recordConfigAuditLog = (

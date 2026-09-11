@@ -1,55 +1,90 @@
-name: Deploy to AWS EC2
+name: Backend CI/CD
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
 
 jobs:
-  deploy:
-    name: Deploy Backend
+  ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: |
+          if node -e "const p=require('./package.json'); process.exit(p.scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "No test script found. Skipping tests."
+          fi
+
+  cd:
+    name: Deploy Backend to EC2
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          passphrase: ${{ secrets.EC2_SSH_PASSPHRASE }}
           port: 22
           script_stop: true
 
           script: |
             set -e
 
-            echo "======================================"
-            echo "Starting KKV Backend Deployment"
-            echo "======================================"
+            echo "Starting Backend Deployment..."
 
             cd /home/ubuntu/kkv-web/backend
 
-            echo "Pulling latest code..."
-            git restore package-lock.json
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
-            echo "Installing dependencies..."
+            test -f .env || {
+              echo "ERROR: Backend .env is missing!"
+              exit 1
+            }
+
             npm ci
 
-            echo "Restarting KKV backend..."
             pm2 restart kkv-backend --update-env
 
-            echo "Checking PM2 status..."
+            sleep 3
+
             pm2 status
 
-            echo "======================================"
-            echo "Deployment Completed Successfully!"
-<<<<<<< HEAD
-            echo "======================================"
-=======
-            echo "======================================"
->>>>>>> b0d2a6a (Update project)
+            curl -fsS http://127.0.0.1:8080/api/health
+
+            echo "Backend deployment completed successfully!"

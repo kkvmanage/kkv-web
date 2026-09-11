@@ -1,0 +1,94 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "index.html"
+      - "vite.config.*"
+      - "tsconfig*.json"
+      - ".github/workflows/frontend-deploy.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "index.html"
+      - "vite.config.*"
+      - "tsconfig*.json"
+      - ".github/workflows/frontend-deploy.yml"
+
+jobs:
+  ci:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create frontend environment
+        run: |
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" > .env
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Verify production build
+        run: test -f dist/index.html
+
+  cd:
+    name: Deploy Frontend to EC2
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+
+          script: |
+            set -e
+
+            echo "Starting Frontend Deployment..."
+
+            cd /home/ubuntu/kkv-web
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            printf 'VITE_API_BASE_URL=%s\n' '${{ secrets.VITE_API_BASE_URL }}' > .env
+
+            npm ci
+            npm run build
+
+            test -f dist/index.html
+
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "Frontend deployment completed successfully!"

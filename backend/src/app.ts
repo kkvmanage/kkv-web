@@ -19,6 +19,7 @@ const defaultAllowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
+  'https://testingfrontend.duckdns.org',
   'https://kkv-smoky.vercel.app'
 ];
 
@@ -28,39 +29,40 @@ const isOriginAllowed = (origin?: string): boolean => {
   if (!origin) return true; // allow non-browser / mobile / desktop same-origin calls
   if (allowedOriginsSet.has(origin)) return true;
   if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return true;
-  if (origin.endsWith('.vercel.app')) return true; // Vercel preview environments
+  if (origin.endsWith('.vercel.app') || origin.endsWith('.duckdns.org')) return true;
   return false;
 };
 
-// ── 1. Bulletproof CORS & OPTIONS Preflight Middleware (Must run FIRST) ────
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const origin = req.headers.origin;
-
-  if (isOriginAllowed(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  }
-
-  res.setHeader(
-    'Access-Control-Allow-Methods',
-    'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD'
-  );
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, user-role, user-id, user-name, x-actor-uid, x-actor-email, x-idempotency-key, Accept, X-Requested-With, Origin, Access-Control-Request-Method, Access-Control-Request-Headers'
-  );
-  res.setHeader('Access-Control-Max-Age', '86400');
-
-  // Immediately respond to OPTIONS preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-
-  next();
-});
+// ── 1. Robust Standard CORS & OPTIONS Preflight Middleware ──────────────────
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'user-role',
+      'user-id',
+      'user-name',
+      'x-actor-uid',
+      'x-actor-email',
+      'x-idempotency-key',
+      'Accept',
+      'X-Requested-With',
+      'Origin',
+      'Access-Control-Request-Method',
+      'Access-Control-Request-Headers'
+    ],
+    maxAge: 86400
+  })
+);
 
 // ── 2. Security Headers (configured safely for cross-origin APIs) ───────────
 app.use(
@@ -106,8 +108,10 @@ app.use('/', apiRouter);
 // 404 Handler
 app.use((req: Request, res: Response) => {
   const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
   }
   res.status(404).json({
     success: false,
@@ -120,8 +124,10 @@ app.use((req: Request, res: Response) => {
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[Unhandled Error]:', err);
   const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
   }
   res.status(err.status || 500).json({
     success: false,

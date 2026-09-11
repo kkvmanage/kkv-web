@@ -9,7 +9,11 @@ export const getApiBaseUrl = (): string => {
 
   const envValue = import.meta.env.VITE_API_BASE_URL;
 
-  const raw = (envValue || (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) || 'http://localhost:8080/api').trim();
+  const raw = (
+    envValue ||
+    (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) ||
+    (import.meta.env.PROD ? 'https://tstbck.duckdns.org/api' : 'http://localhost:8080/api')
+  ).trim();
   const clean = raw.endsWith('/') ? raw.slice(0, -1) : raw;
   return clean.endsWith('/api') ? clean : `${clean}/api`;
 };

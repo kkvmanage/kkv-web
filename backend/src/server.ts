@@ -34,7 +34,7 @@ async function startServer() {
   }
 
   // 4. Start Express server only after database is initialized
-  app.listen(env.PORT, () => {
+  app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`[KKV Gold Finance Backend] Express server running at http://localhost:${env.PORT}`);
     console.log(`[KKV Gold Finance Backend] API Base: http://localhost:${env.PORT}/api`);
     console.log(`[KKV Gold Finance Backend] Health Endpoint: http://localhost:${env.PORT}/api/health`);

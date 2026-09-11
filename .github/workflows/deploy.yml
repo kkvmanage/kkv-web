@@ -22,21 +22,35 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script_stop: true
+
           script: |
             set -e
 
-            cd /var/www/your-project
+            echo "======================================"
+            echo "Starting KKV Backend Deployment"
+            echo "======================================"
 
-            echo "Pulling latest code..."
+            echo "Changing to backend directory..."
+            cd /home/ubuntu/kkv-web/backend
+
+            echo "Restoring server-local package-lock changes..."
+            git restore package-lock.json
+
+            echo "Pulling latest code from GitHub..."
             git pull origin main
 
             echo "Installing dependencies..."
             npm ci
 
-            echo "Building application..."
-            npm run build
+            echo "Restarting KKV backend..."
+            pm2 restart kkv-backend --update-env
 
-            echo "Restarting application..."
-            pm2 restart your-project || pm2 start ecosystem.config.js
+            echo "Checking PM2 status..."
+            pm2 status
 
-            echo "Deployment completed successfully!"
+            echo "Checking backend logs..."
+            pm2 logs kkv-backend --lines 20 --nostream
+
+            echo "======================================"
+            echo "KKV Backend Deployment Completed!"
+            echo "======================================"

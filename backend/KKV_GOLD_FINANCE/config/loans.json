@@ -1,1 +1,61 @@
-[]
+[
+  {
+    "customerId": "KKV-2026-000001",
+    "customerName": "Priya Sundaram",
+    "customerPhone": "9876543210",
+    "loanType": "Gold Loan",
+    "principal": 50000,
+    "interestRate": 2,
+    "rateType": "MONTHLY",
+    "tenureMonths": 12,
+    "items": [
+      {
+        "item": "Gold Chain",
+        "qty": 1,
+        "purity": "22ct",
+        "grossWeight": 12.5,
+        "deductionWeight": 0.5,
+        "netWeight": 12
+      }
+    ],
+    "manualMarketValue": 80000,
+    "marketValue": 80000,
+    "loanAmount": 50000,
+    "disbursementDate": "2026-09-11T13:32:32.252Z",
+    "id": "L-1789133552270",
+    "loanNo": "GL-1",
+    "loanTypeId": "gold-loan",
+    "loanTypeName": "Gold Loan",
+    "loanTypeNameSnapshot": "Gold Loan",
+    "interestRateSnapshot": 2,
+    "interestProfileSnapshot": "Gold Amount Bands",
+    "cardFeeSnapshot": 75,
+    "interestProfileIdSnapshot": "gold-bands",
+    "interestProfileNameSnapshot": "Gold Amount Bands",
+    "interestConfigurationSnapshot": {
+      "interestRate": 2,
+      "interestRateUnit": "MONTHLY",
+      "rateSource": "MASTER_CONTROL"
+    },
+    "configurationVersion": 1,
+    "configurationSource": "MASTER_INHERITED",
+    "rateEffectiveAt": "2026-09-11T13:32:32.271Z",
+    "cardFee": 75,
+    "cardFeeEnabled": true,
+    "monthlyInterest": 1000,
+    "totalGrossWeight": 12.5,
+    "totalDeductionWeight": 0.5,
+    "totalNetWeight": 12,
+    "ltv": 62.5,
+    "disbursedAmount": 49925,
+    "netDisbursed": 49925,
+    "outstandingPrincipal": 50000,
+    "accruedInterest": 1000,
+    "status": "ACTIVE",
+    "date": "11-09-2026",
+    "lastInterestPaidDate": "11-09-2026",
+    "nextDueDate": "11/10/2026",
+    "createdAt": "2026-09-11T13:32:32.271Z",
+    "updatedAt": "2026-09-11T13:32:32.271Z"
+  }
+]

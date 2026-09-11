@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "time": "07:02 PM",
+    "billNo": "1",
+    "particulars": "Loan Disbursement (GL-1) - Priya Sundaram",
+    "accountHead": "Gold Loan Portfolio",
+    "mode": "Bank",
+    "cashIn": 0,
+    "cashOut": 0,
+    "bankIn": 0,
+    "bankOut": 50000,
+    "customerName": "Priya Sundaram",
+    "loanNo": "GL-1",
+    "date": "11-09-2026",
+    "id": "db-1789133552283",
+    "cashBal": 0,
+    "bankBal": -50000
+  }
+]

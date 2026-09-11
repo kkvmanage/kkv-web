@@ -41,7 +41,7 @@ export const Accounts: React.FC = () => {
   const [particulars, setParticulars] = useState('');
   const [accountHead, setAccountHead] = useState('Office Expenses');
   const [entryType, setEntryType] = useState<'CASH_IN' | 'CASH_OUT' | 'BANK_IN' | 'BANK_OUT'>('CASH_OUT');
-  const [amount, setAmount] = useState<number>(500);
+  const [amount, setAmount] = useState<string>('');
   const [entryDate, setEntryDate] = useState(new Date().toLocaleDateString('en-GB').replace(/\//g, '-'));
 
   // Calculations for Today In / Out
@@ -62,7 +62,8 @@ export const Accounts: React.FC = () => {
 
   const handleCreateEntry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!particulars.trim() || amount <= 0) {
+    const numAmount = parseFloat(amount) || 0;
+    if (!particulars.trim() || numAmount <= 0) {
       showToast('Please enter valid particulars and amount', 'error');
       return;
     }
@@ -70,18 +71,18 @@ export const Accounts: React.FC = () => {
     const billNo = `MAN-${Date.now().toString().slice(-4)}`;
     addDayBookEntry({
       billNo,
+      date: entryDate,
       particulars: particulars.trim(),
       accountHead,
       mode: entryType.startsWith('CASH') ? 'Cash' : 'Bank',
-      cashIn: entryType === 'CASH_IN' ? amount : 0,
-      cashOut: entryType === 'CASH_OUT' ? amount : 0,
-      bankIn: entryType === 'BANK_IN' ? amount : 0,
-      bankOut: entryType === 'BANK_OUT' ? amount : 0,
-      date: entryDate
+      cashIn: entryType === 'CASH_IN' ? numAmount : 0,
+      cashOut: entryType === 'CASH_OUT' ? numAmount : 0,
+      bankIn: entryType === 'BANK_IN' ? numAmount : 0,
+      bankOut: entryType === 'BANK_OUT' ? numAmount : 0,
     });
 
     setParticulars('');
-    setAmount(500);
+    setAmount('');
     setShowAddEntryModal(false);
     showToast('Manual accounting entry recorded successfully', 'success');
   };
@@ -687,9 +688,11 @@ export const Accounts: React.FC = () => {
                   </label>
                   <input
                     type="number"
+                    step="any"
+                    placeholder="e.g. 546.75"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     value={amount}
-                    onChange={(e) => setAmount(Number(e.target.value))}
+                    onChange={(e) => setAmount(e.target.value)}
                     required
                   />
                 </div>

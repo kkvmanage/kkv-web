@@ -1491,6 +1491,7 @@ export const PendingLoans: React.FC = () => {
                         <label className="form-label required">PRINCIPAL REPAYMENT (₹) *</label>
                         <input
                           type="number"
+                          step="any"
                           className="input-control"
                           placeholder="Principal amount..."
                           value={principalPaidInput}
@@ -1510,13 +1511,14 @@ export const PendingLoans: React.FC = () => {
                         <label className="form-label required">INTEREST (₹) *</label>
                         <input
                           type="number"
+                          step="any"
                           className="input-control"
                           value={interestPaidInput}
                           onChange={(e) => {
                             setInterestPaidInput(e.target.value);
                             const p = parseFloat(principalPaidInput) || 0;
                             const i = parseFloat(e.target.value) || 0;
-                            setAmountReceived((p + i).toString());
+                            setAmountReceived(p + i > 0 ? (p + i).toString() : (p > 0 ? p.toString() : ''));
                           }}
                           style={{ fontSize: '14px', fontWeight: 700 }}
                         />
@@ -1525,6 +1527,7 @@ export const PendingLoans: React.FC = () => {
                         <label className="form-label required">PRINCIPAL (₹) *</label>
                         <input
                           type="number"
+                          step="any"
                           className="input-control"
                           value={principalPaidInput}
                           placeholder="Principal..."
@@ -1532,7 +1535,7 @@ export const PendingLoans: React.FC = () => {
                             setPrincipalPaidInput(e.target.value);
                             const p = parseFloat(e.target.value) || 0;
                             const i = parseFloat(interestPaidInput) || 0;
-                            setAmountReceived((p + i).toString());
+                            setAmountReceived(p + i > 0 ? (p + i).toString() : (i > 0 ? i.toString() : ''));
                           }}
                           style={{ fontSize: '14px', fontWeight: 700 }}
                         />
@@ -1561,6 +1564,7 @@ export const PendingLoans: React.FC = () => {
                     </label>
                     <input
                       type="number"
+                      step="any"
                       className="input-control"
                       placeholder="Enter amount received..."
                       value={amountReceived}

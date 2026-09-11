@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, Receipt } from 'lucide-react';
-import { RentalExpense, RentalComplex, RentalShop, ExpenseCategory, PaymentMode } from '../types/rental.types';
+import { X, Receipt, Building2, Store, FileText } from 'lucide-react';
+import {
+  RentalExpense,
+  RentalComplex,
+  RentalShop,
+  ExpenseCategory,
+  ExpenseScope,
+  PaymentMode
+} from '../types/rental.types';
 
 interface ExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: {
     complexId: string;
+    expenseScope: ExpenseScope;
     shopId?: string;
     expenseDate: string;
     category: ExpenseCategory;
@@ -15,23 +23,37 @@ interface ExpenseModalProps {
     paymentMode: PaymentMode;
     cashAmount?: number;
     gpayAmount?: number;
+    receiptUrl?: string;
     notes?: string;
   }) => Promise<void>;
   complexes: RentalComplex[];
   shops: RentalShop[];
   expenseToEdit?: RentalExpense | null;
   defaultComplexId?: string;
+  defaultScope?: ExpenseScope;
+  defaultShopId?: string;
 }
 
-const CATEGORIES: ExpenseCategory[] = [
-  'Electricity',
-  'Maintenance',
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  'Staff Food / Tea',
   'Cleaning',
-  'Plumbing',
-  'Repair',
-  'Water',
+  'Maintenance',
   'Security',
-  'Transport',
+  'Electricity',
+  'Water',
+  'Plumbing',
+  'Electrical',
+  'Lift Maintenance',
+  'Generator / Fuel',
+  'Labour',
+  'Technician',
+  'Office Expense',
+  'Transportation',
+  'Stationery',
+  'Waste Management',
+  'Emergency Expense',
+  'Miscellaneous',
+  'Repair',
   'Other'
 ];
 
@@ -42,7 +64,9 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   complexes,
   shops,
   expenseToEdit,
-  defaultComplexId
+  defaultComplexId,
+  defaultScope,
+  defaultShopId
 }) => {
   const getToday = () => {
     const d = new Date();
@@ -53,64 +77,118 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   };
 
   const [complexId, setComplexId] = useState('');
+  const [expenseScope, setExpenseScope] = useState<ExpenseScope>('COMPLEX');
   const [shopId, setShopId] = useState('');
   const [expenseDate, setExpenseDate] = useState(getToday());
-  const [category, setCategory] = useState<ExpenseCategory>('Maintenance');
+  const [category, setCategory] = useState<ExpenseCategory>('Staff Food / Tea');
   const [expenseReason, setExpenseReason] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState<number | string>('');
+  const [expenseAmount, setExpenseAmount] = useState<string>('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
-  const [cashAmount, setCashAmount] = useState<number | string>('');
-  const [gpayAmount, setGpayAmount] = useState<number | string>('');
+  const [cashAmount, setCashAmount] = useState<string>('');
+  const [gpayAmount, setGpayAmount] = useState<string>('');
+  const [receiptUrl, setReceiptUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const filteredShops = shops.filter((s) => s.complexId === complexId);
+  const filteredShops = shops.filter((s) => s.complexId === complexId && s.status === 'ACTIVE');
 
   useEffect(() => {
     if (expenseToEdit) {
       setComplexId(expenseToEdit.complexId);
+      setExpenseScope(expenseToEdit.expenseScope || (expenseToEdit.shopId ? 'SHOP' : 'COMPLEX'));
       setShopId(expenseToEdit.shopId || '');
       setExpenseDate(expenseToEdit.expenseDate);
-      setCategory(expenseToEdit.category);
-      setExpenseReason(expenseToEdit.expenseReason);
-      setExpenseAmount(expenseToEdit.expenseAmount);
-      setPaymentMode(expenseToEdit.paymentMode);
-      setCashAmount(expenseToEdit.cashAmount);
-      setGpayAmount(expenseToEdit.gpayAmount);
+      setCategory(expenseToEdit.category || 'Maintenance');
+      setExpenseReason(expenseToEdit.expenseReason || '');
+      setExpenseAmount(
+        expenseToEdit.expenseAmount !== undefined && expenseToEdit.expenseAmount !== null
+          ? String(expenseToEdit.expenseAmount)
+          : ''
+      );
+      setPaymentMode(expenseToEdit.paymentMode || 'CASH');
+      setCashAmount(
+        expenseToEdit.cashAmount !== undefined && expenseToEdit.cashAmount !== null
+          ? String(expenseToEdit.cashAmount)
+          : ''
+      );
+      setGpayAmount(
+        expenseToEdit.gpayAmount !== undefined && expenseToEdit.gpayAmount !== null
+          ? String(expenseToEdit.gpayAmount)
+          : ''
+      );
+      setReceiptUrl(expenseToEdit.receiptUrl || '');
       setNotes(expenseToEdit.notes || '');
     } else {
-      setComplexId(defaultComplexId || complexes[0]?.complexId || '');
-      setShopId('');
+      const initComplex = defaultComplexId || complexes[0]?.complexId || '';
+      setComplexId(initComplex);
+      const initScope = defaultScope || (defaultShopId ? 'SHOP' : 'COMPLEX');
+      setExpenseScope(initScope);
+      setShopId(defaultShopId || '');
       setExpenseDate(getToday());
-      setCategory('Maintenance');
+      setCategory('Staff Food / Tea');
       setExpenseReason('');
       setExpenseAmount('');
       setPaymentMode('CASH');
       setCashAmount('');
       setGpayAmount('');
+      setReceiptUrl('');
       setNotes('');
     }
     setError('');
-  }, [expenseToEdit, isOpen, defaultComplexId, complexes]);
+  }, [expenseToEdit, isOpen, defaultComplexId, defaultScope, defaultShopId, complexes]);
 
   useEffect(() => {
-    const amt = Number(expenseAmount) || 0;
     if (paymentMode === 'CASH') {
-      setCashAmount(amt);
-      setGpayAmount(0);
+      setCashAmount(expenseAmount);
+      setGpayAmount('');
     } else if (paymentMode === 'GPAY') {
-      setCashAmount(0);
-      setGpayAmount(amt);
+      setCashAmount('');
+      setGpayAmount(expenseAmount);
     }
   }, [expenseAmount, paymentMode]);
 
   if (!isOpen) return null;
 
-  const numAmt = Number(expenseAmount) || 0;
-  const numCash = Number(cashAmount) || 0;
-  const numGpay = Number(gpayAmount) || 0;
+  const numAmt = parseFloat(expenseAmount) || 0;
+  const numCash = parseFloat(cashAmount) || 0;
+  const numGpay = parseFloat(gpayAmount) || 0;
   const isSplitMismatch = paymentMode === 'BOTH' && Math.abs(numCash + numGpay - numAmt) > 0.01;
+
+  const getReasonPlaceholder = () => {
+    switch (category) {
+      case 'Staff Food / Tea':
+        return 'e.g. Tea & snacks for security and maintenance staff';
+      case 'Cleaning':
+        return 'e.g. Cleaning materials, floor wash chemicals, mops';
+      case 'Generator / Fuel':
+        return 'e.g. 20L diesel purchased for emergency power backup generator';
+      case 'Plumbing':
+        return 'e.g. Common bathroom valve replacement and pipe leakage fix';
+      case 'Electrical':
+        return 'e.g. Replacement of corridor LED lights and circuit breaker';
+      case 'Lift Maintenance':
+        return 'e.g. Monthly lift servicing charges & lubrication';
+      case 'Security':
+        return 'e.g. Security guard monthly uniform & equipment';
+      case 'Electricity':
+        return 'e.g. Common area & pump motor EB meter bill';
+      case 'Water':
+        return 'e.g. Drinking water cans & water tanker delivery';
+      case 'Labour':
+        return 'e.g. Daily wage labour for terrace drain clearing';
+      case 'Technician':
+        return 'e.g. Motor pump technician visit fee';
+      case 'Office Expense':
+        return 'e.g. Manager office stationery, register books & files';
+      case 'Waste Management':
+        return 'e.g. Monthly commercial garbage clearance payment';
+      case 'Emergency Expense':
+        return 'e.g. Emergency water pipe burst repair at night';
+      default:
+        return 'e.g. Plumber payment for common bathroom repair';
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,20 +196,31 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       setError('Please select a complex');
       return;
     }
+
+    if (expenseScope === 'SHOP' && !shopId) {
+      setError('Please select a Shop/Tenant for shop-level expenses');
+      return;
+    }
+
     if (!category) {
       setError('Please select an expense category');
       return;
     }
+
     if (!expenseReason.trim()) {
-      setError('Please enter expense reason/description');
+      setError('Please enter an expense reason or description');
       return;
     }
+
     if (numAmt <= 0) {
       setError('Expense amount must be greater than zero');
       return;
     }
+
     if (paymentMode === 'BOTH' && isSplitMismatch) {
-      setError(`Cash amount (₹${numCash}) + GPay amount (₹${numGpay}) must equal total expense (₹${numAmt})`);
+      setError(
+        `Cash amount (₹${numCash}) + GPay amount (₹${numGpay}) must equal total expense (₹${numAmt})`
+      );
       return;
     }
 
@@ -140,7 +229,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     try {
       await onSave({
         complexId,
-        shopId: shopId || undefined,
+        expenseScope,
+        shopId: expenseScope === 'SHOP' ? shopId : undefined,
         expenseDate,
         category,
         expenseReason: expenseReason.trim(),
@@ -148,6 +238,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         paymentMode,
         cashAmount: paymentMode === 'CASH' ? numAmt : paymentMode === 'GPAY' ? 0 : numCash,
         gpayAmount: paymentMode === 'GPAY' ? numAmt : paymentMode === 'CASH' ? 0 : numGpay,
+        receiptUrl: receiptUrl.trim() || undefined,
         notes: notes.trim() || undefined
       });
       onClose();
@@ -160,7 +251,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-content" style={{ maxWidth: '520px', padding: 0 }}>
+      <div className="modal-content" style={{ maxWidth: '560px', padding: 0 }}>
         {/* Header */}
         <div
           style={{
@@ -168,13 +259,14 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            backgroundColor: 'var(--bg-surface)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Receipt size={18} color="var(--primary)" />
             <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-              {expenseToEdit ? `Edit Expense (${expenseToEdit.expenseId})` : 'Record Rental Expense'}
+              {expenseToEdit ? `Edit Expense (${expenseToEdit.expenseId})` : 'Record Complex & Facility Expense'}
             </h3>
           </div>
           <button
@@ -206,10 +298,100 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Expense Scope Selector */}
+            <div>
+              <label className="form-label" style={{ fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>
+                EXPENSE SCOPE *
+              </label>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: '8px',
+                  backgroundColor: 'var(--bg-surface-secondary, #f1f5f9)',
+                  padding: '4px',
+                  borderRadius: 'var(--radius-md)'
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpenseScope('COMPLEX');
+                    setShopId('');
+                  }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    backgroundColor: expenseScope === 'COMPLEX' ? 'var(--primary, #176B52)' : 'transparent',
+                    color: expenseScope === 'COMPLEX' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Building2 size={13} />
+                  <span>Complex Expense</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpenseScope('SHOP')}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    backgroundColor: expenseScope === 'SHOP' ? 'var(--primary, #176B52)' : 'transparent',
+                    color: expenseScope === 'SHOP' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Store size={13} />
+                  <span>Shop / Tenant</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpenseScope('RENTAL')}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    backgroundColor: expenseScope === 'RENTAL' ? 'var(--primary, #176B52)' : 'transparent',
+                    color: expenseScope === 'RENTAL' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <FileText size={13} />
+                  <span>Rental-related</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Complex and Shop Dropdowns */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                  COMPLEX *
+                  COMPLEX / BRANCH *
                 </label>
                 <select
                   className="select-control"
@@ -231,27 +413,48 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                  SHOP (OPTIONAL)
+                  {expenseScope === 'SHOP' ? 'SHOP / TENANT *' : 'SHOP / TENANT'}
                 </label>
-                <select
-                  className="select-control"
-                  value={shopId}
-                  onChange={(e) => setShopId(e.target.value)}
-                >
-                  <option value="">General Complex Expense</option>
-                  {filteredShops.map((s) => (
-                    <option key={s.shopId} value={s.shopId}>
-                      {s.shopNumber} - {s.shopName}
-                    </option>
-                  ))}
-                </select>
+                {expenseScope === 'COMPLEX' || expenseScope === 'RENTAL' ? (
+                  <div
+                    style={{
+                      height: '38px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 12px',
+                      backgroundColor: 'var(--bg-surface-secondary, #f8fafc)',
+                      border: '1px solid var(--border-subtle, #e2e8f0)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '12px',
+                      color: 'var(--text-muted, #64748b)',
+                      fontWeight: 600
+                    }}
+                  >
+                    🏢 General Complex Expense
+                  </div>
+                ) : (
+                  <select
+                    className="select-control"
+                    value={shopId}
+                    onChange={(e) => setShopId(e.target.value)}
+                    required={expenseScope === 'SHOP'}
+                  >
+                    <option value="">-- Select Shop / Tenant --</option>
+                    {filteredShops.map((s) => (
+                      <option key={s.shopId} value={s.shopId}>
+                        {s.shopNumber} - {s.shopName} ({s.tenantName})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
+            {/* Category and Date Row */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                  CATEGORY *
+                  EXPENSE CATEGORY *
                 </label>
                 <select
                   className="select-control"
@@ -259,7 +462,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                   onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
                   required
                 >
-                  {CATEGORIES.map((cat) => (
+                  {EXPENSE_CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>
@@ -281,32 +484,36 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               </div>
             </div>
 
+            {/* Expense Description / Reason */}
             <div>
               <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                EXPENSE REASON / DESCRIPTION *
+                EXPENSE DESCRIPTION / REASON *
               </label>
               <input
                 type="text"
                 className="input-control"
-                placeholder={category === 'Other' ? 'Describe specific custom expense reason' : 'e.g. EB meter bill, motor pump repair'}
+                placeholder={getReasonPlaceholder()}
                 value={expenseReason}
                 onChange={(e) => setExpenseReason(e.target.value)}
                 required
               />
             </div>
 
+            {/* Expense Amount */}
             <div>
               <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
                 EXPENSE AMOUNT (₹) *
               </label>
               <input
                 type="number"
+                step="any"
+                min="0.01"
                 className="input-control"
-                placeholder="e.g. 2500"
-                min="1"
+                placeholder="e.g. 546.75 or 1500"
                 value={expenseAmount}
                 onChange={(e) => setExpenseAmount(e.target.value)}
                 required
+                style={{ fontSize: '15px', fontWeight: 800 }}
               />
             </div>
 
@@ -344,7 +551,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                     checked={paymentMode === 'BOTH'}
                     onChange={() => setPaymentMode('BOTH')}
                   />
-                  <span>Both</span>
+                  <span>Both (Split Payment)</span>
                 </label>
               </div>
             </div>
@@ -368,9 +575,10 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="any"
+                    min="0"
                     className="input-control"
                     placeholder="0"
-                    min="0"
                     value={cashAmount}
                     onChange={(e) => setCashAmount(e.target.value)}
                     required
@@ -382,9 +590,10 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="any"
+                    min="0"
                     className="input-control"
                     placeholder="0"
-                    min="0"
                     value={gpayAmount}
                     onChange={(e) => setGpayAmount(e.target.value)}
                     required
@@ -398,6 +607,21 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               </div>
             )}
 
+            {/* Receipt URL / Reference */}
+            <div>
+              <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
+                RECEIPT / INVOICE ATTACHMENT (OPTIONAL)
+              </label>
+              <input
+                type="text"
+                className="input-control"
+                placeholder="e.g. Receipt #REC-8841 or https://invoice-link.pdf"
+                value={receiptUrl}
+                onChange={(e) => setReceiptUrl(e.target.value)}
+              />
+            </div>
+
+            {/* Notes */}
             <div>
               <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
                 NOTES / REMARKS (OPTIONAL)
@@ -405,7 +629,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               <input
                 type="text"
                 className="input-control"
-                placeholder="e.g. Paid to technician directly, invoice attached"
+                placeholder="e.g. Paid directly to technician, bill approved by complex manager"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -430,7 +654,13 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               className="btn btn-primary"
               disabled={loading || (paymentMode === 'BOTH' && isSplitMismatch)}
             >
-              {loading ? 'Saving...' : expenseToEdit ? 'Update Expense' : `Record Expense (₹${numAmt.toLocaleString('en-IN')})`}
+              {loading
+                ? 'Saving...'
+                : expenseToEdit
+                ? 'Update Expense'
+                : numAmt > 0
+                ? `Record Expense (₹${numAmt.toLocaleString('en-IN')})`
+                : 'Record Expense'}
             </button>
           </div>
         </form>

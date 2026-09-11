@@ -947,6 +947,7 @@ export const LoanConfigurationSection: React.FC = () => {
                     <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>CARD FEE AMOUNT (₹)</label>
                     <input
                       type="number"
+                      step="any"
                       className="input-control"
                       value={typeCardFeeAmount}
                       disabled={!typeCardFeeEnabled}
@@ -983,7 +984,7 @@ export const LoanConfigurationSection: React.FC = () => {
                     <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>DEFAULT RATE % / MONTH *</label>
                     <input
                       type="number"
-                      step="0.05"
+                      step="any"
                       className="input-control"
                       value={typeDefaultMonthlyRate}
                       onChange={(e) => setTypeDefaultMonthlyRate(e.target.value === '' ? '' : Number(e.target.value))}

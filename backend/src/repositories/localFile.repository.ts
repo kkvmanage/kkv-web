@@ -43,12 +43,16 @@ export class LocalFileRepository {
     }
   }
 
+  public clearCache(filename?: string): void {
+    if (filename) {
+      this.memoryCache.delete(filename);
+    } else {
+      this.memoryCache.clear();
+    }
+  }
+
   public readJson<T>(filename: string, fallback: T): T {
     try {
-      if (this.memoryCache.has(filename)) {
-        return this.memoryCache.get(filename) as T;
-      }
-
       const filePath = path.join(this.dbDir, filename);
       if (!fs.existsSync(filePath)) {
         this.memoryCache.set(filename, fallback);

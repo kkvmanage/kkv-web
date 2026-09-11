@@ -535,6 +535,24 @@ export const getRentalSyncStatus = async (_req: Request, res: Response) => {
   }
 };
 
+export const resetRentalData = async (_req: Request, res: Response) => {
+  try {
+    const { rentalAdminSummaryService } = await import('../services/rentalAdminSummary.service.js');
+    const result = await rentalAdminSummaryService.resetRentalBusinessData();
+    return res.json({
+      success: true,
+      message: 'Rental operational records have been safely reset. Financial, customer, and authentication data preserved intact.',
+      data: result
+    });
+  } catch (err: any) {
+    console.error('[AdminController] resetRentalData error:', err?.message || err);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Failed to reset rental data'
+    });
+  }
+};
+
 export const getDatabaseStatus = async (_req: Request, res: Response) => {
   try {
     const { checkMongoHealth } = await import('../config/database.js');

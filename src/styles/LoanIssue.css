@@ -565,6 +565,104 @@
   color: var(--text-secondary);
 }
 
+/* ── Gold Ornament Table & QTY Redesign ── */
+.no-spinners::-webkit-inner-spin-button,
+.no-spinners::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinners {
+  -moz-appearance: textfield;
+}
+
+.fi-ornament-table {
+  width: 100%;
+  min-width: 840px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.fi-ornament-table th {
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.fi-ornament-table td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.fi-ornament-table .col-seq {
+  width: 44px;
+  text-align: center;
+}
+
+.fi-ornament-table .col-item {
+  width: auto;
+  min-width: 180px;
+}
+
+.fi-ornament-table .col-qty {
+  width: 84px;
+  text-align: center;
+}
+
+.fi-ornament-table .col-purity {
+  width: 130px;
+}
+
+.fi-ornament-table .col-gross {
+  width: 130px;
+}
+
+.fi-ornament-table .col-deduct {
+  width: 130px;
+}
+
+.fi-ornament-table .col-net {
+  width: 140px;
+}
+
+.fi-ornament-table .col-action {
+  width: 44px;
+  text-align: center;
+}
+
+.fi-qty-input {
+  width: 100% !important;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0 8px !important;
+}
+
+.fi-row-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-danger, #ef4444);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fi-row-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  transform: scale(1.05);
+}
+
+.fi-row-delete-btn:focus-visible {
+  outline: 2px solid var(--color-danger, #ef4444);
+  outline-offset: 1px;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */

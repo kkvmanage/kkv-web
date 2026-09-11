@@ -378,7 +378,10 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
             complexes={complexes}
             shops={[shop]}
             defaultComplexId={shop.complexId}
+            defaultShopId={shop.shopId}
+            defaultScope="SHOP"
           />
+
         </>
       )}
     </div>

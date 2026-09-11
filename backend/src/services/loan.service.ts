@@ -32,7 +32,7 @@ export class LoanService {
     return loans.find((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase()) || null;
   }
 
-  public calculateFinancials(principal: number, interestRatePercent: number, items: any[], marketRatePerGram: number = 6000) {
+  public calculateFinancials(principal: number, interestRatePercent: number, items: any[], manualMarketValue?: number) {
     const decPrincipal = new Decimal(principal || 0);
     const decRate = new Decimal(interestRatePercent || 0);
 
@@ -95,7 +95,9 @@ export class LoanService {
     const totalDeductionWeight = totalDeduction.toDecimalPlaces(3).toNumber();
     const totalNetWeight = totalNet.toDecimalPlaces(3).toNumber();
 
-    const marketValue = totalNet.times(marketRatePerGram).toDecimalPlaces(2).toNumber();
+    const marketValue = typeof manualMarketValue === 'number' && manualMarketValue > 0
+      ? manualMarketValue
+      : 0;
     const ltv = marketValue > 0 ? decPrincipal.times(100).dividedBy(marketValue).toDecimalPlaces(2).toNumber() : 0;
 
     return {
@@ -111,7 +113,17 @@ export class LoanService {
 
   public async create(loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string }): Promise<Loan> {
     const loans = this.getAll();
-    const loanNo = loanData.loanNo || (await counterService.getNextLoanNo());
+    let seq: number;
+    let loanNo: string;
+    if (loanData.loanNo && /^GL-\d+$/i.test(loanData.loanNo.trim())) {
+      loanNo = loanData.loanNo.trim().toUpperCase();
+      seq = parseInt(loanNo.replace(/\D/g, ''), 10);
+      await counterService.setSequenceIfHigher('loanSequence', seq);
+      await counterService.setSequenceIfHigher('loanNo', seq);
+    } else {
+      seq = await counterService.getNextLoanSequence();
+      loanNo = `GL-${seq}`;
+    }
     const id = `L-${Date.now()}`;
 
     const effectivePrincipal = Number(loanData.principal ?? (loanData as any).principalAmount ?? (loanData as any).loanAmount ?? 0);
@@ -172,7 +184,8 @@ export class LoanService {
       interestProfileName = matchedType.name;
     }
 
-    const calc = this.calculateFinancials(effectivePrincipal, interestRate, loanData.items || []);
+    const userMarketValue = Number(loanData.marketValue) || 0;
+    const calc = this.calculateFinancials(effectivePrincipal, interestRate, loanData.items || [], userMarketValue);
 
     // ── NOMINEE KYC VALIDATION & NORMALIZATION ──────────────────────────────
     let normalizedNominee = loanData.nominee;
@@ -426,10 +439,10 @@ export class LoanService {
       });
     }
 
-    // Create New Loan Receipt
+    // Create New Loan Receipt using the same authoritative sequence
     try {
-      receiptService.create({
-        receiptNo: 0,
+      await receiptService.create({
+        receiptNo: seq,
         loanId: newLoan.id,
         loanNo: newLoan.loanNo,
         customerId: newLoan.customerId,
@@ -456,7 +469,7 @@ export class LoanService {
 
       accountingService.addEntry({
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        billNo: loanNo,
+        billNo: String(seq),
         particulars: `Loan Disbursement (${loanNo}) - ${newLoan.customerName}`,
         accountHead: 'Gold Loan Portfolio',
         mode: isCash ? 'Cash' : newLoan.bankMode === 'UPI' ? 'UPI' : 'Bank',
@@ -492,7 +505,9 @@ export class LoanService {
     const loans = this.getAll();
     const index = loans.findIndex((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase());
     if (index === -1) return null;
-    loans[index] = { ...loans[index], ...updates };
+    const originalLoanNo = loans[index].loanNo;
+    const originalId = loans[index].id;
+    loans[index] = { ...loans[index], ...updates, loanNo: originalLoanNo, id: originalId };
     localFileRepository.writeJson(FILE_NAME, loans);
     syncQueueService.enqueue('loan', loans[index].loanNo, 'UPDATE', loans[index]);
     return loans[index];

@@ -436,8 +436,9 @@ export const apiService = {
   },
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
-  async getDashboardSummary() {
-    return fetchJson<any>('/dashboard/summary');
+  async getDashboardSummary(branchId?: string) {
+    const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+    return fetchJson<{ success: boolean; data: import('../types').DashboardSummaryData }>(`/dashboard/summary${query}`);
   },
 
   // ── Admin & Settings ───────────────────────────────────────────────────────
@@ -998,6 +999,24 @@ export const apiService = {
     const token = getStoredAuthToken();
     const url = `${getApiBaseUrl()}/backups/${backupId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     window.open(url, '_blank');
+  },
+
+  async getNextLoanSequence(): Promise<{ nextSequence: number; loanNo: string; receiptNo: number } | null> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/loans/next-sequence`, {
+        headers: {
+          ...(getStoredAuthToken() ? { Authorization: `Bearer ${getStoredAuthToken()}` } : {})
+        }
+      });
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        return json.data;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[apiService] getNextLoanSequence fallback:', err);
+      return null;
+    }
   },
 
   async restoreLatestBackup(): Promise<{ success: boolean; data?: any; message?: string }> {

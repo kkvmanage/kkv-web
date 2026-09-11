@@ -834,5 +834,48 @@ export interface AppNotification {
   createdAt: string;
 }
 
+// ── Dashboard Summary Models ──────────────────────────────────────────────────
+export interface MonthlyTrend {
+  monthKey: string;
+  month: string;
+  monthShort: string;
+  disbursed: number;
+  collected: number;
+}
 
+export interface StatusDistribution {
+  active: number;
+  overdue: number;
+  closed: number;
+  total: number;
+  activePercent: number;
+  overduePercent: number;
+  closedPercent: number;
+}
 
+export interface DashboardSummaryData {
+  totalDisbursed: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  activeBorrowers: number;
+  totalCustomers: number;
+  activeLoansCount: number;
+  overdueLoansCount: number;
+  closedLoansCount: number;
+  totalLoansCount: number;
+  activeFDsCount: number;
+  cashInHand: number;
+  cashAtBank: number;
+  monthlyTrends: MonthlyTrend[];
+  statusDistribution: StatusDistribution;
+  recentTransactions: Array<{
+    id: string;
+    receiptNo: number;
+    kind: string;
+    customerName: string;
+    loanNo: string;
+    amount: number;
+    date: string;
+    paymentMode?: string;
+  }>;
+}

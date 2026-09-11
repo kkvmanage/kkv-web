@@ -1,16 +1,30 @@
 export type RentalStatus = 'ACTIVE' | 'INACTIVE';
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'PENDING';
 export type PaymentMode = 'CASH' | 'GPAY' | 'BOTH';
+export type ExpenseScope = 'COMPLEX' | 'SHOP' | 'RENTAL';
+
 export type ExpenseCategory =
-  | 'Electricity'
   | 'Maintenance'
-  | 'Cleaning'
-  | 'Plumbing'
-  | 'Repair'
-  | 'Water'
   | 'Security'
-  | 'Transport'
-  | 'Other';
+  | 'Cleaning'
+  | 'Staff Food / Tea'
+  | 'Electricity'
+  | 'Water'
+  | 'Plumbing'
+  | 'Electrical'
+  | 'Lift Maintenance'
+  | 'Generator / Fuel'
+  | 'Labour'
+  | 'Technician'
+  | 'Office Expense'
+  | 'Transportation'
+  | 'Stationery'
+  | 'Waste Management'
+  | 'Emergency Expense'
+  | 'Miscellaneous'
+  | 'Repair'
+  | 'Other'
+  | (string & {});
 
 export type SyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
 
@@ -80,7 +94,8 @@ export interface RentalExpense {
   expenseId: string; // EXP-0001
   complexId: string;
   complexName?: string;
-  shopId?: string;
+  expenseScope?: ExpenseScope;
+  shopId?: string | null;
   shopNumber?: string;
   expenseDate: string; // YYYY-MM-DD
   category: ExpenseCategory;
@@ -89,7 +104,11 @@ export interface RentalExpense {
   paymentMode: PaymentMode;
   cashAmount: number;
   gpayAmount: number;
+  receiptUrl?: string;
+  paidTo?: string;
   notes?: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;

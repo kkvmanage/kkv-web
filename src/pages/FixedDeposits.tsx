@@ -114,7 +114,7 @@ export const FixedDeposits: React.FC = () => {
 
   // New Deposit Form State
   const [depositDate, setDepositDate] = useState<string>(new Date().toLocaleDateString('en-GB').replace(/\//g, '-'));
-  const [principal, setPrincipal] = useState<number | ''>(200000);
+  const [principal, setPrincipal] = useState<string>('200000');
   const [interestRatePA, setInterestRatePA] = useState<number | ''>(masterControlSettings?.fdInterestRate ?? 12);
   const [tenureMonths, setTenureMonths] = useState<number | ''>(masterControlSettings?.fdDefaultTenureMonths ?? 12);
   const [payoutFrequency, setPayoutFrequency] = useState<string>('Monthly');
@@ -145,7 +145,7 @@ export const FixedDeposits: React.FC = () => {
   const [wdSelectedFD, setWdSelectedFD] = useState<FixedDeposit | null>(null);
   const [wdActionType, setWdActionType] = useState<'PARTIAL' | 'FULL' | 'RENEW'>('PARTIAL');
   const [wdType, setWdType] = useState<'PARTIAL' | 'FULL'>('PARTIAL');
-  const [wdAmount, setWdAmount] = useState<number | ''>('');
+  const [wdAmount, setWdAmount] = useState<string>('');
   const [wdMode, setWdMode] = useState<'Cash' | 'Bank' | 'UPI'>('Cash');
   const [wdBankName, setWdBankName] = useState<string>('');
   const [wdTxRef, setWdTxRef] = useState<string>('');
@@ -309,9 +309,9 @@ export const FixedDeposits: React.FC = () => {
 
 
   // Calculated values
-  const numericPrincipal = typeof principal === 'number' ? principal : 0;
-  const numericRate = typeof interestRatePA === 'number' ? interestRatePA : 0;
-  const numericTenure = typeof tenureMonths === 'number' ? tenureMonths : 0;
+  const numericPrincipal = typeof principal === 'number' ? principal : parseFloat(String(principal)) || 0;
+  const numericRate = typeof interestRatePA === 'number' ? interestRatePA : parseFloat(String(interestRatePA)) || 0;
+  const numericTenure = typeof tenureMonths === 'number' ? tenureMonths : parseInt(String(tenureMonths), 10) || 0;
 
   const monthlyPayout = Math.round((numericPrincipal * (numericRate / 100)) / 12);
   const expectedMaturityAmount = Math.round(numericPrincipal + (numericPrincipal * (numericRate / 100) * (numericTenure / 12)));
@@ -441,7 +441,7 @@ export const FixedDeposits: React.FC = () => {
       // Reset Form
       setSelectedCustomer(null);
       setCustomerSearchQuery('');
-      setPrincipal(200000);
+      setPrincipal('200000');
       setNomineeName('');
       setNomineeRelation('');
       setRemarks('');
@@ -702,11 +702,12 @@ export const FixedDeposits: React.FC = () => {
                   </div>
                   <input
                     type="number"
+                    step="any"
                     min={masterControlSettings?.fdMinimumAmount ?? 5000}
                     className="input-control"
                     style={{ fontWeight: 700, fontSize: '15px' }}
                     value={principal}
-                    onChange={(e) => setPrincipal(Number(e.target.value) || 0)}
+                    onChange={(e) => setPrincipal(e.target.value)}
                   />
                 </div>
                 <div className="form-group">
@@ -1560,7 +1561,7 @@ export const FixedDeposits: React.FC = () => {
           setWdSelectedFD(fd);
           setWdType('PARTIAL');
           const rem = fd.remainingPrincipal ?? fd.principal;
-          setWdAmount(rem);
+          setWdAmount(String(rem));
           setWdMode('Cash');
           setWdBankName('');
           setWdTxRef('');
@@ -1863,7 +1864,7 @@ export const FixedDeposits: React.FC = () => {
                             type="button"
                             onClick={() => {
                               setWdActionType(t);
-                              if (t === 'FULL') { setWdType('FULL'); setWdAmount(wdRemaining); }
+                              if (t === 'FULL') { setWdType('FULL'); setWdAmount(String(wdRemaining)); }
                               else if (t === 'PARTIAL') { setWdType('PARTIAL'); setWdAmount(''); }
                             }}
                             style={{
@@ -1885,12 +1886,14 @@ export const FixedDeposits: React.FC = () => {
                           <div className="form-group">
                             <label className="form-label required">{wdActionType === 'FULL' ? 'CLOSURE AMOUNT (₹)' : 'AMOUNT TO WITHDRAW (₹) *'}</label>
                             <input
-                              type="number" className="input-control"
+                              type="number"
+                              step="any"
+                              className="input-control"
                               placeholder="Enter withdrawal amount"
                               value={wdActionType === 'FULL' ? wdRemaining : wdAmount}
                               readOnly={wdActionType === 'FULL'}
                               style={{ backgroundColor: wdActionType === 'FULL' ? 'var(--bg-surface-secondary)' : undefined }}
-                              onChange={(e) => { if (wdActionType === 'PARTIAL') setWdAmount(e.target.value === '' ? '' : Number(e.target.value)); }}
+                              onChange={(e) => { if (wdActionType === 'PARTIAL') setWdAmount(e.target.value); }}
                               max={wdRemaining}
                             />
                             {wdActionType === 'PARTIAL' && numWdAmount > 0 && (

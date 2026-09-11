@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getLoans,
   getLoanByNo,
+  getNextSequence,
   createLoan,
   updateLoan,
   deleteLoan,
@@ -17,6 +18,7 @@ const router = Router();
 router.use(authenticateUser);
 
 // Operational Endpoints: Module-action permissions
+router.get('/next-sequence', authorizePermission('loans', 'view'), getNextSequence);
 router.get('/', authorizePermission('loans', 'view'), getLoans);
 router.get('/:loanNo', authorizePermission('loans', 'view'), getLoanByNo);
 router.post('/', authorizePermission('loans', 'create'), createLoan);

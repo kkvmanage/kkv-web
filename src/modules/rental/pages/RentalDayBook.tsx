@@ -68,10 +68,10 @@ export const RentalDayBook: React.FC = () => {
   const [manualDate, setManualDate] = useState(todayStr);
   const [manualType, setManualType] = useState<'MANUAL_INCOME' | 'MANUAL_EXPENSE'>('MANUAL_INCOME');
   const [manualParticulars, setManualParticulars] = useState('');
-  const [manualAmount, setManualAmount] = useState<number | ''>('');
+  const [manualAmount, setManualAmount] = useState<string>('');
   const [manualMode, setManualMode] = useState<PaymentMode>('CASH');
-  const [manualCashAmount, setManualCashAmount] = useState<number | ''>('');
-  const [manualGpayAmount, setManualGpayAmount] = useState<number | ''>('');
+  const [manualCashAmount, setManualCashAmount] = useState<string>('');
+  const [manualGpayAmount, setManualGpayAmount] = useState<string>('');
   const [manualComplexId, setManualComplexId] = useState('');
   const [manualShopId, setManualShopId] = useState('');
   const [manualCategory, setManualCategory] = useState('Maintenance');
@@ -181,7 +181,10 @@ export const RentalDayBook: React.FC = () => {
   // Helper formatting
   const formatCurrency = (val: number | undefined) => {
     if (val === undefined || val === null) return '₹0';
-    return `₹${Math.round(val).toLocaleString('en-IN')}`;
+    return `₹${val.toLocaleString('en-IN', {
+      minimumFractionDigits: Number.isInteger(val) ? 0 : 2,
+      maximumFractionDigits: 2
+    })}`;
   };
 
   // Filter shops available for selected complex in manual modal
@@ -1280,10 +1283,11 @@ export const RentalDayBook: React.FC = () => {
                     <input
                       type="number"
                       required
-                      min={1}
+                      min="0"
+                      step="any"
                       placeholder="0.00"
                       value={manualAmount}
-                      onChange={(e) => setManualAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                      onChange={(e) => setManualAmount(e.target.value)}
                       className="form-control"
                       style={{ height: '38px', fontSize: '13px' }}
                     />
@@ -1324,9 +1328,10 @@ export const RentalDayBook: React.FC = () => {
                       </label>
                       <input
                         type="number"
+                        step="any"
                         placeholder="Cash amount"
                         value={manualCashAmount}
-                        onChange={(e) => setManualCashAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        onChange={(e) => setManualCashAmount(e.target.value)}
                         className="form-control"
                         style={{ height: '36px', fontSize: '13px' }}
                       />
@@ -1337,9 +1342,10 @@ export const RentalDayBook: React.FC = () => {
                       </label>
                       <input
                         type="number"
+                        step="any"
                         placeholder="GPAY amount"
                         value={manualGpayAmount}
-                        onChange={(e) => setManualGpayAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        onChange={(e) => setManualGpayAmount(e.target.value)}
                         className="form-control"
                         style={{ height: '36px', fontSize: '13px' }}
                       />

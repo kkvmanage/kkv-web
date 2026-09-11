@@ -11,9 +11,9 @@ import {
 /**
  * Format a number as Indian Currency string (e.g. ₹1,00,000 or ₹1,500)
  */
-export const formatINR = (amount: number | undefined | null): string => {
-  const num = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
-  return `₹${Math.round(num).toLocaleString('en-IN')}`;
+export const formatINR = (amount: number | string | undefined | null): string => {
+  const num = typeof amount === 'number' && !isNaN(amount) ? amount : (typeof amount === 'string' && !isNaN(Number(amount)) ? Number(amount) : 0);
+  return `₹${num.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(num) ? 0 : 2, maximumFractionDigits: 2 })}`;
 };
 
 /**

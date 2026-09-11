@@ -457,6 +457,7 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
                     <table className="table" style={{ fontSize: '11.5px' }}>
                       <thead>
                         <tr>
+                          <th>SCOPE</th>
                           <th>CATEGORY</th>
                           <th>REASON</th>
                           <th>DATE</th>
@@ -464,19 +465,37 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {dashboardData.recentExpenses.slice(0, 5).map((e) => (
+                        {dashboardData.recentExpenses.slice(0, 5).map((e: any) => (
                           <tr key={e.expenseId}>
+                            <td>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 700,
+                                  backgroundColor: e.expenseScope === 'COMPLEX' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(168, 85, 247, 0.12)',
+                                  color: e.expenseScope === 'COMPLEX' ? '#2563eb' : '#7c3aed'
+                                }}
+                              >
+                                {e.expenseScope || 'COMPLEX'}
+                              </span>
+                            </td>
                             <td style={{ fontWeight: 700 }}>{e.category}</td>
                             <td>{e.expenseReason}</td>
                             <td style={{ color: 'var(--text-muted)' }}>{e.expenseDate}</td>
                             <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
-                              ₹{e.expenseAmount.toLocaleString('en-IN')}
+                              ₹{e.expenseAmount.toLocaleString('en-IN', {
+                                minimumFractionDigits: Number.isInteger(e.expenseAmount) ? 0 : 2,
+                                maximumFractionDigits: 2
+                              })}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+
                 )}
               </div>
             </div>

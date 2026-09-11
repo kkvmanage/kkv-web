@@ -267,7 +267,7 @@ export const FDConfigurationSection: React.FC = () => {
               <div style={{ position: 'relative' }}>
                 <input
                   type="number"
-                  step="0.1"
+                  step="any"
                   min="0.1"
                   max="100"
                   className="input-control"
@@ -324,25 +324,24 @@ export const FDConfigurationSection: React.FC = () => {
           <div
             style={{
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: '8px',
               marginBottom: '16px',
               borderBottom: '1px solid var(--border-light, #e2e8f0)',
-              paddingBottom: '12px'
+              paddingBottom: '12px',
+              flexWrap: 'wrap',
+              gap: '12px'
             }}
           >
-            <Clock size={20} color="var(--color-primary-dark, #059669)" />
-            <div>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-dark, #0f172a)' }}>
-                TENURE &amp; PRINCIPAL LIMITS
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={18} color="var(--color-primary-dark, #059669)" />
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-dark, #0f172a)' }}>
+                TENURE &amp; DEPOSIT PRINCIPAL BOUNDS
               </h3>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted, #64748b)' }}>
-                Configure default contract duration, allowed tenure presets, and threshold boundaries
-              </span>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label required" style={{ fontSize: '11.5px', fontWeight: 700 }}>
                 DEFAULT TENURE (MONTHS)
@@ -350,6 +349,7 @@ export const FDConfigurationSection: React.FC = () => {
               <input
                 type="number"
                 min="1"
+                max="120"
                 className="input-control"
                 style={{ fontWeight: 700 }}
                 value={defaultTenure}
@@ -369,7 +369,7 @@ export const FDConfigurationSection: React.FC = () => {
                 <input
                   type="number"
                   min="0"
-                  step="500"
+                  step="any"
                   className="input-control"
                   style={{ fontWeight: 700, paddingLeft: '32px' }}
                   value={minAmount}
@@ -402,7 +402,7 @@ export const FDConfigurationSection: React.FC = () => {
                 <input
                   type="number"
                   min={minAmount || 0}
-                  step="10000"
+                  step="any"
                   className="input-control"
                   style={{ fontWeight: 700, paddingLeft: '32px' }}
                   value={maxAmount}

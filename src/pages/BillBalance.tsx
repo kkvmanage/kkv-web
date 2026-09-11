@@ -38,7 +38,7 @@ export const BillBalance: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newLoanNo, setNewLoanNo] = useState('');
   const [newCustomer, setNewCustomer] = useState('');
-  const [newAmount, setNewAmount] = useState<number | ''>('');
+  const [newAmount, setNewAmount] = useState<string>('');
   const [newReason, setNewReason] = useState('');
 
   const openEntries = entries.filter((e) => e.status === 'OPEN');
@@ -65,7 +65,8 @@ export const BillBalance: React.FC = () => {
 
   const handleAddBalance = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustomer.trim() || !newLoanNo.trim() || !newAmount || Number(newAmount) <= 0) {
+    const numAmt = parseFloat(newAmount) || 0;
+    if (!newCustomer.trim() || !newLoanNo.trim() || numAmt <= 0) {
       showToast('Please enter customer, loan number, and valid balance amount.', 'error');
       return;
     }
@@ -77,17 +78,18 @@ export const BillBalance: React.FC = () => {
       customerName: newCustomer.trim(),
       phone: '+91 98400 00000',
       date: new Date().toLocaleDateString('en-GB'),
-      balanceAmount: Number(newAmount),
-      reason: newReason.trim() || 'Short payment adjustment',
+      balanceAmount: numAmt,
+      reason: newReason.trim() || 'Pending balance settlement',
       status: 'OPEN'
     };
+
     setEntries((prev) => [newEntry, ...prev]);
     setShowAddModal(false);
-    setNewCustomer('');
     setNewLoanNo('');
+    setNewCustomer('');
     setNewAmount('');
     setNewReason('');
-    showToast('Bill balance entry tracked successfully!', 'success');
+    showToast('Bill balance recorded successfully!', 'success');
   };
 
   const columns: ColumnDef<BillBalanceEntry>[] = [
@@ -308,12 +310,13 @@ export const BillBalance: React.FC = () => {
               <FormField label="Balance Amount (₹)" required>
                 <input
                   type="number"
+                  step="any"
                   className="input-control"
-                  placeholder="e.g. 500"
+                  placeholder="e.g. 546.75"
                   value={newAmount}
-                  onChange={(e) => setNewAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  onChange={(e) => setNewAmount(e.target.value)}
                   required
-                  min={1}
+                  min="0"
                 />
               </FormField>
 

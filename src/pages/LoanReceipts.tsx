@@ -43,9 +43,9 @@ export const LoanReceipts: React.FC = () => {
     'Interest Payment' | 'EMI Payment' | 'Part Principal Payment' | 'Full Principal Closure' | 'Interest + Principal' | 'Other'
   >('Interest Payment');
   const [date, setDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [interestAmount, setInterestAmount] = useState<number>(0);
-  const [principalAmount, setPrincipalAmount] = useState<number>(0);
-  const [otherAmount, setOtherAmount] = useState<number>(0);
+  const [interestAmount, setInterestAmount] = useState<string>('');
+  const [principalAmount, setPrincipalAmount] = useState<string>('');
+  const [otherAmount, setOtherAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'UPI'>('Cash');
   const [bankName, setBankName] = useState<string>('');
   const [transactionReference, setTransactionReference] = useState<string>('');
@@ -122,7 +122,7 @@ export const LoanReceipts: React.FC = () => {
     if (!currentLoan) return 0;
     return (
       currentLoan.monthlyInterest ||
-      Math.round(((currentLoan.outstandingPrincipal || currentLoan.principal) * currentLoan.interestRate) / 100)
+      ((currentLoan.outstandingPrincipal || currentLoan.principal) * currentLoan.interestRate) / 100
     );
   }, [currentLoan]);
 
@@ -147,54 +147,58 @@ export const LoanReceipts: React.FC = () => {
     if (!currentLoan) return;
 
     if (receiptType === 'Interest Payment') {
-      setInterestAmount(monthlyInterest);
-      setPrincipalAmount(0);
-      setOtherAmount(0);
+      setInterestAmount(String(monthlyInterest));
+      setPrincipalAmount('0');
+      setOtherAmount('0');
       setNotes('Monthly interest payment');
     } else if (receiptType === 'EMI Payment') {
-      setInterestAmount(monthlyInterest);
-      setPrincipalAmount(0);
-      setOtherAmount(0);
+      setInterestAmount(String(monthlyInterest));
+      setPrincipalAmount('0');
+      setOtherAmount('0');
       setNotes('Monthly EMI payment');
     } else if (receiptType === 'Part Principal Payment') {
-      setInterestAmount(0);
-      setPrincipalAmount(Math.min(10000, currentLoan.outstandingPrincipal));
-      setOtherAmount(0);
+      setInterestAmount('0');
+      setPrincipalAmount(String(Math.min(10000, currentLoan.outstandingPrincipal)));
+      setOtherAmount('0');
       setNotes('Part principal reduction payment');
     } else if (receiptType === 'Full Principal Closure') {
-      setInterestAmount(isInterestAlreadyPaid ? 0 : monthlyInterest);
-      setPrincipalAmount(currentLoan.outstandingPrincipal);
-      setOtherAmount(0);
+      setInterestAmount(isInterestAlreadyPaid ? '0' : String(monthlyInterest));
+      setPrincipalAmount(String(currentLoan.outstandingPrincipal));
+      setOtherAmount('0');
       setNotes('Full loan closure & gold release');
     } else if (receiptType === 'Interest + Principal') {
-      setInterestAmount(monthlyInterest);
-      setPrincipalAmount(Math.min(10000, currentLoan.outstandingPrincipal));
-      setOtherAmount(0);
+      setInterestAmount(String(monthlyInterest));
+      setPrincipalAmount(String(Math.min(10000, currentLoan.outstandingPrincipal)));
+      setOtherAmount('0');
       setNotes('Interest cleared with part principal repayment');
     } else {
-      setInterestAmount(0);
-      setPrincipalAmount(0);
-      setOtherAmount(0);
+      setInterestAmount('0');
+      setPrincipalAmount('0');
+      setOtherAmount('0');
       setNotes('Other loan settlement charge');
     }
   }, [receiptType, currentLoan, monthlyInterest, isInterestAlreadyPaid]);
 
+  const numInterest = parseFloat(interestAmount) || 0;
+  const numPrincipal = parseFloat(principalAmount) || 0;
+  const numOther = parseFloat(otherAmount) || 0;
+
   // Total base amount
   const baseAmount = useMemo(() => {
     if (receiptType === 'Interest Payment' || receiptType === 'EMI Payment') {
-      return interestAmount;
+      return numInterest;
     }
     if (receiptType === 'Part Principal Payment') {
-      return principalAmount;
+      return numPrincipal;
     }
     if (receiptType === 'Full Principal Closure') {
-      return principalAmount + interestAmount;
+      return numPrincipal + numInterest;
     }
     if (receiptType === 'Interest + Principal') {
-      return interestAmount + principalAmount;
+      return numInterest + numPrincipal;
     }
-    return otherAmount;
-  }, [receiptType, interestAmount, principalAmount, otherAmount]);
+    return numOther;
+  }, [receiptType, numInterest, numPrincipal, numOther]);
 
   const netTotalAmount = Math.max(0, baseAmount + odCharge + otherCharges - discount);
 
@@ -204,10 +208,10 @@ export const LoanReceipts: React.FC = () => {
     if (receiptType === 'Full Principal Closure') return 0;
     const deduction =
       receiptType === 'Part Principal Payment' || receiptType === 'Interest + Principal'
-        ? principalAmount
+        ? numPrincipal
         : 0;
     return Math.max(0, currentLoan.outstandingPrincipal - deduction);
-  }, [currentLoan, receiptType, principalAmount]);
+  }, [currentLoan, receiptType, numPrincipal]);
 
   // Next receipt number
   const nextReceiptNo = useMemo(() => {
@@ -265,7 +269,7 @@ export const LoanReceipts: React.FC = () => {
     }
     if (
       (receiptType === 'Part Principal Payment' || receiptType === 'Interest + Principal') &&
-      principalAmount > currentLoan.outstandingPrincipal
+      numPrincipal > currentLoan.outstandingPrincipal
     ) {
       showToast(
         `Principal repayment cannot exceed current outstanding of ₹${currentLoan.outstandingPrincipal.toLocaleString('en-IN')}.`,
@@ -319,13 +323,13 @@ export const LoanReceipts: React.FC = () => {
           receiptType === 'Full Principal Closure'
             ? currentLoan.outstandingPrincipal
             : receiptType === 'Part Principal Payment' || receiptType === 'Interest + Principal'
-            ? principalAmount
+            ? numPrincipal
             : 0,
         interestComponent:
           receiptType === 'Interest Payment' || receiptType === 'EMI Payment' || receiptType === 'Interest + Principal'
-            ? interestAmount
+            ? numInterest
             : receiptType === 'Full Principal Closure'
-            ? interestAmount
+            ? numInterest
             : 0,
         paymentMode: paymentMethod,
         date,
@@ -999,9 +1003,11 @@ export const LoanReceipts: React.FC = () => {
                       <label className="form-label required">MONTHLY INTEREST AMOUNT (₹)</label>
                       <input
                         type="number"
+                        step="any"
                         className="input-control"
+                        placeholder="0.00"
                         value={interestAmount}
-                        onChange={(e) => setInterestAmount(Math.max(0, Number(e.target.value)))}
+                        onChange={(e) => setInterestAmount(e.target.value)}
                         style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-dark)' }}
                         required
                       />
@@ -1027,9 +1033,11 @@ export const LoanReceipts: React.FC = () => {
                       <label className="form-label required">PART PRINCIPAL AMOUNT (₹)</label>
                       <input
                         type="number"
+                        step="any"
                         className="input-control"
+                        placeholder="0.00"
                         value={principalAmount}
-                        onChange={(e) => setPrincipalAmount(Math.max(0, Number(e.target.value)))}
+                        onChange={(e) => setPrincipalAmount(e.target.value)}
                         max={currentLoan.outstandingPrincipal}
                         style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-dark)' }}
                         required
@@ -1078,10 +1086,10 @@ export const LoanReceipts: React.FC = () => {
                       <span>Principal Settlement:</span>
                       <strong>₹{currentLoan.outstandingPrincipal.toLocaleString('en-IN')}</strong>
                     </div>
-                    {interestAmount > 0 && (
+                    {numInterest > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
                         <span>Pending Interest:</span>
-                        <strong>₹{interestAmount.toLocaleString('en-IN')}</strong>
+                        <strong>₹{numInterest.toLocaleString('en-IN')}</strong>
                       </div>
                     )}
                     <div
@@ -1105,9 +1113,11 @@ export const LoanReceipts: React.FC = () => {
                       <label className="form-label required">INTEREST COMPONENT (₹)</label>
                       <input
                         type="number"
+                        step="any"
+                        placeholder="0.00"
                         className="input-control"
                         value={interestAmount}
-                        onChange={(e) => setInterestAmount(Math.max(0, Number(e.target.value)))}
+                        onChange={(e) => setInterestAmount(e.target.value)}
                         style={{ fontSize: '15px', fontWeight: 700 }}
                         required
                       />
@@ -1116,9 +1126,11 @@ export const LoanReceipts: React.FC = () => {
                       <label className="form-label required">PRINCIPAL COMPONENT (₹)</label>
                       <input
                         type="number"
+                        step="any"
+                        placeholder="0.00"
                         className="input-control"
                         value={principalAmount}
-                        onChange={(e) => setPrincipalAmount(Math.max(0, Number(e.target.value)))}
+                        onChange={(e) => setPrincipalAmount(e.target.value)}
                         max={currentLoan.outstandingPrincipal}
                         style={{ fontSize: '15px', fontWeight: 700 }}
                         required
@@ -1130,9 +1142,11 @@ export const LoanReceipts: React.FC = () => {
                     <label className="form-label required">CUSTOM AMOUNT (₹)</label>
                     <input
                       type="number"
+                      step="any"
+                      placeholder="0.00"
                       className="input-control"
                       value={otherAmount}
-                      onChange={(e) => setOtherAmount(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => setOtherAmount(e.target.value)}
                       style={{ fontSize: '16px', fontWeight: 800 }}
                       required
                     />
@@ -1848,7 +1862,13 @@ export const LoanReceipts: React.FC = () => {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={handlePrint}
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  handleOpenReceiptDisplay(lastGeneratedReceipt);
+                  setTimeout(() => {
+                    window.print();
+                  }, 250);
+                }}
               >
                 <Printer size={15} />
                 <span>Print Voucher</span>

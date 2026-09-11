@@ -483,7 +483,9 @@ export const RentalComplexDetail: React.FC<RentalComplexDetailProps> = ({
         complexes={allComplexes}
         shops={shops}
         defaultComplexId={complexId}
+        defaultScope="COMPLEX"
       />
+
 
       <ComplexModal
         isOpen={isEditComplexModalOpen}

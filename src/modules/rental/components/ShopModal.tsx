@@ -249,7 +249,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   className="input-control"
                   placeholder="e.g. 15000"
                   min="0"
-                  step="100"
+                  step="any"
                   value={monthlyRent}
                   onChange={(e) => setMonthlyRent(e.target.value)}
                   required

@@ -12,7 +12,8 @@ import {
   PaymentMode,
   ExpenseCategory,
   RentalStatus,
-  RentalDayBookEntry
+  RentalDayBookEntry,
+  ExpenseScope
 } from '../types/rental.types.js';
 
 export class RentalService {
@@ -587,7 +588,9 @@ export class RentalService {
   public async getExpenses(filters?: {
     complexId?: string;
     shopId?: string;
+    scope?: ExpenseScope;
     category?: ExpenseCategory;
+    paymentMode?: PaymentMode;
     startDate?: string;
     endDate?: string;
     search?: string;
@@ -598,15 +601,21 @@ export class RentalService {
     const complexMap = new Map(complexes.map((c) => [c.complexId, c.complexName]));
     const shopMap = new Map(shops.map((s) => [s.shopId, s.shopNumber]));
 
-    list = list.map((e) => ({
-      ...e,
-      complexName: complexMap.get(e.complexId) || 'Unknown Complex',
-      shopNumber: e.shopId ? shopMap.get(e.shopId) || '' : undefined
-    }));
+    list = list.map((e) => {
+      const scope: ExpenseScope = e.expenseScope || (e.shopId ? 'SHOP' : 'COMPLEX');
+      return {
+        ...e,
+        expenseScope: scope,
+        complexName: complexMap.get(e.complexId) || 'Unknown Complex',
+        shopNumber: e.shopId ? shopMap.get(e.shopId) || '' : undefined
+      };
+    });
 
     if (filters?.complexId) list = list.filter((e) => e.complexId === filters.complexId);
     if (filters?.shopId) list = list.filter((e) => e.shopId === filters.shopId);
+    if (filters?.scope) list = list.filter((e) => e.expenseScope === filters.scope);
     if (filters?.category) list = list.filter((e) => e.category === filters.category);
+    if (filters?.paymentMode) list = list.filter((e) => e.paymentMode === filters.paymentMode);
     if (filters?.startDate) list = list.filter((e) => e.expenseDate >= filters.startDate!);
     if (filters?.endDate) list = list.filter((e) => e.expenseDate <= filters.endDate!);
     if (filters?.search) {
@@ -616,7 +625,8 @@ export class RentalService {
           e.expenseId.toLowerCase().includes(q) ||
           e.expenseReason.toLowerCase().includes(q) ||
           e.category.toLowerCase().includes(q) ||
-          (e.complexName && e.complexName.toLowerCase().includes(q))
+          (e.complexName && e.complexName.toLowerCase().includes(q)) ||
+          (e.notes && e.notes.toLowerCase().includes(q))
       );
     }
 
@@ -626,7 +636,8 @@ export class RentalService {
   public async createExpense(
     data: {
       complexId: string;
-      shopId?: string;
+      expenseScope?: ExpenseScope;
+      shopId?: string | null;
       expenseDate: string;
       category: ExpenseCategory;
       expenseReason: string;
@@ -634,21 +645,43 @@ export class RentalService {
       paymentMode: PaymentMode;
       cashAmount?: number;
       gpayAmount?: number;
+      receiptUrl?: string;
       notes?: string;
     },
     userId: string = 'SYSTEM'
   ): Promise<RentalExpense> {
+    if (!data.complexId || !data.complexId.trim()) {
+      throw new Error('Complex selection is required');
+    }
+
     const complex = rentalRepository.getComplexById(data.complexId);
     if (!complex) throw new Error(`Complex ${data.complexId} not found`);
 
-    if (!data.category) throw new Error('Expense category is required');
+    const scope: ExpenseScope = data.expenseScope || (data.shopId ? 'SHOP' : 'COMPLEX');
+
+    let resolvedShopId: string | undefined = undefined;
+    if (scope === 'SHOP') {
+      if (!data.shopId || !data.shopId.trim()) {
+        throw new Error('Shop/Tenant selection is required for Shop/Tenant Expenses');
+      }
+      const shop = rentalRepository.getShopById(data.shopId);
+      if (!shop) throw new Error(`Shop ${data.shopId} not found`);
+      if (shop.complexId !== complex.complexId) {
+        throw new Error(`Shop ${data.shopId} does not belong to complex ${complex.complexName}`);
+      }
+      resolvedShopId = shop.shopId;
+    }
+
+    if (!data.category || !data.category.trim()) {
+      throw new Error('Expense category is required');
+    }
     if (!data.expenseReason || !data.expenseReason.trim()) {
-      throw new Error('Expense reason is required');
+      throw new Error('Expense description/reason is required');
     }
 
     const expenseAmount = Number(data.expenseAmount);
     if (isNaN(expenseAmount) || expenseAmount <= 0) {
-      throw new Error('Expense amount must be greater than zero');
+      throw new Error('Expense amount must be a positive number greater than zero');
     }
 
     const mode = data.paymentMode || 'CASH';
@@ -679,7 +712,8 @@ export class RentalService {
       expenseId,
       complexId: complex.complexId,
       complexName: complex.complexName,
-      shopId: data.shopId || undefined,
+      expenseScope: scope,
+      shopId: resolvedShopId,
       expenseDate: data.expenseDate || this.getTodayDate(),
       category: data.category,
       expenseReason: data.expenseReason.trim(),
@@ -687,7 +721,9 @@ export class RentalService {
       paymentMode: mode,
       cashAmount,
       gpayAmount,
+      receiptUrl: data.receiptUrl?.trim() || undefined,
       notes: data.notes?.trim() || '',
+      createdBy: userId,
       createdAt: now,
       updatedAt: now,
       syncStatus: 'PENDING'
@@ -714,7 +750,8 @@ export class RentalService {
     expenseId: string,
     data: Partial<{
       complexId: string;
-      shopId?: string;
+      expenseScope?: ExpenseScope;
+      shopId?: string | null;
       expenseDate: string;
       category: ExpenseCategory;
       expenseReason: string;
@@ -722,6 +759,7 @@ export class RentalService {
       paymentMode: PaymentMode;
       cashAmount?: number;
       gpayAmount?: number;
+      receiptUrl?: string;
       notes?: string;
     }>,
     userId: string = 'SYSTEM'
@@ -729,19 +767,63 @@ export class RentalService {
     const existing = rentalRepository.getExpenseById(expenseId);
     if (!existing) throw new Error(`Expense ${expenseId} not found`);
 
+    const complexId = data.complexId || existing.complexId;
+    const complex = rentalRepository.getComplexById(complexId);
+    if (!complex) throw new Error(`Complex ${complexId} not found`);
+
+    const scope: ExpenseScope = data.expenseScope || existing.expenseScope || (existing.shopId ? 'SHOP' : 'COMPLEX');
+
+    let resolvedShopId: string | undefined = undefined;
+    if (scope === 'SHOP') {
+      const targetShopId = data.shopId !== undefined ? data.shopId : existing.shopId;
+      if (!targetShopId || !targetShopId.trim()) {
+        throw new Error('Shop/Tenant selection is required for Shop/Tenant Expenses');
+      }
+      const shop = rentalRepository.getShopById(targetShopId);
+      if (!shop) throw new Error(`Shop ${targetShopId} not found`);
+      resolvedShopId = shop.shopId;
+    }
+
+    const expenseAmount = data.expenseAmount !== undefined ? Number(data.expenseAmount) : existing.expenseAmount;
+    if (isNaN(expenseAmount) || expenseAmount <= 0) {
+      throw new Error('Expense amount must be a positive number greater than zero');
+    }
+
+    const mode = data.paymentMode || existing.paymentMode || 'CASH';
+    let cashAmount = data.cashAmount !== undefined ? Number(data.cashAmount) : existing.cashAmount;
+    let gpayAmount = data.gpayAmount !== undefined ? Number(data.gpayAmount) : existing.gpayAmount;
+
+    if (mode === 'CASH') {
+      cashAmount = expenseAmount;
+      gpayAmount = 0;
+    } else if (mode === 'GPAY') {
+      cashAmount = 0;
+      gpayAmount = expenseAmount;
+    } else if (mode === 'BOTH') {
+      if (Math.abs(cashAmount + gpayAmount - expenseAmount) > 0.01) {
+        throw new Error(
+          `Cash amount (₹${cashAmount}) + GPay amount (₹${gpayAmount}) must equal total expense amount (₹${expenseAmount})`
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const updated: RentalExpense = {
       ...existing,
-      complexId: data.complexId || existing.complexId,
-      shopId: data.shopId !== undefined ? data.shopId : existing.shopId,
+      complexId: complex.complexId,
+      complexName: complex.complexName,
+      expenseScope: scope,
+      shopId: resolvedShopId,
       expenseDate: data.expenseDate || existing.expenseDate,
       category: data.category || existing.category,
       expenseReason: data.expenseReason !== undefined ? data.expenseReason.trim() : existing.expenseReason,
-      expenseAmount: data.expenseAmount !== undefined ? Number(data.expenseAmount) : existing.expenseAmount,
-      paymentMode: data.paymentMode || existing.paymentMode,
-      cashAmount: data.cashAmount !== undefined ? Number(data.cashAmount) : existing.cashAmount,
-      gpayAmount: data.gpayAmount !== undefined ? Number(data.gpayAmount) : existing.gpayAmount,
+      expenseAmount,
+      paymentMode: mode,
+      cashAmount,
+      gpayAmount,
+      receiptUrl: data.receiptUrl !== undefined ? data.receiptUrl.trim() : existing.receiptUrl,
       notes: data.notes !== undefined ? data.notes.trim() : existing.notes,
+      updatedBy: userId,
       updatedAt: now,
       syncStatus: 'PENDING'
     };
@@ -1076,7 +1158,7 @@ export class RentalService {
         tenantName: p.tenantName,
         paymentMode: p.paymentMode,
         debit: 0,
-        credit: Math.round(Number(p.amountReceived || 0)),
+        credit: Number(p.amountReceived || 0),
         referenceType: 'RENT_PAYMENT',
         referenceId: p.paymentId || p.id,
         entrySource: 'SYSTEM',
@@ -1089,6 +1171,7 @@ export class RentalService {
     // 2. Convert Expenses to Day Book Debit Entries
     const expenseEntries: RentalDayBookEntry[] = allExpenses.map(e => {
       const cName = e.complexName || complexMap.get(e.complexId) || e.complexId;
+      const scope = e.expenseScope || (e.shopId ? 'SHOP' : 'COMPLEX');
       return {
         id: `rdb_exp_${e.expenseId || e.id}`,
         voucherNo: e.expenseId || `EXP-${e.id}`,
@@ -1098,10 +1181,10 @@ export class RentalService {
         description: e.expenseReason || `${e.category || 'Rental'} Expense`,
         complexId: e.complexId,
         complexName: cName,
-        shopId: e.shopId,
-        shopNumber: e.shopNumber,
+        shopId: e.shopId || undefined,
+        shopNumber: e.shopNumber || (scope === 'COMPLEX' ? 'General Complex' : undefined),
         paymentMode: e.paymentMode,
-        debit: Math.round(Number(e.expenseAmount || 0)),
+        debit: Number(e.expenseAmount || 0),
         credit: 0,
         referenceType: 'RENTAL_EXPENSE',
         referenceId: e.expenseId || e.id,
@@ -1326,8 +1409,8 @@ export class RentalService {
       Boolean(data.credit && data.credit > 0);
 
     const totalAmt = Number(data.amount || (isIncome ? data.credit : data.debit) || 0);
-    const debit = isIncome ? 0 : Math.max(0, Math.round(Number(data.debit || totalAmt)));
-    const credit = isIncome ? Math.max(0, Math.round(Number(data.credit || totalAmt))) : 0;
+    const debit = isIncome ? 0 : Math.max(0, Number(data.debit || totalAmt));
+    const credit = isIncome ? Math.max(0, Number(data.credit || totalAmt)) : 0;
 
     const entry: RentalDayBookEntry = {
       id: `rdb_m_${Date.now()}`,

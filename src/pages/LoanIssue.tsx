@@ -36,9 +36,10 @@ import {
   Upload,
   Trash2
 } from 'lucide-react';
+import apiService from '../services/api';
 
 export const LoanIssue: React.FC = () => {
-  const { customers, loans, receipts, addLoan, setCurrentPage, showToast, masterControlSettings, getPurityRate } = useApp();
+  const { customers, loans, addLoan, setCurrentPage, showToast, masterControlSettings, getPurityRate } = useApp();
 
   // File Upload Ref & Lightbox State
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -57,24 +58,38 @@ export const LoanIssue: React.FC = () => {
     ];
   }, [masterControlSettings?.repaymentSystems]);
 
-  // Top Section: Auto-generated Identifiers & Locked System Date
-  const displayReceiptNo = useMemo(() => {
-    if (!receipts || receipts.length === 0) return 1;
-    const maxNo = Math.max(...receipts.map((r) => Number(r.receiptNo) || 0));
-    return maxNo + 1;
-  }, [receipts]);
+  // Top Section: Authoritative Single-Sequence Synchronized Identifiers
+  const [backendNextSeq, setBackendNextSeq] = useState<number | null>(null);
 
-  const displayLoanNo = useMemo(() => {
+  useEffect(() => {
+    let isMounted = true;
+    apiService.getNextLoanSequence().then((data) => {
+      if (isMounted && data && typeof data.nextSequence === 'number') {
+        setBackendNextSeq(data.nextSequence);
+      }
+    }).catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [loans]);
+
+  const computedNextSeq = useMemo(() => {
     let maxNum = 0;
-    for (const l of loans) {
-      const match = (l.loanNo || '').match(/\d+/);
-      if (match) {
-        const num = parseInt(match[0], 10);
-        if (num > maxNum) maxNum = num;
+    if (Array.isArray(loans)) {
+      for (const l of loans) {
+        const match = (l.loanNo || '').match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num > maxNum) maxNum = num;
+        }
       }
     }
-    return `GL-${String(maxNum + 1).padStart(2, '0')}`;
+    return maxNum + 1;
   }, [loans]);
+
+  const nextSequence = backendNextSeq !== null ? Math.max(backendNextSeq, computedNextSeq) : computedNextSeq;
+  const displayReceiptNo = nextSequence;
+  const displayLoanNo = `GL-${nextSequence}`;
 
   const currentBusinessDate = useMemo(() => {
     return new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
@@ -151,7 +166,7 @@ export const LoanIssue: React.FC = () => {
   const [guarantorAltPhone, setGuarantorAltPhone] = useState<string>('');
   const [guarantorEmail, setGuarantorEmail] = useState<string>('');
   const [guarantorOccupation, setGuarantorOccupation] = useState<string>('');
-  const [guarantorMonthlyIncome, setGuarantorMonthlyIncome] = useState<number | ''>('');
+  const [guarantorMonthlyIncome, setGuarantorMonthlyIncome] = useState<string>('');
   const [guarantorAadhaarNo, setGuarantorAadhaarNo] = useState<string>('');
   const [guarantorPanNo, setGuarantorPanNo] = useState<string>('');
   const [guarantorAddress, setGuarantorAddress] = useState<string>('');
@@ -377,6 +392,7 @@ export const LoanIssue: React.FC = () => {
       netWeight: 0
     }
   ]);
+  const [manualMarketValue, setManualMarketValue] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   const [ornamentPhotos, setOrnamentPhotos] = useState<string[]>([]);
 
@@ -385,8 +401,8 @@ export const LoanIssue: React.FC = () => {
   const totalDeductionWeight = round3(items.reduce((sum, item) => sum + (Number(item.deductionWeight) || 0), 0));
   const totalNetWeight = round3(items.reduce((sum, item) => sum + (Number(item.netWeight) || 0), 0));
   const totalQty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-  const marketValue = items.reduce((sum, item) => sum + Math.round((Number(item.netWeight) || 0) * getRateForItem(item)), 0);
-  const ltv = marketValue > 0 ? ((numericPrincipal / marketValue) * 100).toFixed(2) : '0.00';
+  const numericMarketValue = manualMarketValue.trim() !== '' ? Number(manualMarketValue) : 0;
+  const ltv = numericPrincipal > 0 && numericMarketValue > 0 ? ((numericPrincipal / numericMarketValue) * 100).toFixed(2) : '0.00';
 
   // Weight validation errors
   const weightErrors = useMemo(() => {
@@ -451,8 +467,8 @@ export const LoanIssue: React.FC = () => {
           const deductionNum = rawDeduction === '' ? 0 : (Number(rawDeduction) || 0);
           const netNum = Math.max(0, round3(grossNum - deductionNum));
 
-          updated.grossWeight = rawGross === '' ? ('' as any) : grossNum;
-          updated.deductionWeight = rawDeduction === '' ? ('' as any) : deductionNum;
+          updated.grossWeight = rawGross === '' ? '' : rawGross;
+          updated.deductionWeight = rawDeduction === '' ? '' : rawDeduction;
           updated.netWeight = netNum;
 
           if (field === 'purity') {
@@ -707,6 +723,11 @@ export const LoanIssue: React.FC = () => {
 
     if (totalNetWeight <= 0) {
       showToast('Please specify ornament net weight greater than 0.', 'error');
+      return;
+    }
+
+    if (!manualMarketValue.trim() || isNaN(numericMarketValue) || numericMarketValue <= 0) {
+      showToast('Please enter a valid Total Market Value (₹) greater than 0.', 'error');
       return;
     }
 
@@ -977,7 +998,7 @@ export const LoanIssue: React.FC = () => {
         totalGrossWeight,
         totalDeductionWeight,
         totalNetWeight,
-        marketValue,
+        marketValue: numericMarketValue,
         ltv: Number(ltv),
         monthlyInterest,
         notes: additionalNotes,
@@ -1993,11 +2014,11 @@ export const LoanIssue: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                step="500"
+                                step="any"
                                 className="input-control"
                                 placeholder="e.g. 35000"
                                 value={guarantorMonthlyIncome}
-                                onChange={(e) => setGuarantorMonthlyIncome(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                                onChange={(e) => setGuarantorMonthlyIncome(e.target.value)}
                               />
                             </div>
                           </div>
@@ -2298,17 +2319,17 @@ export const LoanIssue: React.FC = () => {
             </div>
 
             <div className="table-container">
-              <table className="custom-table">
+              <table className="custom-table fi-ornament-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '40px' }}>#</th>
-                    <th>ITEM</th>
-                    <th style={{ width: '70px' }}>QTY</th>
-                    <th style={{ width: '120px' }}>PURITY</th>
-                    <th style={{ width: '130px' }}>GROSS WT (G)</th>
-                    <th style={{ width: '130px' }}>DEDUCTION (G)</th>
-                    <th style={{ width: '140px' }}>NET WT (G)</th>
-                    <th style={{ width: '40px' }}></th>
+                    <th className="col-seq">#</th>
+                    <th className="col-item">ITEM</th>
+                    <th className="col-qty">QTY</th>
+                    <th className="col-purity">PURITY</th>
+                    <th className="col-gross">GROSS WT (G)</th>
+                    <th className="col-deduct">DEDUCTION (G)</th>
+                    <th className="col-net">NET WT (G)</th>
+                    <th className="col-action"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2318,30 +2339,44 @@ export const LoanIssue: React.FC = () => {
                     return (
                       <React.Fragment key={item.id}>
                         <tr>
-                          <td style={{ fontWeight: 600 }}>{idx + 1}</td>
-                          <td>
+                          <td className="col-seq" style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                          <td className="col-item">
                             <input
                               type="text"
                               className="input-control"
                               placeholder="e.g. Ring, Chain, Earring"
+                              aria-label={`Ornament #${idx + 1} Item Name`}
                               value={item.item}
                               onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
                             />
                           </td>
-                          <td>
+                          <td className="col-qty">
                             <input
-                              type="number"
-                              min="1"
-                              step="1"
-                              className="input-control"
-                              value={item.qty !== undefined && item.qty !== null ? item.qty : 1}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              className="input-control fi-qty-input no-spinners"
+                              aria-label={`Ornament #${idx + 1} Quantity`}
+                              placeholder="1"
+                              value={item.qty !== undefined && item.qty !== null ? item.qty : ''}
+                              onKeyDown={(e) => {
+                                if (
+                                  ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+                                  (e.ctrlKey || e.metaKey)
+                                ) {
+                                  return;
+                                }
+                                if (!/^\d$/.test(e.key)) {
+                                  e.preventDefault();
+                                }
+                              }}
                               onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === '') {
+                                const raw = e.target.value.replace(/\D/g, '');
+                                if (raw === '') {
                                   handleItemChange(item.id, 'qty', '');
                                 } else {
-                                  const parsed = parseInt(val, 10);
-                                  handleItemChange(item.id, 'qty', isNaN(parsed) ? 1 : Math.max(1, parsed));
+                                  const parsed = parseInt(raw, 10);
+                                  handleItemChange(item.id, 'qty', isNaN(parsed) ? '' : Math.max(1, parsed));
                                 }
                               }}
                               onBlur={() => {
@@ -2351,9 +2386,10 @@ export const LoanIssue: React.FC = () => {
                               }}
                             />
                           </td>
-                          <td>
+                          <td className="col-purity">
                             <select
                               className="input-control"
+                              aria-label={`Ornament #${idx + 1} Purity`}
                               value={item.purity}
                               onChange={(e) => handleItemChange(item.id, 'purity', e.target.value)}
                             >
@@ -2367,36 +2403,39 @@ export const LoanIssue: React.FC = () => {
                               )}
                             </select>
                           </td>
-                          <td>
+                          <td className="col-gross">
                             <input
                               type="number"
-                              step="0.001"
+                              step="any"
                               min="0"
                               className="input-control"
-                              value={item.grossWeight !== undefined && item.grossWeight !== null && item.grossWeight !== ('' as any) ? item.grossWeight : ''}
+                              aria-label={`Ornament #${idx + 1} Gross Weight`}
+                              value={item.grossWeight !== undefined && item.grossWeight !== null ? item.grossWeight : ''}
                               placeholder="0.000"
-                              onChange={(e) => handleItemChange(item.id, 'grossWeight', e.target.value === '' ? '' : Number(e.target.value))}
+                              onChange={(e) => handleItemChange(item.id, 'grossWeight', e.target.value)}
                             />
                           </td>
-                          <td>
+                          <td className="col-deduct">
                             <input
                               type="number"
-                              step="0.001"
+                              step="any"
                               min="0"
                               className={`input-control ${isRowError ? 'input-error' : ''}`}
                               style={isRowError ? { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.05)' } : {}}
-                              value={item.deductionWeight !== undefined && item.deductionWeight !== null && item.deductionWeight !== ('' as any) ? item.deductionWeight : ''}
+                              aria-label={`Ornament #${idx + 1} Deduction Weight`}
+                              value={item.deductionWeight !== undefined && item.deductionWeight !== null ? item.deductionWeight : ''}
                               placeholder="0.000"
                               title="Stone / bead / non-gold deduction weight"
-                              onChange={(e) => handleItemChange(item.id, 'deductionWeight', e.target.value === '' ? '' : Number(e.target.value))}
+                              onChange={(e) => handleItemChange(item.id, 'deductionWeight', e.target.value)}
                             />
                           </td>
-                          <td>
+                          <td className="col-net">
                             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                               <input
                                 type="text"
                                 className="input-control"
                                 readOnly
+                                aria-label={`Ornament #${idx + 1} Net Weight`}
                                 value={item.netWeight !== undefined && item.netWeight !== null ? `${Number(item.netWeight).toFixed(3)}` : '0.000'}
                                 placeholder="0.000"
                                 style={{
@@ -2425,14 +2464,15 @@ export const LoanIssue: React.FC = () => {
                               </span>
                             </div>
                           </td>
-                          <td style={{ textAlign: 'center' }}>
+                          <td className="col-action">
                             <button
                               type="button"
-                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px' }}
+                              className="fi-row-delete-btn"
                               onClick={() => handleRemoveItem(item.id)}
                               title="Remove item"
+                              aria-label={`Remove ornament #${idx + 1}`}
                             >
-                              <X size={16} />
+                              <X size={15} />
                             </button>
                           </td>
                         </tr>
@@ -2458,13 +2498,13 @@ export const LoanIssue: React.FC = () => {
                   })}
                   {/* TOTALS Row */}
                   <tr style={{ fontWeight: 800, backgroundColor: 'var(--bg-surface-subtle)' }}>
-                    <td colSpan={2} style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>TOTALS</td>
-                    <td>{totalQty}</td>
-                    <td>—</td>
-                    <td style={{ color: 'var(--color-primary-dark)' }}>{totalGrossWeight.toFixed(3)}</td>
-                    <td style={{ color: 'var(--color-primary-dark)' }}>{totalDeductionWeight.toFixed(3)}</td>
-                    <td style={{ color: 'var(--color-primary-dark)', fontWeight: 800 }}>{totalNetWeight.toFixed(3)}</td>
-                    <td></td>
+                    <td colSpan={2} style={{ textTransform: 'uppercase', letterSpacing: '0.5px', paddingLeft: '14px' }}>TOTALS</td>
+                    <td className="col-qty" style={{ fontWeight: 800, color: 'var(--color-primary-dark)' }}>{totalQty}</td>
+                    <td className="col-purity" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
+                    <td className="col-gross" style={{ color: 'var(--color-primary-dark)', fontWeight: 700 }}>{totalGrossWeight.toFixed(3)}</td>
+                    <td className="col-deduct" style={{ color: 'var(--color-primary-dark)', fontWeight: 700 }}>{totalDeductionWeight.toFixed(3)}</td>
+                    <td className="col-net" style={{ color: 'var(--color-primary-dark)', fontWeight: 800 }}>{totalNetWeight.toFixed(3)}</td>
+                    <td className="col-action"></td>
                   </tr>
                 </tbody>
               </table>
@@ -2479,20 +2519,33 @@ export const LoanIssue: React.FC = () => {
               </div>
 
               <div className="fi-field">
-                <label className="fi-label">Market Value (₹)</label>
-                <input type="text" className="input-control" readOnly
-                  value={marketValue > 0 ? `Estimated ₹${marketValue.toLocaleString('en-IN')}` : 'Estimated'} />
-                {items.some((it) => (Number(it.netWeight) || 0) > 0 && getRateForItem(it) === 0) && (
-                  <span style={{ fontSize: '11px', color: '#F59E0B', marginTop: '3px', display: 'block' }}>
-                    ⚠ Rate not configured for this purity.
-                  </span>
-                )}
+                <label className="fi-label">
+                  Market Value (₹) <span className="fi-req">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="input-control"
+                  placeholder="Enter total market value"
+                  value={manualMarketValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                      setManualMarketValue(val);
+                    }
+                  }}
+                />
               </div>
 
               <div className="fi-field">
                 <label className="fi-label">LTV %</label>
-                <input type="text" className="input-control" readOnly
-                  value={numericPrincipal > 0 && marketValue > 0 ? `${ltv}%` : ''} />
+                <input
+                  type="text"
+                  className="input-control"
+                  readOnly
+                  value={numericPrincipal > 0 && numericMarketValue > 0 ? `${ltv}%` : ''}
+                  placeholder="0.00%"
+                />
               </div>
             </div>
 

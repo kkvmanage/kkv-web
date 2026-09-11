@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Receipt } from '../types';
-import { FileSpreadsheet, FileText, Eye, Copy, Search, Receipt as ReceiptIcon, TrendingUp, DollarSign } from 'lucide-react';
+import { FileSpreadsheet, FileText, Eye, Copy, Search, Receipt as ReceiptIcon, TrendingUp, DollarSign, Printer } from 'lucide-react';
 import { PageHeader, StatGrid, StatCard, FilterBar, DataTable, StatusBadge, Button, ColumnDef } from '../components/ui';
 
 export const AllReceipts: React.FC = () => {
@@ -116,6 +116,23 @@ export const AllReceipts: React.FC = () => {
             }}
           >
             <Eye size={14} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            style={{ padding: '0 6px', height: '28px', color: 'var(--text-secondary)' }}
+            title="Print Payment Voucher"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedReceipt(r);
+              setCurrentPage('receipt-display');
+              setTimeout(() => {
+                window.print();
+              }, 250);
+            }}
+          >
+            <Printer size={13} />
           </Button>
           <Button
             type="button"

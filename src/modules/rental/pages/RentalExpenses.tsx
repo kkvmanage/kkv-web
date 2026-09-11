@@ -6,11 +6,13 @@ import {
   Trash2,
   Edit2,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  Building2,
+  Store
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import { rentalApi } from '../services/rentalApi';
-import { RentalExpense, RentalComplex, RentalShop, ExpenseCategory } from '../types/rental.types';
+import { RentalExpense, RentalComplex, RentalShop, ExpenseCategory, ExpenseScope } from '../types/rental.types';
 import { RentalHeader } from '../components/RentalHeader';
 import { ExpenseModal } from '../components/ExpenseModal';
 
@@ -23,6 +25,16 @@ const CATEGORIES: ExpenseCategory[] = [
   'Water',
   'Security',
   'Transport',
+  'Staff Food / Tea',
+  'Cleaning Materials',
+  'Security Expenses',
+  'EB Expenses',
+  'Lift Maintenance',
+  'Generator / Diesel',
+  'Garbage Disposal',
+  'Stationery & Office',
+  'Technician / Labour',
+  'Emergency Repairs',
   'Other'
 ];
 
@@ -37,7 +49,9 @@ export const RentalExpenses: React.FC = () => {
   // Filters
   const [search, setSearch] = useState('');
   const [selectedComplex, setSelectedComplex] = useState('');
+  const [selectedScope, setSelectedScope] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedPaymentMode, setSelectedPaymentMode] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -52,6 +66,7 @@ export const RentalExpenses: React.FC = () => {
       const [eRes, cRes, sRes] = await Promise.all([
         rentalApi.getExpenses({
           complexId: selectedComplex || undefined,
+          scope: (selectedScope as ExpenseScope) || undefined,
           category: (selectedCategory as ExpenseCategory) || undefined,
           startDate: startDate || undefined,
           endDate: endDate || undefined,
@@ -61,7 +76,13 @@ export const RentalExpenses: React.FC = () => {
         rentalApi.getShops()
       ]);
 
-      if (eRes.success && eRes.data) setExpenses(eRes.data);
+      if (eRes.success && eRes.data) {
+        let list = eRes.data;
+        if (selectedPaymentMode) {
+          list = list.filter((e) => e.paymentMode === selectedPaymentMode);
+        }
+        setExpenses(list);
+      }
       if (cRes.success && cRes.data) setComplexes(cRes.data);
       if (sRes.success && sRes.data) setShops(sRes.data);
     } catch (err) {
@@ -73,7 +94,7 @@ export const RentalExpenses: React.FC = () => {
 
   useEffect(() => {
     fetchExpenses();
-  }, [selectedComplex, selectedCategory, startDate, endDate]);
+  }, [selectedComplex, selectedScope, selectedCategory, selectedPaymentMode, startDate, endDate]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +104,9 @@ export const RentalExpenses: React.FC = () => {
   const handleResetFilters = () => {
     setSearch('');
     setSelectedComplex('');
+    setSelectedScope('');
     setSelectedCategory('');
+    setSelectedPaymentMode('');
     setStartDate('');
     setEndDate('');
   };
@@ -124,15 +147,28 @@ export const RentalExpenses: React.FC = () => {
     }
   };
 
-  const totalExpenseAmount = expenses.reduce((sum, e) => sum + e.expenseAmount, 0);
-  const totalCash = expenses.reduce((sum, e) => sum + e.cashAmount, 0);
-  const totalGPay = expenses.reduce((sum, e) => sum + e.gpayAmount, 0);
+  const formatAmount = (val: number) => {
+    return val.toLocaleString('en-IN', {
+      minimumFractionDigits: Number.isInteger(val) ? 0 : 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const totalExpenseAmount = expenses.reduce((sum, e) => sum + (Number(e.expenseAmount) || 0), 0);
+  const complexExpensesAmount = expenses
+    .filter((e) => e.expenseScope === 'COMPLEX' || !e.shopId)
+    .reduce((sum, e) => sum + (Number(e.expenseAmount) || 0), 0);
+  const shopExpensesAmount = expenses
+    .filter((e) => e.expenseScope === 'SHOP' && e.shopId)
+    .reduce((sum, e) => sum + (Number(e.expenseAmount) || 0), 0);
+  const totalCash = expenses.reduce((sum, e) => sum + (Number(e.cashAmount) || 0), 0);
+  const totalGPay = expenses.reduce((sum, e) => sum + (Number(e.gpayAmount) || 0), 0);
 
   return (
     <div className="page-content">
       <RentalHeader
-        title="Rental Expenses & Maintenance"
-        subtitle="Manage commercial facility maintenance, utility bills, repairs, and vendor payments"
+        title="Complex & Shop Expenses"
+        subtitle="Manage overall complex maintenance, staff expenses, utilities, emergency repairs, and shop-specific costs"
         actions={
           <button
             type="button"
@@ -152,17 +188,44 @@ export const RentalExpenses: React.FC = () => {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: '12px',
           marginBottom: '16px'
         }}
       >
         <div className="card" style={{ padding: '12px 16px', backgroundColor: 'rgba(239, 68, 68, 0.06)' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            FILTERED TOTAL EXPENSES
+            TOTAL EXPENSES
           </span>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
-            ₹{totalExpenseAmount.toLocaleString('en-IN')}
+            ₹{formatAmount(totalExpenseAmount)}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            {expenses.length} Total Records
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px 16px', backgroundColor: 'rgba(147, 51, 234, 0.06)' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#9333ea', textTransform: 'uppercase' }}>
+            COMPLEX OPERATING EXPENSES
+          </span>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: '#9333ea', marginTop: '2px' }}>
+            ₹{formatAmount(complexExpensesAmount)}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            General Facility / Common
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '12px 16px', backgroundColor: 'rgba(245, 158, 11, 0.06)' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#d97706', textTransform: 'uppercase' }}>
+            SHOP SPECIFIC EXPENSES
+          </span>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
+            ₹{formatAmount(shopExpensesAmount)}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Tenant & Shop Units
           </div>
         </div>
 
@@ -171,7 +234,10 @@ export const RentalExpenses: React.FC = () => {
             PAID IN CASH
           </span>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>
-            ₹{totalCash.toLocaleString('en-IN')}
+            ₹{formatAmount(totalCash)}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Cash Drawer Outflow
           </div>
         </div>
 
@@ -180,16 +246,10 @@ export const RentalExpenses: React.FC = () => {
             PAID VIA GPAY / UPI
           </span>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#2563eb', marginTop: '2px' }}>
-            ₹{totalGPay.toLocaleString('en-IN')}
+            ₹{formatAmount(totalGPay)}
           </div>
-        </div>
-
-        <div className="card" style={{ padding: '12px 16px', backgroundColor: 'var(--bg-card)' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            EXPENSE ITEMS
-          </span>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-            {expenses.length}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Online Bank Outflow
           </div>
         </div>
       </div>
@@ -210,7 +270,7 @@ export const RentalExpenses: React.FC = () => {
             <input
               type="text"
               className="input-control"
-              placeholder="Search by Expense ID, Reason, Category..."
+              placeholder="Search by Expense ID, Reason, Category, Paid To..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -221,7 +281,7 @@ export const RentalExpenses: React.FC = () => {
 
           <select
             className="select-control"
-            style={{ width: '160px', height: '34px', fontSize: '12px' }}
+            style={{ width: '150px', height: '34px', fontSize: '12px' }}
             value={selectedComplex}
             onChange={(e) => setSelectedComplex(e.target.value)}
           >
@@ -235,7 +295,19 @@ export const RentalExpenses: React.FC = () => {
 
           <select
             className="select-control"
-            style={{ width: '150px', height: '34px', fontSize: '12px' }}
+            style={{ width: '140px', height: '34px', fontSize: '12px' }}
+            value={selectedScope}
+            onChange={(e) => setSelectedScope(e.target.value)}
+          >
+            <option value="">All Scopes</option>
+            <option value="COMPLEX">Complex Expense</option>
+            <option value="SHOP">Shop Expense</option>
+            <option value="RENTAL">General Rental</option>
+          </select>
+
+          <select
+            className="select-control"
+            style={{ width: '160px', height: '34px', fontSize: '12px' }}
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
@@ -245,6 +317,18 @@ export const RentalExpenses: React.FC = () => {
                 {cat}
               </option>
             ))}
+          </select>
+
+          <select
+            className="select-control"
+            style={{ width: '130px', height: '34px', fontSize: '12px' }}
+            value={selectedPaymentMode}
+            onChange={(e) => setSelectedPaymentMode(e.target.value)}
+          >
+            <option value="">All Modes</option>
+            <option value="CASH">CASH</option>
+            <option value="GPAY">GPAY / UPI</option>
+            <option value="BOTH">BOTH (Split)</option>
           </select>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -290,7 +374,7 @@ export const RentalExpenses: React.FC = () => {
         ) : expenses.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Receipt size={36} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontWeight: 600 }}>No rental expenses found</p>
+            <p style={{ margin: 0, fontWeight: 600 }}>No expenses found matching the criteria</p>
           </div>
         ) : (
           <div className="table-responsive">
@@ -299,70 +383,105 @@ export const RentalExpenses: React.FC = () => {
                 <tr>
                   <th>EXPENSE ID</th>
                   <th>DATE</th>
+                  <th>SCOPE</th>
                   <th>COMPLEX</th>
-                  <th>SHOP</th>
+                  <th>SHOP / UNIT</th>
                   <th>CATEGORY</th>
                   <th>REASON / DETAILS</th>
                   <th style={{ textAlign: 'right' }}>AMOUNT</th>
                   <th>PAYMENT MODE</th>
-                  <th>NOTES</th>
+                  <th>PAID TO / NOTES</th>
                   <th style={{ textAlign: 'center' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((e) => (
-                  <tr key={e.expenseId}>
-                    <td style={{ fontWeight: 800, color: 'var(--color-gold-light)' }}>{e.expenseId}</td>
-                    <td>{e.expenseDate}</td>
-                    <td style={{ fontWeight: 600 }}>{e.complexName}</td>
-                    <td>{e.shopNumber || <span style={{ color: 'var(--text-muted)' }}>General</span>}</td>
-                    <td style={{ fontWeight: 700 }}>{e.category}</td>
-                    <td>{e.expenseReason}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#dc2626' }}>
-                      ₹{e.expenseAmount.toLocaleString('en-IN')}
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontSize: '10px',
-                          background: 'var(--bg-surface-secondary)',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 600
-                        }}
-                      >
-                        {e.paymentMode}
-                        {e.paymentMode === 'BOTH' && ` (C:${e.cashAmount} G:${e.gpayAmount})`}
-                      </span>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{e.notes || '-'}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingExpense(e);
-                            setIsModalOpen(true);
+                {expenses.map((e) => {
+                  const isComplexScope = e.expenseScope === 'COMPLEX' || (!e.shopId && e.expenseScope !== 'SHOP');
+                  return (
+                    <tr key={e.expenseId}>
+                      <td style={{ fontWeight: 800, color: 'var(--color-gold-light)' }}>{e.expenseId}</td>
+                      <td>{e.expenseDate}</td>
+                      <td>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            background: isComplexScope ? 'rgba(147, 51, 234, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                            color: isComplexScope ? '#a855f7' : '#f59e0b'
                           }}
-                          title="Edit Expense"
                         >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '2px 6px', color: '#dc2626' }}
-                          onClick={() => setDeletingExpenseId(e.expenseId)}
-                          title="Delete Expense"
+                          {isComplexScope ? <Building2 size={11} /> : <Store size={11} />}
+                          {isComplexScope ? 'Complex' : 'Shop'}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{e.complexName}</td>
+                      <td>
+                        {isComplexScope ? (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontStyle: 'italic' }}>
+                            General Complex Expense
+                          </span>
+                        ) : (
+                          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {e.shopNumber || 'Shop ' + e.shopId}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontWeight: 700 }}>{e.category}</td>
+                      <td>{e.expenseReason}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: '#dc2626' }}>
+                        ₹{formatAmount(e.expenseAmount)}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            background: 'var(--bg-surface-secondary)',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontWeight: 600
+                          }}
                         >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {e.paymentMode}
+                          {e.paymentMode === 'BOTH' && ` (C: ₹${formatAmount(e.cashAmount)} G: ₹${formatAmount(e.gpayAmount)})`}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+                        {e.paidTo ? <strong>{e.paidTo} - </strong> : null}
+                        {e.notes || '-'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            style={{ padding: '2px 6px' }}
+                            onClick={() => {
+                              setEditingExpense(e);
+                              setIsModalOpen(true);
+                            }}
+                            title="Edit Expense"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            style={{ padding: '2px 6px', color: '#dc2626' }}
+                            onClick={() => setDeletingExpenseId(e.expenseId)}
+                            title="Delete Expense"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -413,3 +532,4 @@ export const RentalExpenses: React.FC = () => {
     </div>
   );
 };
+

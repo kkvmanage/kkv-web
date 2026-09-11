@@ -40,11 +40,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [selectedComplexId, setSelectedComplexId] = useState('');
   const [selectedShopId, setSelectedShopId] = useState('');
   const [paymentMonth, setPaymentMonth] = useState(getCurrentMonth());
-  const [amountReceived, setAmountReceived] = useState<number | string>('');
-  const [advanceToUse, setAdvanceToUse] = useState<number | string>(0);
+  const [amountReceived, setAmountReceived] = useState<string>('');
+  const [advanceToUse, setAdvanceToUse] = useState<string>('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
-  const [cashAmount, setCashAmount] = useState<number | string>('');
-  const [gpayAmount, setGpayAmount] = useState<number | string>('');
+  const [cashAmount, setCashAmount] = useState<string>('');
+  const [gpayAmount, setGpayAmount] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState(getToday());
   const [notes, setNotes] = useState('');
 
@@ -70,7 +70,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
       setPaymentMonth(getCurrentMonth());
       setAmountReceived('');
-      setAdvanceToUse(0);
+      setAdvanceToUse('');
       setPaymentMode('CASH');
       setCashAmount('');
       setGpayAmount('');
@@ -89,8 +89,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           if (res.success && res.data) {
             setShopStatusData(res.data);
             // Default amount received to outstanding balance if empty
-            if (!amountReceived && res.data.outstandingBalance > 0) {
-              setAmountReceived(res.data.outstandingBalance);
+            if (amountReceived === '' && res.data.outstandingBalance > 0) {
+              setAmountReceived(String(res.data.outstandingBalance));
             }
           }
         })
@@ -102,18 +102,30 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   // Update split amounts when amount received or payment mode changes
   useEffect(() => {
-    const amt = Number(amountReceived) || 0;
+    if (amountReceived === '') {
+      if (paymentMode === 'CASH') {
+        setCashAmount('');
+        setGpayAmount('0');
+      } else if (paymentMode === 'GPAY') {
+        setCashAmount('0');
+        setGpayAmount('');
+      }
+      return;
+    }
+
+    const amt = parseFloat(amountReceived) || 0;
     if (paymentMode === 'CASH') {
-      setCashAmount(amt);
-      setGpayAmount(0);
+      setCashAmount(amountReceived);
+      setGpayAmount('0');
     } else if (paymentMode === 'GPAY') {
-      setCashAmount(0);
-      setGpayAmount(amt);
+      setCashAmount('0');
+      setGpayAmount(amountReceived);
     } else if (paymentMode === 'BOTH') {
       // Keep split if already entered, or split 50-50
       if (!cashAmount && !gpayAmount && amt > 0) {
-        setCashAmount(Math.round(amt / 2));
-        setGpayAmount(amt - Math.round(amt / 2));
+        const half = Number((amt / 2).toFixed(2));
+        setCashAmount(String(half));
+        setGpayAmount(String(Number((amt - half).toFixed(2))));
       }
     }
   }, [amountReceived, paymentMode]);
@@ -364,6 +376,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </label>
                 <input
                   type="number"
+                  step="any"
                   className="input-control"
                   placeholder="0"
                   min="0"
@@ -380,6 +393,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </label>
                 <input
                   type="number"
+                  step="any"
                   className="input-control"
                   placeholder="e.g. 15000"
                   min="0"
@@ -448,6 +462,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="any"
                     className="input-control"
                     placeholder="0"
                     min="0"
@@ -462,6 +477,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="any"
                     className="input-control"
                     placeholder="0"
                     min="0"

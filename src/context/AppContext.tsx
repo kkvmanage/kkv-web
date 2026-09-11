@@ -1868,8 +1868,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const storedLoanSeq = getStored('last_loan_sequence', 0);
     const nextLoanSeq = Math.max(maxLoanNum, storedLoanSeq) + 1;
-    const loanNo = loanData.loanNo || `GL-${String(nextLoanSeq).padStart(2, '0')}`;
-    safeSetStored('last_loan_sequence', nextLoanSeq);
+
+    let finalSeq = nextLoanSeq;
+    if (loanData.loanNo) {
+      const parsed = parseInt(loanData.loanNo.replace(/\D/g, ''), 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        finalSeq = parsed;
+      }
+    } else if (loanData.receiptBillNo && Number(loanData.receiptBillNo) > 0) {
+      finalSeq = Number(loanData.receiptBillNo);
+    }
+
+    const loanNo = `GL-${finalSeq}`;
+    const receiptNo = finalSeq;
+    safeSetStored('last_loan_sequence', Math.max(finalSeq, nextLoanSeq));
+    safeSetStored('last_receipt_sequence', Math.max(finalSeq, nextLoanSeq));
 
     // Deduplication check: verify if loan with loanNo or identical customer & parameters already exists
     const existingLoan = loans.find(l =>
@@ -1918,12 +1931,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : c
       )
     );
-
-    const maxReceiptNo = receipts.length > 0 ? Math.max(...receipts.map(r => Number(r.receiptNo) || 0)) : 0;
-    const storedReceiptSeq = getStored('last_receipt_sequence', 0);
-    const calculatedNextReceiptNo = Math.max(maxReceiptNo, storedReceiptSeq) + 1;
-    const receiptNo = (loanData.receiptBillNo && Number(loanData.receiptBillNo) > 0) ? Number(loanData.receiptBillNo) : calculatedNextReceiptNo;
-    safeSetStored('last_receipt_sequence', Math.max(receiptNo, calculatedNextReceiptNo));
 
     const disbursementReceipt: Receipt = {
       id: `RCPT-${Date.now()}`,

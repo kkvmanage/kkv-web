@@ -10,6 +10,7 @@ import {
   SyncSummary,
   RentalStatus,
   ExpenseCategory,
+  ExpenseScope,
   PaymentMode,
   RentalDayBookFilter,
   RentalDayBookResponse,
@@ -153,10 +154,10 @@ export const rentalApi = {
     paymentMonth: string;
     amountReceived: number;
     advanceToUse?: number;
-    paymentMode: PaymentMode;
+    paymentMode?: PaymentMode;
     cashAmount?: number;
     gpayAmount?: number;
-    paymentDate: string;
+    paymentDate?: string;
     mobileNumber?: string;
     notes?: string;
   }) => {
@@ -170,7 +171,9 @@ export const rentalApi = {
   getExpenses: async (params?: {
     complexId?: string;
     shopId?: string;
+    scope?: ExpenseScope;
     category?: ExpenseCategory;
+    paymentMode?: PaymentMode;
     startDate?: string;
     endDate?: string;
     search?: string;
@@ -187,7 +190,8 @@ export const rentalApi = {
 
   createExpense: async (data: {
     complexId: string;
-    shopId?: string;
+    expenseScope?: ExpenseScope;
+    shopId?: string | null;
     expenseDate: string;
     category: ExpenseCategory;
     expenseReason: string;
@@ -195,6 +199,7 @@ export const rentalApi = {
     paymentMode: PaymentMode;
     cashAmount?: number;
     gpayAmount?: number;
+    receiptUrl?: string;
     notes?: string;
   }) => {
     return request<RentalExpense>('/rental/expenses', {
@@ -207,7 +212,8 @@ export const rentalApi = {
     id: string,
     data: Partial<{
       complexId: string;
-      shopId?: string;
+      expenseScope?: ExpenseScope;
+      shopId?: string | null;
       expenseDate: string;
       category: ExpenseCategory;
       expenseReason: string;
@@ -215,6 +221,7 @@ export const rentalApi = {
       paymentMode: PaymentMode;
       cashAmount?: number;
       gpayAmount?: number;
+      receiptUrl?: string;
       notes?: string;
     }>
   ) => {
@@ -351,6 +358,12 @@ export const rentalApi = {
 
   getAdminSyncStatus: async () => {
     return request<any>('/admin/rental/sync-status');
+  },
+
+  resetRentalData: async () => {
+    return request<any>('/admin/rental/reset-data', {
+      method: 'POST',
+    });
   },
 
   // ── Sync Control ───────────────────────────────────────────────────────────

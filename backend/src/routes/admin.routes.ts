@@ -28,6 +28,7 @@ import {
   getRentalPayments,
   getRentalExpenses,
   getRentalSyncStatus,
+  resetRentalData,
   getDatabaseStatus,
   migrateToAtlas
 } from '../controllers/admin.controller.js';
@@ -67,6 +68,7 @@ router.get('/rental/shops/:id', getRentalShopDetails);
 router.get('/rental/payments', getRentalPayments);
 router.get('/rental/expenses', getRentalExpenses);
 router.get('/rental/sync-status', getRentalSyncStatus);
+router.post('/rental/reset-data', resetRentalData);
 
 router.get('/whatsapp-templates', getWhatsAppTemplates);
 router.put('/whatsapp-templates', updateWhatsAppTemplates);

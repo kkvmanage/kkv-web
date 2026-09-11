@@ -1,5 +1,6 @@
-import fs from 'fs';
-import path from 'path';
+import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
+import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
+import { getFinanceDb } from '../config/database.js';
 
 export interface AdminRentalSummary {
   month: string;
@@ -91,6 +92,7 @@ export interface AdminRentalSummary {
     expenseId: string;
     complexId?: string;
     complexName: string;
+    expenseScope?: string;
     shopId?: string;
     shopNumber?: string;
     category: string;
@@ -105,20 +107,6 @@ export interface AdminRentalSummary {
 }
 
 class RentalAdminSummaryService {
-  private getRentalDbPath(): string {
-    const candidates = [
-      path.resolve(process.cwd(), 'data/rental.db.json'),
-      path.resolve(process.cwd(), 'backend/data/rental.db.json'),
-      path.resolve(process.cwd(), 'data/rental/rental.db.json'),
-      path.resolve(process.cwd(), 'backend/data/rental/rental.db.json')
-    ];
-
-    for (const c of candidates) {
-      if (fs.existsSync(c)) return c;
-    }
-    return candidates[0];
-  }
-
   private loadRawRentalData(): {
     complexes: any[];
     shops: any[];
@@ -128,38 +116,23 @@ class RentalAdminSummaryService {
     mtime?: string;
     version?: number;
   } {
-    const dbPath = this.getRentalDbPath();
-    let dbData: any = {
-      complexes: [],
-      shops: [],
-      payments: [],
-      expenses: [],
-      syncQueue: []
+    const complexes = rentalRepository.getComplexes();
+    const shops = rentalRepository.getShops();
+    const payments = rentalRepository.getPayments();
+    const expenses = rentalRepository.getExpenses();
+    const syncQueue = rentalRepository.getSyncQueue();
+
+    const version = syncQueue.length > 0 ? (100 + syncQueue.length) : (complexes.length + shops.length + payments.length + expenses.length);
+
+    return {
+      complexes,
+      shops,
+      payments,
+      expenses,
+      syncQueue,
+      mtime: new Date().toISOString(),
+      version
     };
-
-    let mtime: string | undefined = undefined;
-
-    if (fs.existsSync(dbPath)) {
-      try {
-        const stats = fs.statSync(dbPath);
-        mtime = stats.mtime.toISOString();
-        const raw = fs.readFileSync(dbPath, 'utf8');
-        dbData = JSON.parse(raw);
-      } catch (err) {
-        console.warn('[RentalAdminSummaryService] Failed to read rental DB file:', err);
-      }
-    }
-
-    const complexes = Array.isArray(dbData.complexes) ? dbData.complexes : [];
-    const shops = Array.isArray(dbData.shops) ? dbData.shops : [];
-    const payments = Array.isArray(dbData.payments)
-      ? dbData.payments
-      : (Array.isArray(dbData.rent_payments) ? dbData.rent_payments : []);
-    const expenses = Array.isArray(dbData.expenses) ? dbData.expenses : [];
-    const syncQueue = Array.isArray(dbData.syncQueue) ? dbData.syncQueue : [];
-    const version = dbData.sequences?.sync ? (100 + dbData.sequences.sync) : 100;
-
-    return { complexes, shops, payments, expenses, syncQueue, mtime, version };
   }
 
   public getComplexesList() {
@@ -374,13 +347,15 @@ class RentalAdminSummaryService {
       .map((e) => {
         const c = complexMap.get(e.complexId);
         const s = e.shopId ? shopMap.get(e.shopId) : undefined;
+        const scope = e.expenseScope || (e.shopId ? 'SHOP' : 'COMPLEX');
         return {
           expenseId: e.expenseId,
           complexId: e.complexId,
           complexName: c?.complexName || e.complexName || e.complexId || 'N/A',
+          expenseScope: scope,
           shopId: e.shopId,
-          shopNumber: s?.shopNumber || e.shopNumber || '',
-          category: e.category || 'OTHER',
+          shopNumber: s?.shopNumber || e.shopNumber || (scope === 'COMPLEX' ? 'General Complex Expense' : ''),
+          category: e.category || 'Maintenance',
           expenseReason: e.expenseReason || e.reason || 'General Expense',
           expenseAmount: Number(e.expenseAmount) || 0,
           cashAmount: Number(e.cashAmount) || 0,
@@ -698,6 +673,70 @@ class RentalAdminSummaryService {
       }
     };
   }
+
+  public async resetRentalBusinessData(): Promise<{
+    resetCounts: {
+      complexes: number;
+      shops: number;
+      payments: number;
+      expenses: number;
+      daybook: number;
+      auditLogs: number;
+      syncQueue: number;
+    };
+    timestamp: string;
+  }> {
+    const complexes = rentalRepository.getComplexes();
+    const shops = rentalRepository.getShops();
+    const payments = rentalRepository.getPayments();
+    const expenses = rentalRepository.getExpenses();
+    const auditLogs = rentalRepository.getAuditLogs();
+    const syncQueue = rentalRepository.getSyncQueue();
+
+    const counts = {
+      complexes: complexes.length,
+      shops: shops.length,
+      payments: payments.length,
+      expenses: expenses.length,
+      daybook: 0,
+      auditLogs: auditLogs.length,
+      syncQueue: syncQueue.length
+    };
+
+    // 1. Reset rental repository JSON files safely
+    rentalRepository.writeJson('complexes.json', []);
+    rentalRepository.writeJson('shops.json', []);
+    rentalRepository.writeJson('rent_payments.json', []);
+    rentalRepository.writeJson('expenses.json', []);
+    rentalRepository.writeJson('audit_logs.json', []);
+    rentalRepository.writeJson('sync_queue.json', []);
+    rentalRepository.writeJson('counters.json', {
+      complex: 0,
+      shop: 0,
+      payment: 0,
+      expense: 0,
+      audit: 0,
+      sync: 0
+    });
+
+    rentalDayBookRepository.writeJson('rental_daybook.json', []);
+
+    // 2. Clear MongoDB rental_daybook collection if connected
+    try {
+      const db = await getFinanceDb();
+      if (db) {
+        await db.collection('rental_daybook').deleteMany({});
+      }
+    } catch (err) {
+      console.warn('[RentalAdminSummaryService] Warning clearing MongoDB rental_daybook:', err);
+    }
+
+    return {
+      resetCounts: counts,
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 
 export const rentalAdminSummaryService = new RentalAdminSummaryService();
+

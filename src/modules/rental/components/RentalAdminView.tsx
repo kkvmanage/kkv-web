@@ -55,6 +55,31 @@ export const RentalAdminView: React.FC = () => {
 
   const [selectedPaymentDetail, setSelectedPaymentDetail] = useState<any | null>(null);
   const [selectedExpenseDetail, setSelectedExpenseDetail] = useState<any | null>(null);
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [resetConfirmText, setResetConfirmText] = useState<string>('');
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+
+  const handleResetRentalData = async () => {
+    if (resetConfirmText.trim() !== 'RESET RENTAL DATA') {
+      alert('Please type "RESET RENTAL DATA" exactly to confirm.');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await rentalApi.resetRentalData();
+      if (res.success) {
+        setShowResetModal(false);
+        setResetConfirmText('');
+        await fetchSummary(true);
+      } else {
+        alert(res.message || 'Failed to reset rental records');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error resetting rental data');
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   // ── Fetch Summary ───────────────────────────────────────────────────────────
   const fetchSummary = async (showLoading = true) => {
@@ -265,8 +290,8 @@ export const RentalAdminView: React.FC = () => {
                 style={{
                   fontSize: '11px',
                   fontWeight: 700,
-                  color: '#2563EB',
-                  backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                  color: '#176B52',
+                  backgroundColor: 'rgba(23, 107, 82, 0.08)',
                   padding: '3px 8px',
                   borderRadius: '6px',
                   display: 'inline-flex',
@@ -275,7 +300,7 @@ export const RentalAdminView: React.FC = () => {
                 }}
               >
                 <Database size={11} />
-                <span>Google Drive (KKV DB)</span>
+                <span>Authoritative Rental Database</span>
               </span>
 
               {/* Version Tag */}
@@ -306,7 +331,7 @@ export const RentalAdminView: React.FC = () => {
               </span>
             </div>
             <p style={{ fontSize: '12px', color: '#66756D', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span>Authoritative synchronized rental records from Rental Staff Application (:5174).</span>
+              <span>Authoritative synchronized rental records from Rental Staff Application.</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#4B5563' }}>
                 <Clock size={12} />
                 Last refreshed: {lastRefreshedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -355,6 +380,27 @@ export const RentalAdminView: React.FC = () => {
           >
             <RefreshCw size={14} className={refreshing ? 'spin-animation' : ''} />
             <span>{refreshing ? 'Refreshing...' : 'Refresh Rental Data'}</span>
+          </button>
+
+          {/* Reset Rental Records Button */}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setResetConfirmText('');
+              setShowResetModal(true);
+            }}
+            style={{
+              color: '#DC2626',
+              borderColor: '#FCA5A5',
+              backgroundColor: '#FEF2F2',
+              fontSize: '13px',
+              height: '38px',
+              fontWeight: 700
+            }}
+            title="Clean/Reset test rental records safely"
+          >
+            <span>Reset Rental Data</span>
           </button>
 
           {/* Launch Staff Portal Button */}
@@ -891,6 +937,7 @@ export const RentalAdminView: React.FC = () => {
                 <thead>
                   <tr style={{ backgroundColor: '#F8FAF9', borderBottom: '2px solid #DDE5DF', textAlign: 'left' }}>
                     <th style={{ padding: '10px 12px', fontWeight: 800 }}>EXPENSE ID</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 800 }}>SCOPE</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800 }}>DATE</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800 }}>COMPLEX</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800 }}>CATEGORY</th>
@@ -901,10 +948,24 @@ export const RentalAdminView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.recentExpenses.map((e) => (
+                  {summary.recentExpenses.map((e: any) => (
                     <tr key={e.expenseId} style={{ borderBottom: '1px solid #E5E7EB' }}>
                       <td style={{ padding: '12px', fontWeight: 800, color: '#D97706' }}>
                         {e.expenseId}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: e.expenseScope === 'COMPLEX' ? '#DBEAFE' : '#F3E8FF',
+                            color: e.expenseScope === 'COMPLEX' ? '#1D4ED8' : '#6D28D9'
+                          }}
+                        >
+                          {e.expenseScope || 'COMPLEX'}
+                        </span>
                       </td>
                       <td style={{ padding: '12px', color: '#1F2D26' }}>
                         {e.expenseDate}
@@ -921,7 +982,10 @@ export const RentalAdminView: React.FC = () => {
                         {e.expenseReason}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#DC2626' }}>
-                        ₹{(e.expenseAmount || 0).toLocaleString('en-IN')}
+                        ₹{(e.expenseAmount || 0).toLocaleString('en-IN', {
+                          minimumFractionDigits: Number.isInteger(e.expenseAmount) ? 0 : 2,
+                          maximumFractionDigits: 2
+                        })}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'center' }}>
                         <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', backgroundColor: '#F3F4F6', color: '#374151' }}>
@@ -942,6 +1006,7 @@ export const RentalAdminView: React.FC = () => {
                     </tr>
                   ))}
                 </tbody>
+
               </table>
             </div>
           )}
@@ -1518,6 +1583,131 @@ export const RentalAdminView: React.FC = () => {
                 onClick={() => setSelectedExpenseDetail(null)}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── RESET RENTAL DATA CONFIRMATION MODAL ────────────────────────────── */}
+      {showResetModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            zIndex: 10002,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              padding: '26px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  backgroundColor: '#FEE2E2',
+                  color: '#DC2626',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: '17px', fontWeight: 900, color: '#1F2D26', margin: 0 }}>
+                  Reset Rental Management Records
+                </h4>
+                <p style={{ fontSize: '12px', color: '#6B7280', margin: '2px 0 0' }}>
+                  Safely resets rental complexes, shops, collections, and expenses only.
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: '#F9FAFB',
+                border: '1px solid #E5E7EB',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                fontSize: '12.5px',
+                color: '#374151',
+                lineHeight: '1.5',
+                marginBottom: '16px'
+              }}
+            >
+              <div style={{ fontWeight: 700, color: '#047857', marginBottom: '4px' }}>
+                ✓ Preserved &amp; Unaffected:
+              </div>
+              <ul style={{ margin: '0 0 8px 16px', padding: 0 }}>
+                <li>Gold Loan portfolios, customer loans, &amp; pledges</li>
+                <li>Customer database &amp; KYC records</li>
+                <li>Fixed Deposits &amp; accounting entries</li>
+                <li>Admin &amp; Staff credentials and permissions</li>
+              </ul>
+              <div style={{ fontWeight: 700, color: '#DC2626' }}>
+                ⚠ Will be cleared to 0 (Clean Slate):
+              </div>
+              <ul style={{ margin: '0 0 0 16px', padding: 0 }}>
+                <li>Rental complexes, shops, tenants</li>
+                <li>Rent collections, advance balances, &amp; expenses</li>
+              </ul>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+                Type <span style={{ color: '#DC2626', fontFamily: 'monospace' }}>RESET RENTAL DATA</span> to confirm:
+              </label>
+              <input
+                type="text"
+                className="input-control"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="RESET RENTAL DATA"
+                style={{ width: '100%', fontFamily: 'monospace', textTransform: 'uppercase' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetConfirmText('');
+                }}
+                disabled={isResetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleResetRentalData}
+                disabled={resetConfirmText.trim() !== 'RESET RENTAL DATA' || isResetting}
+                style={{
+                  backgroundColor: '#DC2626',
+                  borderColor: '#DC2626',
+                  color: '#FFFFFF',
+                  fontWeight: 800
+                }}
+              >
+                {isResetting ? 'Resetting...' : 'Confirm Reset Rental Data'}
               </button>
             </div>
           </div>

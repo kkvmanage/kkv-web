@@ -1,6 +1,27 @@
 import { Request, Response } from 'express';
 import { loanService } from '../services/loan.service.js';
 import { receiptService } from '../services/receipt.service.js';
+import { counterService } from '../services/counter.service.js';
+
+export const getNextSequence = async (req: Request, res: Response) => {
+  try {
+    const nextSeq = await counterService.peekNextLoanSequence();
+    return res.json({
+      success: true,
+      data: {
+        nextSequence: nextSeq,
+        loanNo: `GL-${nextSeq}`,
+        receiptNo: nextSeq
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve next sequence',
+      error: err.message
+    });
+  }
+};
 
 export const getLoans = (req: Request, res: Response) => {
   const loans = loanService.getAll();

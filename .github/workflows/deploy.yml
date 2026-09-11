@@ -27,10 +27,16 @@ jobs:
           script: |
             set -e
 
+            echo "======================================"
+            echo "Starting KKV Backend Deployment"
+            echo "======================================"
+
             cd /home/ubuntu/kkv-web/backend
 
-            echo "Pulling latest code..."
+            echo "Restoring local package-lock changes..."
             git restore package-lock.json
+
+            echo "Pulling latest code..."
             git pull origin main
 
             echo "Installing dependencies..."
@@ -42,4 +48,6 @@ jobs:
             echo "Checking PM2 status..."
             pm2 status
 
-            echo "Deployment completed successfully!"
+            echo "======================================"
+            echo "KKV Backend Deployment Completed!"
+            echo "======================================"

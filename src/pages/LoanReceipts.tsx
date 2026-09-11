@@ -360,10 +360,6 @@ export const LoanReceipts: React.FC = () => {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleOpenReceiptDisplay = (r: Receipt) => {
     setSelectedReceipt(r);
     setCurrentPage('receipt-display');

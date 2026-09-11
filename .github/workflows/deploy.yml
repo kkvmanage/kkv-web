@@ -20,6 +20,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          passphrase: ${{ secrets.EC2_SSH_PASSPHRASE }}
           port: 22
           script_stop: true
 
@@ -47,4 +48,8 @@ jobs:
 
             echo "======================================"
             echo "Deployment Completed Successfully!"
+<<<<<<< HEAD
             echo "======================================"
+=======
+            echo "======================================"
+>>>>>>> b0d2a6a (Update project)

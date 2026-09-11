@@ -18,19 +18,23 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
+          timeout: 30s
+          command_timeout: 10m
           script_stop: true
 
           script: |
             set -e
 
             echo "======================================"
-            echo "Deploying Backend"
+            echo "Deploying KKV Backend"
             echo "======================================"
 
             cd /home/ubuntu/kkv-web/backend
 
-            echo "Pulling latest backend code..."
+            echo "Fetching latest code..."
             git fetch origin main
+
+            echo "Syncing with GitHub..."
             git reset --hard origin/main
 
             echo "Installing dependencies..."
@@ -39,11 +43,24 @@ jobs:
             echo "Restarting backend..."
             pm2 restart kkv-backend --update-env
 
-            echo "Checking backend..."
-            pm2 status
+            echo "Waiting for backend to start..."
 
-            echo "Testing backend health..."
+            for i in {1..15}; do
+              if curl -fsS http://127.0.0.1:8080/api/health > /dev/null; then
+                echo "Backend health check successful!"
+                break
+              fi
+
+              echo "Waiting for backend... attempt $i/15"
+              sleep 2
+            done
+
+            echo "Final backend health check..."
             curl -fsS http://127.0.0.1:8080/api/health
+
+            echo ""
+            echo "Checking PM2..."
+            pm2 status
 
             echo "======================================"
             echo "Backend Deployment Successful!"

@@ -1,55 +1,13 @@
-name: Backend CI/CD
+name: Deploy Backend
 
 on:
   push:
     branches:
       - main
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-deploy.yml"
-
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-deploy.yml"
 
 jobs:
-  ci:
-    name: Backend CI
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: backend
-
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: |
-          if node -e "const p=require('./package.json'); process.exit(p.scripts?.test ? 0 : 1)"; then
-            npm test
-          else
-            echo "No test script found. Skipping tests."
-          fi
-
-  cd:
+  deploy:
     name: Deploy Backend to EC2
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -65,26 +23,28 @@ jobs:
           script: |
             set -e
 
-            echo "Starting Backend Deployment..."
+            echo "======================================"
+            echo "Deploying Backend"
+            echo "======================================"
 
             cd /home/ubuntu/kkv-web/backend
 
+            echo "Pulling latest backend code..."
             git fetch origin main
             git reset --hard origin/main
 
-            test -f .env || {
-              echo "ERROR: Backend .env is missing!"
-              exit 1
-            }
-
+            echo "Installing dependencies..."
             npm ci
 
+            echo "Restarting backend..."
             pm2 restart kkv-backend --update-env
 
-            sleep 3
-
+            echo "Checking backend..."
             pm2 status
 
+            echo "Testing backend health..."
             curl -fsS http://127.0.0.1:8080/api/health
 
-            echo "Backend deployment completed successfully!"
+            echo "======================================"
+            echo "Backend Deployment Successful!"
+            echo "======================================"

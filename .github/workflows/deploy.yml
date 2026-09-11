@@ -20,23 +20,17 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          passphrase: ${{ secrets.EC2_SSH_PASSPHRASE }}
           port: 22
           script_stop: true
 
           script: |
             set -e
 
-            echo "======================================"
-            echo "Starting KKV Backend Deployment"
-            echo "======================================"
-
-            echo "Changing to backend directory..."
             cd /home/ubuntu/kkv-web/backend
 
-            echo "Restoring server-local package-lock changes..."
+            echo "Pulling latest code..."
             git restore package-lock.json
-
-            echo "Pulling latest code from GitHub..."
             git pull origin main
 
             echo "Installing dependencies..."
@@ -48,9 +42,4 @@ jobs:
             echo "Checking PM2 status..."
             pm2 status
 
-            echo "Checking backend logs..."
-            pm2 logs kkv-backend --lines 20 --nostream
-
-            echo "======================================"
-            echo "KKV Backend Deployment Completed!"
-            echo "======================================"
+            echo "Deployment completed successfully!"

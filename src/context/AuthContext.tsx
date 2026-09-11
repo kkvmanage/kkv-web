@@ -28,12 +28,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     apiService.getMe()
-      .then((res) => {
-        if (res.success && res.data) {
-          const u = res.data;
+      .then((res: any) => {
+        const u = res?.user || res?.data || (res?.role ? res : null);
+        if (u && u.role) {
           const userRole = normalizeRole(u.role);
           const profile: UserProfile = {
-            uid: u.id || u._id,
+            uid: u.id || u._id || u.staffId || u.uid || 'user_uid',
             email: u.email,
             displayName: u.name || u.fullName || u.email,
             role: userRole,
@@ -46,12 +46,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(profile);
           setRole(profile.role);
         } else {
-          apiService.logout();
           setUser(null);
         }
       })
       .catch(() => {
-        apiService.logout();
         setUser(null);
       })
       .finally(() => {
@@ -62,12 +60,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const res = await apiService.login({ email, password });
-      if (res.success && res.data) {
-        const u = res.data.user;
+      const res: any = await apiService.login({ email, password });
+      const u = res?.user || res?.data?.user || res?.data;
+      if (res && res.success && u) {
         const userRole = normalizeRole(u.role);
         const profile: UserProfile = {
-          uid: u.id || u._id,
+          uid: u.id || u._id || u.staffId || u.uid || 'user_uid',
           email: u.email,
           displayName: u.name || u.fullName || u.email,
           role: userRole,
@@ -81,9 +79,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setRole(profile.role);
         return { success: true, user: profile };
       }
-      return { success: false, message: res.message || 'Login failed' };
+      return { success: false, message: res?.message || 'Login failed' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Network error during login' };
+      return { success: false, message: err?.message || 'Network error during login' };
     } finally {
       setLoading(false);
     }

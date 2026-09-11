@@ -12,7 +12,7 @@ export default defineConfig({
     // both the frontend and API appear to be on the same origin (5173).
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://127.0.0.1:8080',
         changeOrigin: true,
         secure: false,
         ws: true,

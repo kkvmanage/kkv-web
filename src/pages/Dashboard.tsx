@@ -35,9 +35,10 @@ export const Dashboard: React.FC = () => {
     setError(null);
 
     try {
-      const res = await apiService.getDashboardSummary();
-      if (res && res.data) {
-        setSummaryData(res.data);
+      const res: any = await apiService.getDashboardSummary();
+      const summary: DashboardSummaryData | null = (res && res.data) ? res.data : res;
+      if (summary && (typeof summary.totalDisbursed === 'number' || typeof summary.totalLoansCount === 'number')) {
+        setSummaryData(summary);
       } else {
         throw new Error('Invalid dashboard response format');
       }

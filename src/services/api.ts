@@ -262,9 +262,13 @@ export const apiService = {
   },
   async resolveLocationLink(url: string) {
     try {
+      const token = getStoredAuthToken();
       const res = await fetch(`${getApiBaseUrl()}/location/resolve-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ url })
       });
       if (!res.ok) {

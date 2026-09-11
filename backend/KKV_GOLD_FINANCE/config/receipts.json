@@ -1,18 +1,1 @@
-[
-  {
-    "receiptNo": 1,
-    "loanId": "L-1789133552270",
-    "loanNo": "GL-1",
-    "customerId": "KKV-2026-000001",
-    "customerName": "Priya Sundaram",
-    "kind": "NEW LOAN",
-    "loanType": "Gold Loan",
-    "amount": 50000,
-    "principalComponent": 50000,
-    "interestComponent": 0,
-    "paymentMode": "UPI",
-    "date": "11-09-2026",
-    "notes": "New Loan Disbursement",
-    "id": "RCPT-1789133552277"
-  }
-]
+[]

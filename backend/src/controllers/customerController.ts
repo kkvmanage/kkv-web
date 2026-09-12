@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { CustomerModel, ICustomer, IKYCDocument, ICustomerPhoto } from '../models/Customer.js';
+import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { googleDriveService } from '../services/googleDrive.service.js';
 import { generateCustomerId } from '../utils/customerIdGenerator.js';
 import { ensureMongoConnected, isMongoConnected } from '../config/database.js';
 
@@ -89,8 +93,81 @@ function dataUriToBuffer(dataUri: string): { buffer: Buffer; mimeType: string } 
 }
 
 /**
+ * Helper to upload a buffer to Google Drive and persist FileAttachment metadata
+ */
+async function uploadAndRecordCustomerFile(options: {
+  buffer: Buffer;
+  mimeType: string;
+  originalName: string;
+  customerId: string;
+  documentType: string;
+  uploadedBy?: string;
+}): Promise<{ fileId: string; driveFileId: string; url: string; fileName: string; fileSize: number }> {
+  const { buffer, mimeType, originalName, customerId, documentType, uploadedBy } = options;
+  const uniqueSuffix = uuidv4().substring(0, 8);
+  const ext = originalName.includes('.') ? path.extname(originalName).toLowerCase() : (mimeType === 'application/pdf' ? '.pdf' : '.jpg');
+  const storedFileName = `${customerId}_${documentType}_${uniqueSuffix}${ext}`;
+  const fileId = `FILE_${Date.now()}_${uniqueSuffix}`;
+
+  let driveFileId = '';
+  let driveUrl = '';
+  let webViewLink = '';
+  let webContentLink = '';
+
+  if (googleDriveService.isReady()) {
+    try {
+      const targetFolderId = await googleDriveService.resolveEntityFolder({
+        entityType: 'customer',
+        entityId: customerId,
+        documentType
+      });
+      const driveRes = await googleDriveService.uploadBuffer(buffer, storedFileName, mimeType, targetFolderId);
+      driveFileId = driveRes.fileId;
+      driveUrl = driveRes.webViewLink || `https://drive.google.com/file/d/${driveRes.fileId}/view`;
+      webViewLink = driveRes.webViewLink || '';
+      webContentLink = driveRes.webContentLink || '';
+    } catch (err: any) {
+      console.warn(`[CustomerController] Google Drive upload notice for ${documentType}:`, err?.message || err);
+      driveFileId = `local_${fileId}`;
+    }
+  } else {
+    driveFileId = `local_${fileId}`;
+  }
+
+  // Persist FileAttachment record in MongoDB
+  try {
+    await FileAttachmentModel.create({
+      fileId,
+      entityType: 'customer',
+      entityId: customerId,
+      documentType,
+      originalFileName: originalName,
+      storedFileName,
+      mimeType,
+      fileSize: buffer.length,
+      driveFileId,
+      driveUrl,
+      webViewLink,
+      webContentLink,
+      uploadedBy: uploadedBy || 'STAFF',
+      isDeleted: false
+    });
+  } catch (dbErr: any) {
+    console.warn(`[CustomerController] FileAttachment metadata creation notice:`, dbErr?.message || dbErr);
+  }
+
+  return {
+    fileId,
+    driveFileId,
+    url: `/api/files/${fileId}/view`,
+    fileName: storedFileName,
+    fileSize: buffer.length
+  };
+}
+
+/**
  * POST /api/customers
- * Permanent MongoDB creation.
+ * Permanent MongoDB creation with Google Drive attachments.
  */
 export const createCustomer = async (req: Request, res: Response) => {
   try {
@@ -107,6 +184,7 @@ export const createCustomer = async (req: Request, res: Response) => {
 
     const body = req.body || {};
     const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
+    const uploadedBy = (req as any).user?.email || (req as any).user?.id || 'STAFF';
 
     // Extract and normalize fields
     const fullName = (body.fullName || body.name || '').trim();
@@ -167,7 +245,7 @@ export const createCustomer = async (req: Request, res: Response) => {
     // Generate unique sequential Customer ID
     const { customerId, sequenceNumber } = await generateCustomerId('KKV-2026');
 
-    // Customer Photo
+    // Customer Photo Upload (Google Drive)
     let customerPhotoData: ICustomerPhoto = {
       fileId: '',
       fileName: 'customer-photo.jpg',
@@ -180,29 +258,57 @@ export const createCustomer = async (req: Request, res: Response) => {
 
     const photoFile = files['customerPhoto']?.[0];
     if (photoFile) {
-      const b64 = `data:${photoFile.mimetype || 'image/jpeg'};base64,${photoFile.buffer.toString('base64')}`;
-      customerPhotoData = {
-        fileId: `photo_${customerId}_${Date.now()}`,
-        fileName: photoFile.originalname || `customer-photo-${customerId}.jpg`,
-        url: b64,
+      const uploaded = await uploadAndRecordCustomerFile({
+        buffer: photoFile.buffer,
         mimeType: photoFile.mimetype || 'image/jpeg',
-        fileSize: photoFile.size || photoFile.buffer.length,
+        originalName: photoFile.originalname || `customer-photo-${customerId}.jpg`,
+        customerId,
+        documentType: 'customer_photo',
+        uploadedBy
+      });
+      customerPhotoData = {
+        fileId: uploaded.fileId,
+        fileName: uploaded.fileName,
+        url: uploaded.url,
+        mimeType: photoFile.mimetype || 'image/jpeg',
+        fileSize: uploaded.fileSize,
         uploadedAt: new Date(),
-        publicId: `photo_${customerId}_${Date.now()}`
+        publicId: uploaded.driveFileId
       };
     } else if (body.customerPhoto && typeof body.customerPhoto === 'string') {
-      customerPhotoData = {
-        fileId: `photo_${customerId}_${Date.now()}`,
-        fileName: `customer-photo-${customerId}.jpg`,
-        url: body.customerPhoto,
-        mimeType: 'image/jpeg',
-        fileSize: 0,
-        uploadedAt: new Date(),
-        publicId: `photo_${customerId}_${Date.now()}`
-      };
+      const parsed = dataUriToBuffer(body.customerPhoto);
+      if (parsed) {
+        const uploaded = await uploadAndRecordCustomerFile({
+          buffer: parsed.buffer,
+          mimeType: parsed.mimeType,
+          originalName: `customer-photo-${customerId}.jpg`,
+          customerId,
+          documentType: 'customer_photo',
+          uploadedBy
+        });
+        customerPhotoData = {
+          fileId: uploaded.fileId,
+          fileName: uploaded.fileName,
+          url: uploaded.url,
+          mimeType: parsed.mimeType,
+          fileSize: uploaded.fileSize,
+          uploadedAt: new Date(),
+          publicId: uploaded.driveFileId
+        };
+      } else {
+        customerPhotoData = {
+          fileId: `photo_${customerId}_${Date.now()}`,
+          fileName: `customer-photo-${customerId}.jpg`,
+          url: body.customerPhoto,
+          mimeType: 'image/jpeg',
+          fileSize: 0,
+          uploadedAt: new Date(),
+          publicId: `photo_${customerId}_${Date.now()}`
+        };
+      }
     }
 
-    // KYC Documents
+    // KYC Documents (Google Drive)
     const kycDocuments: IKYCDocument[] = [];
     const kycFiles = [
       ...(files['kycDocuments'] || []),
@@ -220,19 +326,27 @@ export const createCustomer = async (req: Request, res: Response) => {
 
       const isPdf = file.mimetype === 'application/pdf';
       const resourceType = isPdf ? 'raw' : 'image';
-      const b64 = `data:${file.mimetype || 'image/jpeg'};base64,${file.buffer.toString('base64')}`;
+
+      const uploaded = await uploadAndRecordCustomerFile({
+        buffer: file.buffer,
+        mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        originalName: file.originalname || `${docType.toLowerCase()}_${i + 1}${isPdf ? '.pdf' : '.jpg'}`,
+        customerId,
+        documentType: docType.toLowerCase(),
+        uploadedBy
+      });
 
       kycDocuments.push({
         documentType: docType,
         documentNumber: idProofNumber || '',
         documentName: file.originalname || `${docType} Document`,
-        fileId: `kyc_${customerId}_${i}_${Date.now()}`,
-        fileName: file.originalname || `${docType.toLowerCase()}_${i + 1}.jpg`,
-        url: b64,
-        mimeType: file.mimetype || 'image/jpeg',
-        fileSize: file.size || file.buffer.length,
+        fileId: uploaded.fileId,
+        fileName: uploaded.fileName,
+        url: uploaded.url,
+        mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        fileSize: uploaded.fileSize,
         uploadedAt: new Date(),
-        publicId: `kyc_${customerId}_${i}_${Date.now()}`,
+        publicId: uploaded.driveFileId,
         resourceType
       });
     }
@@ -555,31 +669,50 @@ export const updateCustomer = async (req: Request, res: Response) => {
       try { updateFields.permanentLocation = JSON.parse(updateFields.permanentLocation); } catch {}
     }
 
-    // Photo update
+    // Photo update (Google Drive)
+    const uploadedBy = (req as any).user?.email || (req as any).user?.id || 'STAFF';
     const photoFile = files['customerPhoto']?.[0];
     if (photoFile) {
       const custId = existing.customerId;
-      const b64 = `data:${photoFile.mimetype || 'image/jpeg'};base64,${photoFile.buffer.toString('base64')}`;
-      updateFields.customerPhoto = {
-        fileId: `photo_${custId}_${Date.now()}`,
-        fileName: photoFile.originalname || `customer-photo-${custId}-${Date.now()}.jpg`,
-        url: b64,
+      const uploaded = await uploadAndRecordCustomerFile({
+        buffer: photoFile.buffer,
         mimeType: photoFile.mimetype || 'image/jpeg',
-        fileSize: photoFile.size || photoFile.buffer.length,
+        originalName: photoFile.originalname || `customer-photo-${custId}-${Date.now()}.jpg`,
+        customerId: custId,
+        documentType: 'customer_photo',
+        uploadedBy
+      });
+      updateFields.customerPhoto = {
+        fileId: uploaded.fileId,
+        fileName: uploaded.fileName,
+        url: uploaded.url,
+        mimeType: photoFile.mimetype || 'image/jpeg',
+        fileSize: uploaded.fileSize,
         uploadedAt: new Date(),
-        publicId: `photo_${custId}_${Date.now()}`
+        publicId: uploaded.driveFileId
       };
     } else if (body.customerPhoto && typeof body.customerPhoto === 'string' && body.customerPhoto.startsWith('data:image')) {
       const custId = existing.customerId;
-      updateFields.customerPhoto = {
-        fileId: `photo_${custId}_${Date.now()}`,
-        fileName: `customer-photo-${custId}-${Date.now()}.jpg`,
-        url: body.customerPhoto,
-        mimeType: 'image/jpeg',
-        fileSize: body.customerPhoto.length,
-        uploadedAt: new Date(),
-        publicId: `photo_${custId}_${Date.now()}`
-      };
+      const parsed = dataUriToBuffer(body.customerPhoto);
+      if (parsed) {
+        const uploaded = await uploadAndRecordCustomerFile({
+          buffer: parsed.buffer,
+          mimeType: parsed.mimeType,
+          originalName: `customer-photo-${custId}-${Date.now()}.jpg`,
+          customerId: custId,
+          documentType: 'customer_photo',
+          uploadedBy
+        });
+        updateFields.customerPhoto = {
+          fileId: uploaded.fileId,
+          fileName: uploaded.fileName,
+          url: uploaded.url,
+          mimeType: parsed.mimeType,
+          fileSize: uploaded.fileSize,
+          uploadedAt: new Date(),
+          publicId: uploaded.driveFileId
+        };
+      }
     } else if (body.customerPhotoUrl && typeof body.customerPhotoUrl === 'string') {
       const custId = existing.customerId;
       updateFields.customerPhoto = {
@@ -595,7 +728,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
       updateFields.customerPhoto = null;
     }
 
-    // KYC update
+    // KYC update (Google Drive)
     const kycFiles = [
       ...(files['kycDocuments'] || []),
       ...(files['aadhaarDoc'] || []),
@@ -612,19 +745,27 @@ export const updateCustomer = async (req: Request, res: Response) => {
         const docType = updateFields.idProofType || existing.idProofType || 'KYC';
         const isPdf = file.mimetype === 'application/pdf';
         const resourceType = isPdf ? 'raw' : 'image';
-        const b64 = `data:${file.mimetype || 'image/jpeg'};base64,${file.buffer.toString('base64')}`;
+
+        const uploaded = await uploadAndRecordCustomerFile({
+          buffer: file.buffer,
+          mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
+          originalName: file.originalname || `${docType.toLowerCase()}_${i + 1}${isPdf ? '.pdf' : '.jpg'}`,
+          customerId: custId,
+          documentType: docType.toLowerCase(),
+          uploadedBy
+        });
 
         newKycDocs.push({
           documentType: docType,
           documentNumber: updateFields.idProofNumber || existing.idProofNumber || '',
           documentName: file.originalname,
-          fileId: `kyc_${custId}_${i}_${Date.now()}`,
-          fileName: file.originalname,
-          url: b64,
-          mimeType: file.mimetype || 'image/jpeg',
-          fileSize: file.size || file.buffer.length,
+          fileId: uploaded.fileId,
+          fileName: uploaded.fileName,
+          url: uploaded.url,
+          mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
+          fileSize: uploaded.fileSize,
           uploadedAt: new Date(),
-          publicId: `kyc_${custId}_${i}_${Date.now()}`,
+          publicId: uploaded.driveFileId,
           resourceType
         });
       }

@@ -3223,8 +3223,10 @@ export const AdminPanel: React.FC = () => {
                       <button
                         type="button"
                         className="btn"
-                        style={{ backgroundColor: '#DC2626', color: '#FFF', fontWeight: 800 }}
-                        onClick={() => setShowWipeModal(true)}
+                        style={{ backgroundColor: '#DC2626', color: '#FFF', fontWeight: 800, cursor: 'pointer' }}
+                        onClick={() => {
+                          setShowWipeModal(true);
+                        }}
                       >
                         Wipe All Data
                       </button>

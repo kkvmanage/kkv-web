@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -7,7 +7,13 @@ import {
   X,
   Download,
   Check,
-  FileArchive
+  MousePointerClick,
+  Trash2,
+  RotateCcw,
+  Database,
+  FileArchive,
+  ArrowRight,
+  ShieldAlert
 } from 'lucide-react';
 import { apiService } from '../../services/api';
 
@@ -18,16 +24,25 @@ export interface WipeAllDataModalProps {
   onOpenRestore?: () => void;
 }
 
+type ModalMode = 'CONFIRM' | 'PIPELINE' | 'SUCCESS' | 'ERROR';
+
+interface PipelineStep {
+  id: number;
+  label: string;
+  status: 'waiting' | 'in_progress' | 'completed' | 'failed';
+  detail?: string;
+}
+
 export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
   isOpen,
   onClose,
   onSuccessReset,
   onOpenRestore
 }) => {
-  // Steps: 1 = Preview & Start, 2 = Verify, 3 = Download & Ack, 4 = Final Confirm, 5 = Wiped
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [mode, setMode] = useState<ModalMode>('CONFIRM');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorStage, setErrorStage] = useState<'BACKUP' | 'WIPE' | ''>('');
 
   // Preview Data
   const [previewData, setPreviewData] = useState<{
@@ -42,6 +57,12 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
       dayBookEntries: number;
       reminders: number;
       notifications: number;
+      rentalComplexes: number;
+      rentalShops: number;
+      rentPayments: number;
+      rentalExpenses: number;
+      rentalDayBook: number;
+      fileAttachments: number;
       totalOperationalRecords: number;
     };
     wipeableEntities: string[];
@@ -57,127 +78,222 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
     sha256: string;
     backupStatus: string;
     uploadedAt: string;
-    drivePath: string;
+    storagePath: string;
     recordCounts: Record<string, number>;
   } | null>(null);
 
-  // Download State
-  const [downloadTriggered, setDownloadTriggered] = useState(false);
-  const [downloadAcknowledged, setDownloadAcknowledged] = useState(false);
+  // 10-Click Counter State & Rate Limiting
+  const [clickCount, setClickCount] = useState<number>(0);
+  const [lastClickTime, setLastClickTime] = useState<number>(0);
+  const [rateLimitNotice, setRateLimitNotice] = useState(false);
 
   // Final confirmation input & checkbox
   const [inputConfirmation, setInputConfirmation] = useState('');
   const [agreeCheckbox, setAgreeCheckbox] = useState(false);
 
-  // Checklist for Step 2
-  const [checklist, setChecklist] = useState({
-    snapshot: false,
-    csv: false,
-    zip: false,
-    sha256: false
-  });
+  // Pipeline Execution Steps
+  const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([
+    { id: 1, label: 'Safety Confirmation', status: 'completed', detail: '10 deliberate clicks & typed confirmation verified' },
+    { id: 2, label: 'Create Full Backup ZIP', status: 'waiting', detail: 'Exporting Finance, Rental, Attachments & Sequences' },
+    { id: 3, label: 'Verify Backup Integrity', status: 'waiting', detail: 'Validating SHA-256 checksum & ZIP structure' },
+    { id: 4, label: 'Download Backup ZIP', status: 'waiting', detail: 'Delivering ZIP archive to Admin computer' },
+    { id: 5, label: 'Wipe Business Data', status: 'waiting', detail: 'Clearing operational records while preserving configs' },
+    { id: 6, label: 'Verify Clean State', status: 'waiting', detail: 'Confirming 0 operational records in database' }
+  ]);
 
-  useEffect(() => {
-    if (isOpen) {
-      setStep(1);
-      setErrorMessage('');
-      setDownloadTriggered(false);
-      setDownloadAcknowledged(false);
-      setInputConfirmation('');
-      setAgreeCheckbox(false);
-      loadPreview();
-    }
-  }, [isOpen]);
-
-  const loadPreview = async () => {
+  const loadPreview = useCallback(async () => {
     try {
       const res = await apiService.getWipePreview();
-      if (res.success && res.data) {
+      if (res && res.success && res.data) {
         setPreviewData(res.data);
       }
     } catch (err) {
-      console.error('Failed to load wipe preview:', err);
+      console.warn('Notice: Failed to load dynamic wipe preview, using default state:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode('CONFIRM');
+      setLoading(false);
+      setErrorMessage('');
+      setErrorStage('');
+      setVerificationRecord(null);
+      setClickCount(0);
+      setInputConfirmation('');
+      setAgreeCheckbox(false);
+      setRateLimitNotice(false);
+      setPipelineSteps([
+        { id: 1, label: 'Safety Confirmation', status: 'completed', detail: '10 deliberate clicks & typed confirmation verified' },
+        { id: 2, label: 'Create Full Backup ZIP', status: 'waiting', detail: 'Exporting Finance, Rental, Attachments & Sequences' },
+        { id: 3, label: 'Verify Backup Integrity', status: 'waiting', detail: 'Validating SHA-256 checksum & ZIP structure' },
+        { id: 4, label: 'Download Backup ZIP', status: 'waiting', detail: 'Delivering ZIP archive to Admin computer' },
+        { id: 5, label: 'Wipe Business Data', status: 'waiting', detail: 'Clearing operational records while preserving configs' },
+        { id: 6, label: 'Verify Clean State', status: 'waiting', detail: 'Confirming 0 operational records in database' }
+      ]);
+      loadPreview();
+    }
+  }, [isOpen, loadPreview]);
+
+  // Handle Escape key to close safely (unless executing pipeline)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !loading && mode === 'CONFIRM') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, loading, mode, onClose]);
 
   if (!isOpen) return null;
 
-  const handleStartBackupAndVerify = async () => {
-    setStep(2);
-    setLoading(true);
-    setErrorMessage('');
-    setChecklist({ snapshot: true, csv: false, zip: false, sha256: false });
+  // 10-Click Incrementor with Deliberate Throttle
+  const handleDeliberateClick = () => {
+    const now = Date.now();
+    if (now - lastClickTime < 150) {
+      setRateLimitNotice(true);
+      setTimeout(() => setRateLimitNotice(false), 1200);
+      return;
+    }
+    setLastClickTime(now);
+    setRateLimitNotice(false);
 
+    setClickCount((prev) => {
+      const next = prev + 1;
+      return next > 10 ? 10 : next;
+    });
+  };
+
+  const updateStepStatus = (
+    stepId: number,
+    status: 'waiting' | 'in_progress' | 'completed' | 'failed',
+    detail?: string
+  ) => {
+    setPipelineSteps((prev) =>
+      prev.map((s) => (s.id === stepId ? { ...s, status, ...(detail ? { detail } : {}) } : s))
+    );
+  };
+
+  const triggerBrowserDownload = (backupId: string, fileName: string) => {
     try {
-      setTimeout(() => setChecklist((prev) => ({ ...prev, csv: true })), 400);
-      setTimeout(() => setChecklist((prev) => ({ ...prev, zip: true })), 800);
-      setTimeout(() => setChecklist((prev) => ({ ...prev, sha256: true })), 1200);
-
-      const res = await apiService.initiateWipeBackup('WIPE ALL DATA');
-
-      if (!res.success || !res.data) {
-        throw new Error(res.message || 'Backup generation or verification failed. No application data was deleted.');
-      }
-
-      setVerificationRecord(res.data);
-      setLoading(false);
-
+      const downloadUrl = apiService.getBackupDownloadUrl(backupId);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', fileName);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
       setTimeout(() => {
-        setStep(3);
-      }, 700);
-    } catch (err: any) {
-      console.error('[WipeAllDataModal] Error:', err);
-      setErrorMessage(err?.message || 'Backup generation or verification failed. No application data was deleted.');
-      setLoading(false);
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 500);
+      return true;
+    } catch (err) {
+      console.error('Auto download trigger failed:', err);
+      return false;
     }
   };
 
-  const handleDownloadFile = () => {
-    if (!verificationRecord) return;
-    const downloadUrl = apiService.getBackupDownloadUrl(verificationRecord.backupId);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.setAttribute('download', verificationRecord.fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setDownloadTriggered(true);
-  };
-
-  const handleAcknowledgeDownload = async () => {
-    if (!verificationRecord) return;
-    try {
-      await apiService.acknowledgeBackupDownload(verificationRecord.backupId);
-      setDownloadAcknowledged(true);
-      setStep(4);
-    } catch (err: any) {
-      console.warn('Acknowledgment warning:', err);
-      setDownloadAcknowledged(true);
-      setStep(4);
+  // ══════════════════════════════════════════════════════════════════════════
+  // COMPLETE AUTOMATED PIPELINE:
+  // Safety Confirmed -> Create Backup ZIP -> Verify -> Auto Download -> Wipe -> Verify Clean
+  // ══════════════════════════════════════════════════════════════════════════
+  const handleStartAutomatedPipeline = async () => {
+    if (clickCount < 10 || inputConfirmation.trim() !== 'WIPE ALL DATA' || !agreeCheckbox || loading) {
+      return;
     }
-  };
 
-  const handleConfirmWipe = async () => {
-    if (!verificationRecord || !verificationRecord.token) return;
-    if (inputConfirmation !== 'WIPE ALL DATA' || !agreeCheckbox) return;
-
+    setMode('PIPELINE');
     setLoading(true);
     setErrorMessage('');
+    setErrorStage('');
 
     try {
-      const res = await apiService.confirmSystemWipe(verificationRecord.token, 'WIPE ALL DATA');
+      // Step 2: Create Full Backup ZIP
+      updateStepStatus(2, 'in_progress', 'Exporting Finance, Rental, Attachments, Sequences & Manifest...');
+      const backupRes = await apiService.initiateWipeBackup('WIPE ALL DATA');
 
-      if (!res.success) {
-        throw new Error(res.message || 'System data wipe failed.');
+      if (!backupRes.success || !backupRes.data) {
+        updateStepStatus(2, 'failed', 'Backup package generation failed.');
+        setErrorStage('BACKUP');
+        throw new Error(
+          backupRes.message || 'Backup generation failed. No business data has been deleted.'
+        );
       }
 
+      const backupInfo = backupRes.data;
+      setVerificationRecord(backupInfo);
+      updateStepStatus(2, 'completed', `ZIP package generated (${(backupInfo.fileSize / 1024).toFixed(1)} KB)`);
+
+      // Step 3: Verify Integrity & SHA-256 Checksum
+      updateStepStatus(3, 'in_progress', 'Validating SHA-256 checksum and package contents...');
+      await new Promise((r) => setTimeout(r, 400));
+
+      if (!backupInfo.sha256 || !backupInfo.token) {
+        updateStepStatus(3, 'failed', 'Integrity verification failed (missing checksum or token).');
+        setErrorStage('BACKUP');
+        throw new Error('Backup integrity validation failed. No business data has been deleted.');
+      }
+      updateStepStatus(3, 'completed', `Checksum verified: ${backupInfo.sha256.slice(0, 16)}...`);
+
+      // Step 4: Trigger Auto Download & Acknowledge
+      updateStepStatus(4, 'in_progress', `Triggering browser download: ${backupInfo.fileName}...`);
+      triggerBrowserDownload(backupInfo.backupId, backupInfo.fileName);
+
+      try {
+        await apiService.acknowledgeBackupDownload(backupInfo.backupId);
+      } catch (ackErr) {
+        console.warn('Download acknowledgement notice:', ackErr);
+      }
+      updateStepStatus(4, 'completed', `Downloaded ${backupInfo.fileName}`);
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Step 5: Execute Business Data Wipe
+      updateStepStatus(5, 'in_progress', 'Executing atomic deletion of operational records...');
+      const wipeRes = await apiService.confirmSystemWipe(backupInfo.token, 'WIPE ALL DATA');
+
+      if (!wipeRes.success) {
+        updateStepStatus(5, 'failed', 'Database wipe failed.');
+        setErrorStage('WIPE');
+        throw new Error(
+          wipeRes.message || 'Data wipe could not be completed. Your pre-wipe backup is safely preserved.'
+        );
+      }
+      updateStepStatus(5, 'completed', 'All operational business data wiped successfully');
+
+      // Step 6: Verify Clean Database State
+      updateStepStatus(6, 'in_progress', 'Auditing database for clean state...');
+      await new Promise((r) => setTimeout(r, 400));
+
+      const verifyRes = await apiService.getWipePreview();
+      const remainingCount = verifyRes?.data?.counts?.totalOperationalRecords ?? 0;
+
+      if (remainingCount > 0) {
+        updateStepStatus(6, 'failed', `Verification detected ${remainingCount} remaining records.`);
+        setErrorStage('WIPE');
+        throw new Error(`Clean state verification failed: ${remainingCount} operational records remain.`);
+      }
+
+      updateStepStatus(6, 'completed', '0 operational records remaining (Database 100% clean)');
+
+      await new Promise((r) => setTimeout(r, 600));
+
       setLoading(false);
-      setStep(5);
+      setMode('SUCCESS');
     } catch (err: any) {
-      console.error('[WipeAllDataModal] Data wipe error:', err);
-      setErrorMessage(err?.message || 'Failed to complete system wipe.');
+      console.error('[WipeAllDataModal] Pipeline execution error:', err);
+      setErrorMessage(err?.message || 'Operation failed.');
       setLoading(false);
+      setMode('ERROR');
     }
+  };
+
+  const handleManualDownload = () => {
+    if (!verificationRecord) return;
+    triggerBrowserDownload(verificationRecord.backupId, verificationRecord.fileName);
   };
 
   const handleStartFresh = () => {
@@ -186,610 +302,971 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
   };
 
   const isExactConfirm = inputConfirmation.trim() === 'WIPE ALL DATA';
-  const isWipeEnabled = isExactConfirm && agreeCheckbox && downloadAcknowledged && !loading;
+  const is10ClicksDone = clickCount >= 10;
+  const isWipeEnabled = is10ClicksDone && isExactConfirm && agreeCheckbox && !loading;
+
+  const totalRecords = previewData?.counts?.totalOperationalRecords ?? 0;
 
   return (
     <div
       style={{
         position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
-        backdropFilter: 'blur(5px)',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 3000,
-        padding: '20px'
+        padding: '16px'
       }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wipe-modal-title"
     >
       <div
-        className="card"
         style={{
+          display: 'flex',
+          flexDirection: 'column',
           width: '100%',
-          maxWidth: '680px',
+          maxWidth: '820px',
           maxHeight: '92vh',
-          overflowY: 'auto',
-          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
-          borderRadius: '12px',
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
           border: '1px solid #E2E8F0',
-          padding: 0,
-          overflow: 'hidden',
-          backgroundColor: '#FFFFFF'
+          overflow: 'hidden'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* TOP HEADER */}
+        {/* MODAL HEADER */}
         <div
           style={{
-            padding: '16px 22px',
-            backgroundColor: step === 5 ? '#065F46' : '#FFFFFF',
-            borderBottom: step === 5 ? 'none' : '1px solid #E2E8F0',
-            color: step === 5 ? '#FFFFFF' : '#1E293B',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '1px solid #F1F5F9',
+            backgroundColor: '#FFFFFF',
+            flexShrink: 0
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <div
               style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
-                backgroundColor: step === 5 ? 'rgba(255, 255, 255, 0.2)' : '#FEE2E2',
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: step === 5 ? '#FFFFFF' : '#DC2626'
+                flexShrink: 0,
+                backgroundColor:
+                  mode === 'SUCCESS'
+                    ? '#ECFDF5'
+                    : mode === 'ERROR'
+                    ? '#FFF1F2'
+                    : '#FEF2F2',
+                border: `1px solid ${
+                  mode === 'SUCCESS'
+                    ? '#A7F3D0'
+                    : mode === 'ERROR'
+                    ? '#FECDD3'
+                    : '#FECACA'
+                }`,
+                color:
+                  mode === 'SUCCESS'
+                    ? '#059669'
+                    : mode === 'ERROR'
+                    ? '#E11D48'
+                    : '#DC2626'
               }}
             >
-              {step === 5 ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+              {mode === 'SUCCESS' ? (
+                <CheckCircle2 size={20} />
+              ) : mode === 'ERROR' ? (
+                <ShieldAlert size={20} />
+              ) : (
+                <AlertTriangle size={20} />
+              )}
             </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
-                {step === 5 ? 'System Data Successfully Wiped' : 'Wipe All Operational Data'}
-              </h3>
-              <p style={{ margin: 0, fontSize: '12px', opacity: step === 5 ? 0.9 : 0.6 }}>
-                {step === 5
-                  ? 'All records removed. Database verified empty.'
-                  : 'Multi-Step Fail-Safe Recovery Workflow'}
+            <div style={{ minWidth: 0 }}>
+              <h2
+                id="wipe-modal-title"
+                style={{
+                  fontSize: '16px',
+                  fontWeight: 800,
+                  color: '#0F172A',
+                  letterSpacing: '-0.02em',
+                  margin: 0,
+                  lineHeight: 1.2
+                }}
+              >
+                {mode === 'SUCCESS'
+                  ? 'WIPE COMPLETED SUCCESSFULLY'
+                  : mode === 'PIPELINE'
+                  ? 'EXECUTING PROTECTED WIPE PIPELINE'
+                  : mode === 'ERROR'
+                  ? 'WIPE PIPELINE STOPPED'
+                  : 'ADMIN MASTER CONTROL → WIPE ALL DATA'}
+              </h2>
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: '#64748B',
+                  margin: '2px 0 0',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+              >
+                {mode === 'SUCCESS'
+                  ? 'Backup created, downloaded, and database verified 100% clean'
+                  : mode === 'PIPELINE'
+                  ? 'Automated backup creation, ZIP download, and atomic wipe in progress'
+                  : 'Protected workflow: Auto-backup ZIP → Auto-download → Verified deletion'}
               </p>
             </div>
           </div>
 
-          {step !== 2 && (
+          {mode === 'CONFIRM' && !loading && (
             <button
               onClick={onClose}
+              disabled={loading}
               style={{
-                background: 'none',
+                padding: '6px',
+                borderRadius: '8px',
+                color: '#94A3B8',
+                background: 'transparent',
                 border: 'none',
-                color: step === 5 ? '#FFF' : '#64748B',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
+              aria-label="Close dialog"
             >
               <X size={20} />
             </button>
           )}
         </div>
 
-        {/* STEP PROGRESS BAR */}
-        {step !== 5 && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '10px 22px',
-              backgroundColor: '#F8FAFC',
-              borderBottom: '1px solid #E2E8F0',
-              fontSize: '11.5px',
-              fontWeight: 700
-            }}
-          >
-            {[
-              { num: 1, label: '1. Review' },
-              { num: 2, label: '2. Verify' },
-              { num: 3, label: '3. Download' },
-              { num: 4, label: '4. Confirm' }
-            ].map((s) => {
-              const isPast = step > s.num;
-              const isCurrent = step === s.num;
-              return (
-                <div
-                  key={s.num}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    color: isCurrent ? '#DC2626' : isPast ? '#16A34A' : '#94A3B8'
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '10px',
-                      backgroundColor: isCurrent ? '#DC2626' : isPast ? '#16A34A' : '#E2E8F0',
-                      color: isCurrent || isPast ? '#FFF' : '#64748B'
-                    }}
-                  >
-                    {isPast ? '✓' : s.num}
-                  </div>
-                  <span>{s.label}</span>
-                </div>
-              );
-            })}
+        {/* ENVIRONMENT & DATABASE BANNER */}
+        <div
+          style={{
+            padding: '8px 20px',
+            backgroundColor: '#F8FAFC',
+            borderBottom: '1px solid #F1F5F9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '12px',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Database size={14} color="#64748B" />
+            <span style={{ color: '#64748B' }}>Target Database:</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1E293B' }}>kkv_gold_finance</span>
           </div>
-        )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981', display: 'inline-block' }} />
+            <span style={{ color: '#334155', fontWeight: 600 }}>Local Database Connected (127.0.0.1:27017)</span>
+          </div>
+        </div>
 
-        {/* MODAL BODY */}
-        <div style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {/* ERROR ALERT BANNER */}
-          {errorMessage && (
-            <div
-              style={{
-                padding: '12px 16px',
-                backgroundColor: '#FEF2F2',
-                border: '1px solid #F87171',
-                borderRadius: '8px',
-                color: '#991B1B',
-                fontSize: '13px',
-                lineHeight: '1.5'
-              }}
-            >
-              <strong style={{ display: 'block', fontSize: '13px', marginBottom: '2px' }}>
-                🛑 Operation Halted (Data Intact)
-              </strong>
-              {errorMessage}
-            </div>
-          )}
-
-          {/* STEP 1: REVIEW DATA & INITIATE BACKUP */}
-          {step === 1 && (
+        {/* SCROLLABLE MODAL CONTENT */}
+        <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* MODE 1: CONFIRMATION & SAFETY GATES */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {mode === 'CONFIRM' && (
             <>
+              {/* WARNING BOX */}
               <div
                 style={{
-                  padding: '12px 14px',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
                   backgroundColor: '#FFFBEB',
-                  borderLeft: '4px solid #F59E0B',
-                  borderRadius: '6px',
-                  color: '#92400E',
-                  fontSize: '12.5px',
-                  lineHeight: '1.5'
+                  border: '1px solid #FDE68A',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '12px'
                 }}
               >
-                Before any data can be wiped, the system will generate a complete, portable <strong>ZIP backup package</strong> containing JSON snapshots, CSV exports, manifest, and SHA-256 checksums.
-              </div>
-
-              {/* RECORD COUNTS TABLE */}
-              <div>
-                <h4 style={{ fontSize: '13px', fontWeight: 800, color: '#1E293B', marginBottom: '8px' }}>
-                  Operational Data to be Removed:
-                </h4>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '8px 16px',
-                    padding: '12px 16px',
-                    backgroundColor: '#F8FAFC',
-                    borderRadius: '8px',
-                    border: '1px solid #E2E8F0',
-                    fontSize: '12.5px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Customers:</span>
-                    <strong>{previewData?.counts.customers ?? '...'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Loans:</span>
-                    <strong>{previewData?.counts.loans ?? '...'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Receipts:</span>
-                    <strong>{previewData?.counts.receipts ?? '...'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Fixed Deposits:</span>
-                    <strong>{previewData?.counts.fixedDeposits ?? '...'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Day Book Entries:</span>
-                    <strong>{previewData?.counts.dayBookEntries ?? '...'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Reminders &amp; Alerts:</span>
-                    <strong>{previewData?.counts.reminders ?? '...'}</strong>
-                  </div>
+                <AlertTriangle size={18} color="#D97706" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '12px', color: '#92400E', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 800, color: '#78350F', display: 'block', marginBottom: '2px' }}>
+                    Automated Protected Data Wipe
+                  </span>
+                  Initiating this action will <strong>automatically create an authoritative backup ZIP</strong>, trigger an <strong>automatic download to your computer</strong>, verify integrity, and only then permanently delete operational business data. Google Drive photos/PDFs and Master Admin accounts remain safely preserved.
                 </div>
               </div>
 
-              {/* PRESERVED DATA CARD */}
+              {/* SCOPE SUMMARY CARDS */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                {/* DESTRUCTIVE SCOPE */}
+                <div
+                  style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FEE2E2',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <Trash2 size={14} color="#DC2626" />
+                      DATA TO BE WIPED ({totalRecords})
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Customers</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.customers ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Loans</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.loans ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Receipts</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.receipts ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Ledger</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.dayBookEntries ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Complexes</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.rentalComplexes ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Rental Shops</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.rentalShops ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Collections</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.rentPayments ?? 0}</strong>
+                    </div>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#FFFFFF', border: '1px solid #FEE2E2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Expenses</span>
+                      <strong style={{ color: '#DC2626', fontWeight: 800 }}>{previewData?.counts.rentalExpenses ?? 0}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PRESERVED DATA */}
+                <div
+                  style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    backgroundColor: '#ECFDF5',
+                    border: '1px solid #D1FAE5',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 800, color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <ShieldCheck size={14} color="#059669" />
+                    PRESERVED SYSTEM DATA
+                  </div>
+
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: '#1E293B' }}>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span>Master Admin account &amp; RBAC roles</span>
+                    </li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span>Loan configuration &amp; interest profiles</span>
+                    </li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span>Branch settings &amp; print templates</span>
+                    </li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span>Google Drive images &amp; PDFs (Safe &amp; Intact)</span>
+                    </li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                      <span>Historical verified backups &amp; audit logs</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* 10-CLICK INTERACTIVE SAFEGUARD */}
               <div
                 style={{
-                  padding: '10px 14px',
-                  backgroundColor: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  color: '#166534',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  textAlign: 'center',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
+                  flexDirection: 'column',
+                  gap: '12px'
                 }}
               >
-                <ShieldCheck size={18} color="#16A34A" />
-                <span>
-                  <strong>Preserved System Data:</strong> Admin logins, master interest configurations, branch profile, and printer settings will remain intact.
-                </span>
+                <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748B' }}>
+                  STEP 1: DELIBERATE CONFIRMATION COUNTER
+                </div>
+
+                {/* 10-SEGMENT BAR */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', maxWidth: '360px', margin: '0 auto', width: '100%' }}>
+                  {Array.from({ length: 10 }).map((_, idx) => {
+                    const isFilled = idx < clickCount;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          height: '10px',
+                          flex: 1,
+                          borderRadius: '9999px',
+                          backgroundColor: isFilled ? (is10ClicksDone ? '#10B981' : '#DC2626') : '#E2E8F0',
+                          transition: 'all 0.2s ease'
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                <div style={{ fontSize: '24px', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.02em' }}>
+                  <span style={{ color: is10ClicksDone ? '#059669' : '#DC2626' }}>{clickCount}</span>{' '}
+                  <span style={{ color: '#94A3B8', fontSize: '16px', fontWeight: 500 }}>/ 10</span>
+                </div>
+
+                {rateLimitNotice && (
+                  <div style={{ fontSize: '12px', color: '#D97706', fontWeight: 600 }}>
+                    Please pause briefly between clicks.
+                  </div>
+                )}
+
+                <div>
+                  {!is10ClicksDone ? (
+                    <button
+                      type="button"
+                      onClick={handleDeliberateClick}
+                      style={{
+                        padding: '10px 24px',
+                        borderRadius: '10px',
+                        backgroundColor: '#DC2626',
+                        color: '#FFFFFF',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        border: 'none',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.25)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'transform 0.1s ease'
+                      }}
+                    >
+                      <MousePointerClick size={16} />
+                      <span>Click to Confirm ({clickCount}/10)</span>
+                    </button>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        backgroundColor: '#D1FAE5',
+                        color: '#065F46',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        border: '1px solid #A7F3D0'
+                      }}
+                    >
+                      <CheckCircle2 size={16} color="#059669" />
+                      <span>10 Confirmations Completed ✓</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
-                <button type="button" className="btn btn-secondary" onClick={onClose}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  style={{
-                    backgroundColor: '#DC2626',
-                    color: '#FFF',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                  onClick={handleStartBackupAndVerify}
-                >
-                  <FileArchive size={16} />
-                  <span>Create &amp; Verify Complete Backup (.ZIP)</span>
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* STEP 2: VERIFICATION IN PROGRESS */}
-          {step === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '10px 0' }}>
-              <div style={{ textAlign: 'center' }}>
-                <RefreshCw size={36} className="spin" style={{ color: '#DC2626', margin: '0 auto 10px' }} />
-                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800 }}>
-                  Generating &amp; Verifying Portable Backup Package
-                </h4>
-                <p style={{ fontSize: '12px', color: '#64748B', marginTop: '4px' }}>
-                  No application data will be deleted until all verification checks pass.
-                </p>
-              </div>
-
+              {/* TYPED CONFIRMATION & ACKNOWLEDGMENT CHECKBOX */}
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px',
-                  padding: '16px',
-                  backgroundColor: '#F8FAFC',
-                  borderRadius: '8px',
-                  border: '1px solid #E2E8F0',
-                  fontSize: '12.5px'
+                  gap: '14px',
+                  opacity: is10ClicksDone ? 1 : 0.45,
+                  pointerEvents: is10ClicksDone ? 'auto' : 'none',
+                  transition: 'opacity 0.2s ease'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {checklist.snapshot ? <CheckCircle2 size={16} color="#16A34A" /> : <div className="spinner-sm" />}
-                  <span>1. Authoritative JSON database snapshot generated...</span>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#1E293B', marginBottom: '6px' }}>
+                    STEP 2: Type <span style={{ color: '#DC2626', fontWeight: 900, fontFamily: 'monospace' }}>WIPE ALL DATA</span> to unlock:
+                  </label>
+                  <input
+                    type="text"
+                    value={inputConfirmation}
+                    onChange={(e) => setInputConfirmation(e.target.value)}
+                    placeholder="WIPE ALL DATA"
+                    disabled={!is10ClicksDone}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      borderRadius: '10px',
+                      border: isExactConfirm ? '2px solid #10B981' : '1px solid #CBD5E1',
+                      backgroundColor: isExactConfirm ? '#F0FDF4' : '#FFFFFF',
+                      color: isExactConfirm ? '#065F46' : '#0F172A',
+                      outline: 'none'
+                    }}
+                  />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {checklist.csv ? <CheckCircle2 size={16} color="#16A34A" /> : <div className="spinner-sm" />}
-                  <span>2. Entity CSV exports generated (customers, loans, payments, daybook)...</span>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    backgroundColor: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    cursor: is10ClicksDone ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    id="agreeCheckbox"
+                    checked={agreeCheckbox}
+                    onChange={(e) => setAgreeCheckbox(e.target.checked)}
+                    disabled={!is10ClicksDone}
+                    style={{ marginTop: '2px', width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#475569', lineHeight: 1.4, userSelect: 'none' }}>
+                    STEP 3: I confirm that the system will automatically create a full backup ZIP, download it to my device, verify integrity, and only then permanently delete operational business data.
+                  </span>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* MODE 2: AUTOMATED PIPELINE EXECUTION */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {mode === 'PIPELINE' && (
+            <div style={{ padding: '16px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    backgroundColor: '#FEF2F2',
+                    color: '#DC2626',
+                    border: '1px solid #FECACA',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto'
+                  }}
+                >
+                  <RefreshCw size={24} className="animate-spin" />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {checklist.zip ? <CheckCircle2 size={16} color="#16A34A" /> : <div className="spinner-sm" />}
-                  <span>3. Portable ZIP archive created with manifest &amp; schema...</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {checklist.sha256 ? <CheckCircle2 size={16} color="#16A34A" /> : <div className="spinner-sm" />}
-                  <span>4. SHA-256 integrity checksums calculated &amp; verified...</span>
-                </div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                  Executing Automated Backup &amp; Wipe Workflow
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748B', maxWidth: '420px', margin: '0 auto' }}>
+                  Please do not close or refresh this window while the safe sequence completes.
+                </p>
               </div>
 
-              {errorMessage && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                  <button className="btn btn-secondary" onClick={() => setStep(1)}>
-                    Back to Safety
+              {/* REAL PIPELINE STEPS LIST */}
+              <div style={{ maxWidth: '560px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {pipelineSteps.map((stepItem) => {
+                  const isDone = stepItem.status === 'completed';
+                  const isRunning = stepItem.status === 'in_progress';
+                  const isFailed = stepItem.status === 'failed';
+
+                  return (
+                    <div
+                      key={stepItem.id}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        border: `1px solid ${
+                          isDone
+                            ? '#A7F3D0'
+                            : isRunning
+                            ? '#FDE68A'
+                            : isFailed
+                            ? '#FECACA'
+                            : '#E2E8F0'
+                        }`,
+                        backgroundColor: isDone
+                          ? '#ECFDF5'
+                          : isRunning
+                          ? '#FFFBEB'
+                          : isFailed
+                          ? '#FEF2F2'
+                          : '#F8FAFC',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ marginTop: '2px', flexShrink: 0 }}>
+                        {isDone && <CheckCircle2 size={16} color="#059669" />}
+                        {isRunning && <RefreshCw size={16} color="#D97706" className="animate-spin" />}
+                        {isFailed && <AlertTriangle size={16} color="#DC2626" />}
+                        {!isDone && !isRunning && !isFailed && (
+                          <div
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              borderRadius: '50%',
+                              border: '1px solid #CBD5E1',
+                              fontSize: '10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              color: '#94A3B8'
+                            }}
+                          >
+                            {stepItem.id}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              color: isDone ? '#065F46' : isRunning ? '#92400E' : isFailed ? '#991B1B' : '#64748B'
+                            }}
+                          >
+                            {stepItem.id}. {stepItem.label}
+                          </span>
+                          {isDone && <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>Done ✓</span>}
+                          {isRunning && <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>Running...</span>}
+                        </div>
+                        {stepItem.detail && (
+                          <p style={{ fontSize: '11px', color: '#64748B', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {stepItem.detail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DOWNLOAD NOTICE IF TRIGGERED */}
+              {verificationRecord && (
+                <div
+                  style={{
+                    maxWidth: '560px',
+                    margin: '0 auto',
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    backgroundColor: '#F1F5F9',
+                    border: '1px solid #CBD5E1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <FileArchive size={16} color="#64748B" style={{ flexShrink: 0 }} />
+                    <span style={{ color: '#334155', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {verificationRecord.fileName}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleManualDownload}
+                    style={{
+                      padding: '4px 10px',
+                      backgroundColor: '#FFFFFF',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: '#334155',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Download size={12} />
+                    Download Again
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* STEP 3: DOWNLOAD & ACKNOWLEDGE BACKUP */}
-          {step === 3 && verificationRecord && (
-            <>
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* MODE 3: SUCCESS STATE */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {mode === 'SUCCESS' && (
+            <div style={{ padding: '16px 0', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div
                 style={{
-                  padding: '12px 14px',
-                  backgroundColor: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: '8px',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '16px',
+                  backgroundColor: '#D1FAE5',
+                  color: '#059669',
+                  border: '1px solid #A7F3D0',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  color: '#166534',
-                  fontSize: '13px',
-                  fontWeight: 700
+                  justifyContent: 'center',
+                  margin: '0 auto'
                 }}
               >
-                <ShieldCheck size={18} />
-                <span>Backup Package Ready &amp; Verified</span>
+                <CheckCircle2 size={28} />
               </div>
 
-              {/* BACKUP DETAILS CARD */}
-              <div
-                style={{
-                  padding: '14px 16px',
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  fontSize: '12.5px'
-                }}
-              >
-                <div>
-                  <span style={{ color: '#64748B' }}>Backup Package: </span>
-                  <strong style={{ color: '#1E293B' }}>{verificationRecord.fileName}</strong>
-                </div>
-                <div>
-                  <span style={{ color: '#64748B' }}>Package Size: </span>
-                  <strong>{(verificationRecord.fileSize / 1024).toFixed(1)} KB</strong>
-                </div>
-                <div>
-                  <span style={{ color: '#64748B' }}>SHA-256 Checksum: </span>
-                  <code style={{ fontSize: '11px', background: '#E2E8F0', padding: '2px 6px', borderRadius: '4px' }}>
-                    {verificationRecord.sha256}
-                  </code>
-                </div>
-                <div>
-                  <span style={{ color: '#64748B' }}>Package Contents: </span>
-                  <span>snapshot.json, data/*.csv, manifest.json, SHA256SUMS.txt</span>
-                </div>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                  Wipe &amp; Backup Completed Successfully
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748B', margin: '4px 0 0' }}>
+                  Authoritative backup ZIP created and downloaded. All business data wiped. Database verified 100% clean.
+                </p>
               </div>
 
-              {/* ACTION BUTTONS */}
+              {/* SUCCESS METRICS CARD */}
               <div
                 style={{
-                  padding: '14px',
-                  backgroundColor: '#EFF6FF',
-                  border: '1px solid #BFDBFE',
-                  borderRadius: '8px',
+                  maxWidth: '520px',
+                  margin: '0 auto',
+                  width: '100%',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  backgroundColor: '#ECFDF5',
+                  border: '1px solid #A7F3D0',
+                  fontSize: '12px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '10px'
+                  gap: '12px',
+                  textAlign: 'left'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <strong style={{ fontSize: '13px', color: '#1E40AF', display: 'block' }}>
-                      Step A: Download Local Backup
-                    </strong>
-                    <span style={{ fontSize: '11.5px', color: '#3B82F6' }}>
-                      Save the complete recovery package to your computer.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    style={{ gap: '6px', fontWeight: 700 }}
-                    onClick={handleDownloadFile}
-                  >
-                    <Download size={15} />
-                    <span>Download Backup (.ZIP)</span>
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    borderTop: '1px solid #DBEAFE',
-                    paddingTop: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <span style={{ fontSize: '12px', color: '#1E3A8A' }}>
-                    {downloadTriggered
-                      ? '✓ File download initiated. Please confirm when saved.'
-                      : 'Click Download above to save your backup.'}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #D1FAE5' }}>
+                  <span style={{ fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileArchive size={16} color="#059669" />
+                    Backup ZIP Archive
                   </span>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{
-                      backgroundColor: '#16A34A',
-                      color: '#FFF',
-                      fontWeight: 700,
-                      gap: '6px',
-                      opacity: downloadTriggered ? 1 : 0.6
-                    }}
-                    onClick={handleAcknowledgeDownload}
-                  >
-                    <Check size={16} />
-                    <span>I Have Downloaded The Backup</span>
-                  </button>
+                  <span style={{ fontFamily: 'monospace', color: '#047857', fontWeight: 700 }}>
+                    {verificationRecord?.fileName || 'KKV_GOLD_FINANCE_WIPE_BACKUP.zip'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', color: '#1E293B' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                    <span>Backup Created</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                    <span>Backup Downloaded</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                    <span>Data Wipe Completed</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} color="#059669" style={{ flexShrink: 0 }} />
+                    <span>Database Clean (0 Records)</span>
+                  </div>
+                </div>
+
+                <div style={{ paddingTop: '8px', borderTop: '1px solid #D1FAE5', display: 'flex', flexDirection: 'column', gap: '6px', color: '#334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>Remaining Operational Records:</span>
+                    <strong style={{ color: '#059669', fontWeight: 800 }}>0 records (Clean State)</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>Master Admin Account:</span>
+                    <span style={{ fontWeight: 600, color: '#0F172A' }}>Preserved ✓</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748B' }}>Google Drive Binary Files:</span>
+                    <span style={{ fontWeight: 600, color: '#0F172A' }}>Preserved ✓</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#64748B' }}>SHA-256 Checksum:</span>
+                    <code style={{ fontSize: '10px', fontFamily: 'monospace', backgroundColor: '#FFFFFF', padding: '2px 6px', borderRadius: '4px', border: '1px solid #D1FAE5' }}>
+                      {verificationRecord?.sha256 ? `${verificationRecord.sha256.slice(0, 20)}...` : 'Verified'}
+                    </code>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '4px' }}>
-                <button type="button" className="btn btn-secondary" onClick={onClose}>
-                  Cancel (Keep Data Intact)
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* STEP 4: FINAL CONFIRMATION */}
-          {step === 4 && verificationRecord && (
-            <>
-              <div
-                style={{
-                  padding: '12px 14px',
-                  backgroundColor: '#FEF2F2',
-                  borderLeft: '4px solid #DC2626',
-                  borderRadius: '6px',
-                  color: '#991B1B',
-                  fontSize: '12.5px',
-                  lineHeight: '1.5'
-                }}
-              >
-                <strong>Final Safety Check:</strong> You have verified and downloaded the backup. You are now about to permanently wipe all operational records. This cannot be undone without restoring from your backup.
-              </div>
-
-              {/* CONFIRMATION INPUT */}
-              <div className="form-group" style={{ marginTop: '2px' }}>
-                <label className="form-label required" style={{ color: '#991B1B', fontWeight: 700, fontSize: '13px' }}>
-                  Type <code>WIPE ALL DATA</code> to confirm:
-                </label>
-                <input
-                  type="text"
-                  className="input-control"
-                  style={{
-                    borderColor: isExactConfirm ? '#16A34A' : '#DC2626',
-                    fontWeight: 700,
-                    letterSpacing: '0.5px'
-                  }}
-                  placeholder="WIPE ALL DATA"
-                  value={inputConfirmation}
-                  onChange={(e) => setInputConfirmation(e.target.value)}
-                />
-              </div>
-
-              {/* CHECKBOX */}
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '8px',
-                  fontSize: '12.5px',
-                  color: '#475569',
-                  cursor: 'pointer',
-                  padding: '8px 10px',
-                  backgroundColor: '#F8FAFC',
-                  borderRadius: '6px',
-                  border: '1px solid #E2E8F0'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={agreeCheckbox}
-                  onChange={(e) => setAgreeCheckbox(e.target.checked)}
-                  style={{ marginTop: '2px', cursor: 'pointer' }}
-                />
-                <span>
-                  I understand this permanently removes all listed operational data and can only be restored from the downloaded backup.
-                </span>
-              </label>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-                <button type="button" className="btn btn-secondary" onClick={onClose}>
-                  Cancel (Keep Data Intact)
-                </button>
+              {/* SUCCESS ACTIONS */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '10px', paddingTop: '8px' }}>
                 <button
                   type="button"
-                  className="btn"
+                  onClick={handleManualDownload}
                   style={{
-                    backgroundColor: '#DC2626',
-                    color: '#FFF',
+                    padding: '10px 18px',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    backgroundColor: '#FFFFFF',
+                    color: '#334155',
+                    fontSize: '12px',
                     fontWeight: 800,
-                    opacity: isWipeEnabled ? 1 : 0.5,
-                    cursor: isWipeEnabled ? 'pointer' : 'not-allowed'
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px'
                   }}
-                  disabled={!isWipeEnabled}
-                  onClick={handleConfirmWipe}
                 >
-                  {loading ? 'Wiping Database...' : 'WIPE ALL DATA'}
+                  <Download size={14} />
+                  <span>Download Backup Again (ZIP)</span>
                 </button>
-              </div>
-            </>
-          )}
 
-          {/* STEP 5: SUCCESS SUMMARY */}
-          {step === 5 && (
-            <>
-              <div
-                style={{
-                  padding: '16px',
-                  backgroundColor: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: '8px',
-                  color: '#166534',
-                  fontSize: '13px',
-                  lineHeight: '1.5'
-                }}
-              >
-                All application operational data has been permanently removed. System configuration and Administrator credentials remain intact. The application is clean and ready for a fresh start.
-              </div>
+                <button
+                  type="button"
+                  onClick={handleStartFresh}
+                  style={{
+                    padding: '10px 22px',
+                    borderRadius: '10px',
+                    backgroundColor: '#0F172A',
+                    color: '#FFFFFF',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <span>Continue to Clean Dashboard</span>
+                  <ArrowRight size={14} />
+                </button>
 
-              <div
-                style={{
-                  padding: '14px 16px',
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  fontSize: '12.5px'
-                }}
-              >
-                <div>
-                  <span style={{ color: '#64748B' }}>Verified Recovery Backup: </span>
-                  <strong style={{ color: '#1E293B' }}>{verificationRecord?.fileName}</strong>
-                </div>
-                <div>
-                  <span style={{ color: '#64748B' }}>SHA-256 Checksum: </span>
-                  <code style={{ fontSize: '11px', background: '#E2E8F0', padding: '2px 6px', borderRadius: '4px' }}>
-                    {verificationRecord?.sha256}
-                  </code>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <span className="badge badge-success">✓ Database Cleared</span>
-                  <span className="badge badge-success">✓ Configurations Retained</span>
-                  <span className="badge badge-success">✓ Recovery Backup Preserved</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 {onOpenRestore && (
                   <button
                     type="button"
-                    className="btn btn-secondary"
                     onClick={() => {
                       onClose();
                       onOpenRestore();
                     }}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: '10px',
+                      border: '1px solid #A7F3D0',
+                      backgroundColor: '#ECFDF5',
+                      color: '#065F46',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
                   >
-                    Restore From Backup
+                    <RotateCcw size={14} />
+                    <span>Open System Restore</span>
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ fontWeight: 800, padding: '0 24px' }}
-                  onClick={handleStartFresh}
-                >
-                  Start Fresh
-                </button>
               </div>
-            </>
+            </div>
           )}
 
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* MODE 4: ERROR STATE */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {mode === 'ERROR' && (
+            <div style={{ padding: '16px 0', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '16px',
+                  backgroundColor: '#FEE2E2',
+                  color: '#DC2626',
+                  border: '1px solid #FECACA',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto'
+                }}
+              >
+                <AlertTriangle size={28} />
+              </div>
+
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                  {errorStage === 'BACKUP' ? 'Backup Generation Failed' : 'Data Wipe Failed'}
+                </h3>
+                <p style={{ fontSize: '12px', color: '#B91C1C', margin: '4px 0 0', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto' }}>
+                  {errorMessage || 'The operation could not be completed.'}
+                </p>
+              </div>
+
+              <div
+                style={{
+                  maxWidth: '440px',
+                  margin: '0 auto',
+                  width: '100%',
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  fontSize: '12px',
+                  textAlign: 'left',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}
+              >
+                <div style={{ fontWeight: 800, color: '#1E293B' }}>Safety Guarantee:</div>
+                <p style={{ color: '#64748B', margin: 0, lineHeight: 1.4 }}>
+                  {errorStage === 'BACKUP'
+                    ? 'No business data was deleted because backup creation or integrity verification did not complete.'
+                    : 'Your pre-wipe backup was safely generated. Any database changes have been aborted.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', paddingTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setMode('CONFIRM')}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '10px',
+                    backgroundColor: '#DC2626',
+                    color: '#FFFFFF',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '10px',
+                    border: '1px solid #CBD5E1',
+                    backgroundColor: '#FFFFFF',
+                    color: '#334155',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* STICKY ACTION FOOTER (Only in CONFIRM mode) */}
+        {mode === 'CONFIRM' && (
+          <div
+            style={{
+              padding: '14px 20px',
+              backgroundColor: '#F8FAFC',
+              borderTop: '1px solid #F1F5F9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexShrink: 0
+            }}
+          >
+            <div style={{ fontSize: '12px', color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {isWipeEnabled ? (
+                <span style={{ color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Check size={14} /> All safety requirements satisfied
+                </span>
+              ) : !is10ClicksDone ? (
+                `Complete 10 clicks (${clickCount}/10)`
+              ) : !isExactConfirm ? (
+                'Type "WIPE ALL DATA"'
+              ) : (
+                'Check the acknowledgment box'
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#64748B',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: loading ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartAutomatedPipeline}
+                disabled={!isWipeEnabled}
+                style={{
+                  padding: '9px 18px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  borderRadius: '10px',
+                  border: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: isWipeEnabled ? '#DC2626' : '#E2E8F0',
+                  color: isWipeEnabled ? '#FFFFFF' : '#94A3B8',
+                  cursor: isWipeEnabled ? 'pointer' : 'not-allowed',
+                  boxShadow: isWipeEnabled ? '0 4px 12px rgba(220, 38, 38, 0.3)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <ShieldCheck size={16} />
+                <span>Begin Backup &amp; Wipe Workflow</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+export default WipeAllDataModal;

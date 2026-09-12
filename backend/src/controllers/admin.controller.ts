@@ -137,22 +137,25 @@ export const downloadBackupZip = (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Backup ID is required.' });
     }
 
-    const zipData = backupPackageService.getBackupZip(backupId);
-    if (!zipData) {
+    const fileData = backupPackageService.getBackupFile(backupId);
+    if (!fileData) {
       return res.status(404).json({ success: false, message: 'Backup file not found.' });
     }
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${zipData.fileName}"`);
-    res.setHeader('Content-Length', zipData.fileSize);
-    res.setHeader('x-backup-sha256', zipData.sha256);
+    const isJson = fileData.fileName.endsWith('.json');
+    res.setHeader('Content-Type', isJson ? 'application/json' : 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileData.fileName}"`);
+    res.setHeader('Content-Length', fileData.fileSize);
+    res.setHeader('x-backup-sha256', fileData.sha256);
 
-    return res.send(zipData.buffer);
+    return res.send(fileData.buffer);
   } catch (err: any) {
-    console.error('[AdminController] downloadBackupZip error:', err?.message || err);
+    console.error('[AdminController] downloadBackupFile error:', err?.message || err);
     return res.status(500).json({ success: false, message: 'Failed to download backup file.' });
   }
 };
+
+export const downloadBackupFile = downloadBackupZip;
 
 export const acknowledgeDownload = (req: Request, res: Response) => {
   try {
@@ -174,9 +177,9 @@ export const acknowledgeDownload = (req: Request, res: Response) => {
 // WIPE ALL DATA APIs
 // ==========================================
 
-export const getWipePreview = (_req: Request, res: Response) => {
+export const getWipePreview = async (_req: Request, res: Response) => {
   try {
-    const preview = systemWipeService.getWipePreview();
+    const preview = await systemWipeService.getWipePreview();
     return res.json({ success: true, data: preview });
   } catch (err: any) {
     console.error('[AdminController] getWipePreview error:', err?.message || err);
@@ -236,7 +239,7 @@ export const confirmSystemWipe = async (req: Request, res: Response) => {
       role: req.user?.role || 'ADMIN'
     };
 
-    const wipeResult = systemWipeService.confirmAndWipeData(token, cleanConfirm, user);
+    const wipeResult = await systemWipeService.confirmAndWipeData(token, cleanConfirm, user);
     return res.json({
       success: true,
       message: 'All application operational data has been permanently removed.',
@@ -272,15 +275,11 @@ export const getAvailableRestoreBackups = async (_req: Request, res: Response) =
 
 export const validateRestoreBackup = async (req: Request, res: Response) => {
   try {
-    let zipBuffer: Buffer | undefined;
+    let jsonBuffer: Buffer | undefined;
     let jsonString: string | undefined;
 
     if (req.file) {
-      if (req.file.originalname.endsWith('.zip')) {
-        zipBuffer = req.file.buffer;
-      } else {
-        jsonString = req.file.buffer.toString('utf-8');
-      }
+      jsonBuffer = req.file.buffer;
     } else if (req.body.jsonString) {
       jsonString = req.body.jsonString;
     }
@@ -288,7 +287,7 @@ export const validateRestoreBackup = async (req: Request, res: Response) => {
     const { fileId, backupId } = req.body || {};
 
     const validationResult = await systemRestoreService.validateBackupForRestore({
-      zipBuffer,
+      jsonBuffer,
       jsonString,
       fileId,
       backupId

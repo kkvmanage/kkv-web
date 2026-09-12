@@ -7,12 +7,12 @@ let customApiBaseUrl: string | null = null;
 export const getApiBaseUrl = (): string => {
   if (customApiBaseUrl) return customApiBaseUrl;
 
-  const envValue = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+  const envValue = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
   const raw = (
     envValue ||
     (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) ||
-    (import.meta.env.PROD ? 'https://tstbck.duckdns.org/api' : 'http://127.0.0.1:8080/api')
+    'http://localhost:8080/api'
   ).trim();
   const clean = raw.endsWith('/') ? raw.slice(0, -1) : raw;
   return clean.endsWith('/api') ? clean : `${clean}/api`;
@@ -692,7 +692,6 @@ export const apiService = {
     }
   },
 
-  // ── System Restore ─────────────────────────────────────────────────────────
   async getRestoreBackups(): Promise<{ success: boolean; data?: any[]; message?: string }> {
     try {
       const res = await fetch(`${getApiBaseUrl()}/admin/system/backups`, {
@@ -709,6 +708,10 @@ export const apiService = {
     } catch (err: any) {
       return { success: false, data: [], message: err?.message || 'Failed to fetch backups.' };
     }
+  },
+
+  async getAvailableBackups(): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    return this.getRestoreBackups();
   },
 
   async validateRestoreBackup(payload: {
@@ -1029,6 +1032,65 @@ export const apiService = {
 
   async restoreLatestBackup(): Promise<{ success: boolean; data?: any; message?: string }> {
     return this.restoreBackup(true);
+  },
+
+  async uploadFile(
+    file: File | Blob,
+    options: {
+      entityType: string;
+      entityId?: string;
+      documentType?: string;
+      fileName?: string;
+      onProgress?: (percent: number) => void;
+    }
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file, options.fileName || (file as File).name || 'upload_file');
+      formData.append('entityType', options.entityType);
+      if (options.entityId) formData.append('entityId', options.entityId);
+      if (options.documentType) formData.append('documentType', options.documentType);
+
+      const res = await api.post('/files/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total && options.onProgress) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            options.onProgress(percent);
+          }
+        }
+      });
+
+      return {
+        success: true,
+        data: res.data?.data || res.data,
+        message: res.data?.message || 'File uploaded successfully'
+      };
+    } catch (err: any) {
+      console.error('[apiService] uploadFile error:', err);
+      const msg = err.response?.data?.message || err.message || 'File upload failed';
+      return { success: false, message: msg };
+    }
+  },
+
+  getFileViewUrl(fileIdOrPath: string): string {
+    if (!fileIdOrPath) return '';
+    if (fileIdOrPath.startsWith('http://') || fileIdOrPath.startsWith('https://') || fileIdOrPath.startsWith('data:')) {
+      return fileIdOrPath;
+    }
+    const clean = fileIdOrPath.startsWith('/') ? fileIdOrPath : `/files/${fileIdOrPath}/view`;
+    return `${getApiBaseUrl()}${clean.startsWith('/api') ? clean.replace(/^\/api/, '') : clean}`;
+  },
+
+  async deleteFile(fileId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await api.delete(`/files/${fileId}`);
+      return { success: true, message: res.data?.message || 'File deleted' };
+    } catch (err: any) {
+      return { success: false, message: err.response?.data?.message || err.message || 'Failed to delete file' };
+    }
   }
 };
 

@@ -50,9 +50,19 @@ export class CounterService {
    * Concurrency-safe atomic counter generation via MongoDB Atlas with local fallback
    */
   public async getNextSequence(name: string): Promise<number> {
+    const counters = this.getCounters();
+    const localBase = counters[name] || (name === 'receiptNo' ? counters.receipt : name === 'customerId' ? counters.customer : 0) || 0;
+
     try {
       const db = await getFinanceDb();
       if (db) {
+        if (localBase > 0) {
+          await db.collection('counters').updateOne(
+            { _id: name as any },
+            { $max: { seq: localBase } },
+            { upsert: true }
+          );
+        }
         const result = await db.collection('counters').findOneAndUpdate(
           { _id: name as any },
           { $inc: { seq: 1 } },
@@ -61,6 +71,8 @@ export class CounterService {
         const seqVal = (result as any)?.seq ?? (result as any)?.value?.seq;
         if (typeof seqVal === 'number') {
           this.setLocalIfHigher(name, seqVal);
+          if (name === 'receiptNo') this.setLocalIfHigher('receipt', seqVal);
+          if (name === 'customerId') this.setLocalIfHigher('customer', seqVal);
           return seqVal;
         }
       }
@@ -69,9 +81,10 @@ export class CounterService {
     }
 
     // Fallback to local / Drive file counter
-    const counters = this.getCounters();
-    const nextVal = (counters[name] || 0) + 1;
+    const nextVal = localBase + 1;
     counters[name] = nextVal;
+    if (name === 'receiptNo') counters.receipt = nextVal;
+    if (name === 'customerId') counters.customer = nextVal;
     googleDriveRepository.writeJson(FILE_NAME, counters);
     return nextVal;
   }
@@ -160,22 +173,53 @@ export class CounterService {
   }
 
   public async setSequenceIfHigher(name: string, value: number): Promise<void> {
+    const namesToSet = [name];
+    if (name === 'receipt') namesToSet.push('receiptNo');
+    if (name === 'receiptNo') namesToSet.push('receipt');
+    if (name === 'customer') namesToSet.push('customerId');
+    if (name === 'customerId') namesToSet.push('customer');
+    if (name === 'loan') namesToSet.push('loanSequence', 'loanNo');
+    if (name === 'loanSequence' || name === 'loanNo') namesToSet.push('loan');
+
     try {
       const db = await getFinanceDb();
       if (db) {
-        await db.collection('counters').updateOne(
-          { _id: name as any },
-          { $max: { seq: value } },
-          { upsert: true }
-        );
+        for (const n of namesToSet) {
+          await db.collection('counters').updateOne(
+            { _id: n as any },
+            { $max: { seq: value } },
+            { upsert: true }
+          );
+        }
       }
     } catch (err) {
       console.warn(`[CounterService] MongoDB counter update warning for ${name}:`, err);
     }
 
-    this.setLocalIfHigher(name, value);
+    for (const n of namesToSet) {
+      this.setLocalIfHigher(n, value);
+    }
+  }
+
+  public async resetAllSequences(): Promise<void> {
+    try {
+      const db = await getFinanceDb();
+      if (db) {
+        await db.collection('counters').deleteMany({});
+      }
+    } catch (err) {
+      console.warn('[CounterService] MongoDB counter reset warning:', err);
+    }
+    googleDriveRepository.writeJson(FILE_NAME, {
+      customerId: 0,
+      loanSequence: 0,
+      loanNo: 0,
+      receiptNo: 0,
+      fdNo: 0
+    });
   }
 }
 
 export const counterService = new CounterService();
+
 

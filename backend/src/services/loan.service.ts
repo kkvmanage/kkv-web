@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { v4 as uuidv4 } from 'uuid';
 import { localFileRepository } from '../repositories/localFile.repository.js';
 import { syncQueueService } from './syncQueue.service.js';
 import { Loan, Receipt, LoanTypeConfig } from '../types/index.js';
@@ -6,8 +7,9 @@ import { customerService } from './customer.service.js';
 import { receiptService } from './receipt.service.js';
 import { accountingService } from './accounting.service.js';
 import { adminService } from './admin.service.js';
-
 import { counterService } from './counter.service.js';
+import { googleDriveService } from './googleDrive.service.js';
+import { FileAttachmentModel } from '../models/FileAttachment.js';
 
 const FILE_NAME = 'loans.json';
 
@@ -364,8 +366,71 @@ export class LoanService {
       : 0;
     const netDisbursed = new Decimal(effectivePrincipal).minus(advanceInterest).minus(effectiveCardFee).toNumber();
 
+    // Process and persist ornament photos to Google Drive
+    const processedPhotos: string[] = [];
+    const rawPhotos = Array.isArray(loanData.photos) ? loanData.photos : [];
+
+    for (let idx = 0; idx < rawPhotos.length; idx++) {
+      const p = rawPhotos[idx];
+      if (typeof p === 'string' && p.startsWith('data:image')) {
+        const match = p.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (match) {
+          const mimeType = match[1];
+          const buffer = Buffer.from(match[2], 'base64');
+          const uniqueSuffix = uuidv4().substring(0, 8);
+          const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+          const storedFileName = `${loanNo}_ornament_${idx + 1}_${uniqueSuffix}${ext}`;
+          const fileId = `FILE_${Date.now()}_${uniqueSuffix}`;
+          let driveFileId = `local_${fileId}`;
+          let webViewLink = '';
+
+          if (googleDriveService.isReady()) {
+            try {
+              const targetFolderId = await googleDriveService.resolveEntityFolder({
+                entityType: 'loan',
+                entityId: loanNo,
+                documentType: 'ornament_photo'
+              });
+              const driveRes = await googleDriveService.uploadBuffer(buffer, storedFileName, mimeType, targetFolderId);
+              driveFileId = driveRes.fileId;
+              webViewLink = driveRes.webViewLink || '';
+            } catch (err: any) {
+              console.warn(`[LoanService] Notice uploading ornament photo ${idx + 1} to Google Drive:`, err?.message || err);
+            }
+          }
+
+          try {
+            await FileAttachmentModel.create({
+              fileId,
+              entityType: 'loan',
+              entityId: loanNo,
+              documentType: 'ornament_photo',
+              originalFileName: `ornament_${idx + 1}${ext}`,
+              storedFileName,
+              mimeType,
+              fileSize: buffer.length,
+              driveFileId,
+              driveUrl: webViewLink || `/api/files/${fileId}/view`,
+              webViewLink,
+              uploadedBy: 'STAFF',
+              isDeleted: false
+            });
+          } catch (dbErr: any) {
+            console.warn('[LoanService] Notice saving FileAttachment metadata:', dbErr?.message || dbErr);
+          }
+
+          processedPhotos.push(`/api/files/${fileId}/view`);
+        } else {
+          processedPhotos.push(p);
+        }
+      } else {
+        processedPhotos.push(p);
+      }
+    }
+
     const newLoan: Loan = {
       ...loanData,
+      photos: processedPhotos,
       principal: effectivePrincipal,
       id,
       loanNo,

@@ -200,11 +200,21 @@ export function validateZipEntryPath(rawPath: string): { valid: boolean; reason?
   }
 
   // Expected path prefixes and files
-  const allowedPrefixes = ['data/', 'schema/', 'checksums/'];
-  const allowedRootFiles = ['manifest.json', 'snapshot.json'];
+  const allowedPrefixes = [
+    'data/',
+    'schema/',
+    'checksums/',
+    'finance/',
+    'rental/',
+    'attachments/',
+    'system/',
+    'metadata/',
+    'exports/'
+  ];
+  const allowedRootFiles = ['manifest.json', 'snapshot.json', 'version.json'];
 
   const isRootFile = allowedRootFiles.includes(normalized);
-  const hasAllowedPrefix = allowedPrefixes.some(prefix => normalized.startsWith(prefix));
+  const hasAllowedPrefix = allowedPrefixes.some(prefix => normalized.startsWith(prefix) || `${normalized}/`.startsWith(prefix));
 
   if (!isRootFile && !hasAllowedPrefix) {
     return { valid: false, reason: `Unexpected file path in backup package: ${rawPath}` };

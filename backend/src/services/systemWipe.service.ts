@@ -5,9 +5,18 @@ import { loanService } from './loan.service.js';
 import { receiptService } from './receipt.service.js';
 import { fdService } from './fd.service.js';
 import { accountingService } from './accounting.service.js';
+import { counterService } from './counter.service.js';
 import { backupPackageService } from './backupPackage.service.js';
+import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
+import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
+import { CustomerModel } from '../models/Customer.js';
+import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { getFinanceDb } from '../config/database.js';
+import { env } from '../config/env.js';
 
 export interface WipePreviewData {
+  environment: string;
+  databaseType: string;
   counts: {
     customers: number;
     loans: number;
@@ -19,10 +28,17 @@ export interface WipePreviewData {
     dayBookEntries: number;
     reminders: number;
     notifications: number;
+    rentalComplexes: number;
+    rentalShops: number;
+    rentPayments: number;
+    rentalExpenses: number;
+    rentalDayBook: number;
+    fileAttachments: number;
     totalOperationalRecords: number;
   };
   wipeableEntities: string[];
   preservedSystemData: string[];
+  fileStorageNotice: string;
 }
 
 export interface WipeVerificationToken {
@@ -38,7 +54,7 @@ export interface WipeVerificationToken {
   recordCounts: Record<string, number>;
 }
 
-// STRICT EXPLICIT ALLOWLIST OF OPERATIONAL ENTITIES THAT MAY BE WIPED
+// STRICT EXPLICIT ALLOWLIST OF OPERATIONAL ENTITIES THAT MAY BE WIPED (LOCAL STORAGE)
 export const WIPEABLE_ENTITIES = [
   'customers.json',
   'loans.json',
@@ -49,7 +65,8 @@ export const WIPEABLE_ENTITIES = [
   'fd_interest_payouts.json',
   'fd_withdrawals.json',
   'daybook_entries.json',
-  'notifications.json'
+  'notifications.json',
+  'file_attachments.json'
 ];
 
 // PRESERVED SYSTEM CONFIGURATIONS - NEVER WIPED
@@ -62,14 +79,26 @@ export const PRESERVED_SYSTEM_DATA = [
   'backups_history.json'
 ];
 
+const rentalRepo = new RentalRepository();
+const rentalDayBookRepo = new RentalDayBookRepository();
+
 class SystemWipeService {
   private activeTokens: Map<string, WipeVerificationToken> = new Map();
 
   /**
-   * Retrieves real-time counts of data that will be removed vs preserved.
+   * Retrieves real-time counts of data that will be removed vs preserved across all domains.
    */
-  public getWipePreview(): WipePreviewData {
-    const customers = customerService.getAll() || [];
+  public async getWipePreview(): Promise<WipePreviewData> {
+    let customers = customerService.getAll() || [];
+    try {
+      const mongoCustCount = await CustomerModel.countDocuments();
+      if (mongoCustCount > customers.length) {
+        customers = new Array(mongoCustCount).fill({});
+      }
+    } catch {
+      // fallback
+    }
+
     const loans = loanService.getAll() || [];
     const receipts = receiptService.getAll() || [];
     const fixedDeposits = fdService.getDeposits() || [];
@@ -79,6 +108,24 @@ class SystemWipeService {
     const dayBookEntries = accountingService.getDayBook() || [];
     const reminders = localFileRepository.readJson<any[]>('reminders.json', []) || [];
     const notifications = localFileRepository.readJson<any[]>('notifications.json', []) || [];
+
+    const rentalComplexes = rentalRepo.getComplexes() || [];
+    const rentalShops = rentalRepo.getShops() || [];
+    const rentPayments = rentalRepo.getPayments() || [];
+    const rentalExpenses = rentalRepo.getExpenses() || [];
+    let rentalDayBook: any[] = [];
+    try {
+      rentalDayBook = await rentalDayBookRepo.getManualEntries();
+    } catch {
+      rentalDayBook = rentalDayBookRepo.readJson('rental_daybook.json', []) || [];
+    }
+
+    let fileAttachmentsCount = 0;
+    try {
+      fileAttachmentsCount = await FileAttachmentModel.countDocuments();
+    } catch {
+      fileAttachmentsCount = (localFileRepository.readJson<any[]>('file_attachments.json', []) || []).length;
+    }
 
     const total =
       customers.length +
@@ -90,9 +137,17 @@ class SystemWipeService {
       fdWithdrawals.length +
       dayBookEntries.length +
       reminders.length +
-      notifications.length;
+      notifications.length +
+      rentalComplexes.length +
+      rentalShops.length +
+      rentPayments.length +
+      rentalExpenses.length +
+      rentalDayBook.length +
+      fileAttachmentsCount;
 
     return {
+      environment: env.NODE_ENV,
+      databaseType: 'Hybrid (MongoDB + Local JSON)',
       counts: {
         customers: customers.length,
         loans: loans.length,
@@ -104,32 +159,42 @@ class SystemWipeService {
         dayBookEntries: dayBookEntries.length,
         reminders: reminders.length,
         notifications: notifications.length,
+        rentalComplexes: rentalComplexes.length,
+        rentalShops: rentalShops.length,
+        rentPayments: rentPayments.length,
+        rentalExpenses: rentalExpenses.length,
+        rentalDayBook: rentalDayBook.length,
+        fileAttachments: fileAttachmentsCount,
         totalOperationalRecords: total
       },
       wipeableEntities: [
-        'Customers & KYC Records',
-        'Active & Closed Loans',
-        'Loan Payments & Repayments',
-        'Gold Pledge Item Records',
-        'Receipts & Vouchers',
-        'Fixed Deposits & Accounts',
-        'FD Interest Payouts & Withdrawals',
-        'Day Book & Ledger Transactions',
+        'Customers & KYC Records (MongoDB & Local Storage)',
+        'Active & Closed Loans and Item Records',
+        'Gold Pledge Item Details & Ornaments',
+        'Receipts & Repayment Vouchers',
+        'Fixed Deposits, Payouts & Withdrawals',
+        'Finance Day Book & Ledger Transactions',
+        'Rental Complexes, Shops & Tenant Records',
+        'Rent Collections & Rental Payments',
+        'Rental Expenses & Rental Day Book',
+        'Attachment Database Metadata Records',
         'Operational Reminders & Notifications'
       ],
       preservedSystemData: [
-        'Admin Authentication & Root Account',
-        'User Access & Security Roles',
+        'Admin Authentication & Root Master Accounts',
+        'User Access & Security Role Definitions',
         'Master Control Interest & Loan Configurations',
         'Branch Profile & System Settings',
         'Printer Configuration & Voucher Templates',
-        'Verified Backup Archive Packages'
-      ]
+        'Verified JSON Backup Archive History'
+      ],
+      fileStorageNotice:
+        'CRITICAL: Actual binary files (Customer photos, KYC IDs, Ornament images, PDFs) stored in Google Drive ARE PRESERVED intact and will not be deleted during database wipe. This enables full reconnection when restoring from a JSON backup.'
     };
   }
 
   /**
-   * Generates a complete verified backup package (ZIP + JSON + CSV + Manifest + SHA-256)
+   * Generates a complete verified JSON backup package
    * and returns a single-use 15-minute wipe authorization token.
    */
   public async initiateFullBackupAndVerify(
@@ -141,16 +206,16 @@ class SystemWipeService {
       throw new Error('Invalid confirmation text. You must type "WIPE ALL DATA" exactly.');
     }
 
-    // 1. Generate Full Portable Backup Package (.ZIP)
+    // 1. Generate Full Multi-Domain Single JSON Backup File
     const backupRecord = await backupPackageService.createFullBackupPackage(user, { backupType: 'PRE_WIPE_BACKUP' });
 
     if (!backupRecord || !backupRecord.sha256 || backupRecord.fileSize <= 0) {
-      throw new Error('Failed to generate valid backup package. No data was deleted.');
+      throw new Error('Failed to generate valid JSON backup package. No data was deleted.');
     }
 
-    // 2. Verify ZIP package exists on disk and re-verify SHA-256
-    const zipData = backupPackageService.getBackupZip(backupRecord.backupId);
-    if (!zipData || zipData.sha256 !== backupRecord.sha256) {
+    // 2. Verify JSON package exists on disk and re-verify SHA-256
+    const fileData = backupPackageService.getBackupFile(backupRecord.backupId);
+    if (!fileData || fileData.sha256 !== backupRecord.sha256) {
       throw new Error('Backup package integrity check failed (SHA-256 checksum mismatch). No data was deleted.');
     }
 
@@ -164,32 +229,33 @@ class SystemWipeService {
       sha256: backupRecord.sha256,
       backupStatus: 'BACKUP_VERIFIED',
       uploadedAt: backupRecord.createdAt,
-      storagePath: 'Local Storage → Backups → Full_System_Backups',
+      storagePath: 'Local Storage → Backups → JSON_Backups',
       expiresAt: Date.now() + 15 * 60 * 1000, // 15 mins
       recordCounts: backupRecord.recordCounts as any
     };
 
     this.activeTokens.set(token, tokenRecord);
-    console.log(`[SystemWipeService] ✅ Backup verified and single-use wipe authorization token generated: ${token}`);
+    console.log(`[SystemWipeService] ✅ JSON backup verified and single-use wipe authorization token generated: ${token}`);
 
     return tokenRecord;
   }
 
   /**
-   * ATOMIC WIPE EXECUTION
+   * ATOMIC WIPE EXECUTION ACROSS ALL DOMAINS
+   * Clears database records and metadata, but PRESERVES Google Drive actual files.
    */
-  public confirmAndWipeData(
+  public async confirmAndWipeData(
     token: string,
     confirmationText: string,
     user?: { userId?: string; name?: string; role?: string }
-  ): {
+  ): Promise<{
     success: boolean;
     wipedAt: string;
     backupId: string;
     fileName: string;
     sha256: string;
     wipedRecordCounts: Record<string, number>;
-  } {
+  }> {
     const cleanConfirm = (confirmationText || '').trim();
     if (cleanConfirm !== 'WIPE ALL DATA') {
       throw new Error('Invalid confirmation text. You must type "WIPE ALL DATA" exactly.');
@@ -212,14 +278,61 @@ class SystemWipeService {
       backupPackageService.acknowledgeDownload(record.backupId, user);
     }
 
-    console.log(`[SystemWipeService] 🚨 EXECUTING ATOMIC DATA WIPE. Verified backup: ${record.fileName} (${record.backupId})`);
+    console.log(`[SystemWipeService] 🚨 EXECUTING ATOMIC MULTI-DOMAIN DATA WIPE. Verified JSON backup: ${record.fileName} (${record.backupId})`);
 
-    // 1. Transactionally Clear Operational Collections (Wipeable Allowlist ONLY)
+    // 1. Transactionally Clear Finance Operational Local Storage Collections
     for (const entityFile of WIPEABLE_ENTITIES) {
       localFileRepository.writeJson(entityFile, []);
     }
 
-    // 2. Write Single Protected System Audit Record
+    // 2. Transactionally Clear Rental Operational Local Storage Collections
+    rentalRepo.writeJson('complexes.json', []);
+    rentalRepo.writeJson('shops.json', []);
+    rentalRepo.writeJson('rent_payments.json', []);
+    rentalRepo.writeJson('expenses.json', []);
+    rentalDayBookRepo.writeJson('rental_daybook.json', []);
+    rentalRepo.writeJson('counters.json', {
+      complex: 0,
+      shop: 0,
+      payment: 0,
+      expense: 0,
+      audit: 0,
+      sync: 0
+    });
+
+    // 3. Clear MongoDB Collections (Customers, FileAttachments, Rental Daybook)
+    // NOTE: Does NOT delete files in Google Drive! Only clears database attachment records.
+    try {
+      await CustomerModel.deleteMany({});
+      console.log('[SystemWipeService] MongoDB Customer collection wiped.');
+    } catch (mCustErr) {
+      console.warn('[SystemWipeService] Notice: CustomerModel deleteMany error:', (mCustErr as any)?.message || mCustErr);
+    }
+
+    try {
+      await FileAttachmentModel.deleteMany({});
+      console.log('[SystemWipeService] MongoDB FileAttachment collection wiped (Drive binary files preserved).');
+    } catch (mAttErr) {
+      console.warn('[SystemWipeService] Notice: FileAttachmentModel deleteMany error:', (mAttErr as any)?.message || mAttErr);
+    }
+
+    try {
+      const db = await getFinanceDb();
+      if (db) {
+        await db.collection('rental_daybook').deleteMany({});
+      }
+    } catch (rdbErr) {
+      console.warn('[SystemWipeService] Notice: MongoDB rental_daybook deleteMany error:', (rdbErr as any)?.message || rdbErr);
+    }
+
+    // 4. Reset sequence counters in memory and storage to 0
+    try {
+      await counterService.resetAllSequences();
+    } catch (seqErr) {
+      console.warn('[SystemWipeService] Sequence reset notice:', seqErr);
+    }
+
+    // 5. Write Single Protected System Audit Record
     const wipeAuditRecord = {
       id: `AUDIT-WIPE-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -229,17 +342,20 @@ class SystemWipeService {
       backupFileName: record.fileName,
       backupSha256: record.sha256,
       wipedRecordCounts: record.recordCounts,
-      details: 'All operational customer, loan, payment, receipt, and ledger records permanently wiped following verified multi-format backup package creation.'
+      environment: env.NODE_ENV,
+      details: 'All operational customer, loan, payment, receipt, rental, and ledger records permanently wiped following verified JSON backup creation. Google Drive binary files retained.'
     };
     localFileRepository.writeJson('audit_logs.json', [wipeAuditRecord]);
 
-    // 3. Post-Wipe Verification Assertion Check
+    // 6. Post-Wipe Verification Assertion Check
     const customersAfter = localFileRepository.readJson<any[]>('customers.json', []);
     const loansAfter = localFileRepository.readJson<any[]>('loans.json', []);
     const receiptsAfter = localFileRepository.readJson<any[]>('receipts.json', []);
+    const complexesAfter = rentalRepo.getComplexes();
+    const shopsAfter = rentalRepo.getShops();
 
-    if (customersAfter.length !== 0 || loansAfter.length !== 0 || receiptsAfter.length !== 0) {
-      throw new Error('Database wipe assertion failed: Operational tables were not completely cleared.');
+    if (customersAfter.length !== 0 || loansAfter.length !== 0 || receiptsAfter.length !== 0 || complexesAfter.length !== 0 || shopsAfter.length !== 0) {
+      throw new Error('Database wipe assertion failed: Operational collections were not completely cleared.');
     }
 
     this.activeTokens.delete(token);

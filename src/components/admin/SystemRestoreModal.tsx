@@ -6,7 +6,9 @@ import {
   X,
   RotateCcw,
   ArrowRight,
-  AlertTriangle
+  AlertTriangle,
+  FileArchive,
+  ShieldCheck
 } from 'lucide-react';
 import { apiService } from '../../services/api';
 
@@ -29,6 +31,9 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
   // Dragging state
   const [isDragging, setIsDragging] = useState(false);
 
+  // Available Server Backups
+  const [availableBackups, setAvailableBackups] = useState<any[]>([]);
+
   // Validation Preview Result
   const [previewResult, setPreviewResult] = useState<{
     token: string;
@@ -48,6 +53,12 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       receipts: number;
       fixedDeposits: number;
       dayBookEntries: number;
+      rentalComplexes?: number;
+      rentalShops?: number;
+      rentPayments?: number;
+      rentalExpenses?: number;
+      rentalDayBook?: number;
+      fileAttachments?: number;
       totalRecords: number;
     };
     currentDbCounts: {
@@ -56,6 +67,8 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       receipts: number;
       fixedDeposits: number;
       dayBookEntries: number;
+      rentalComplexes?: number;
+      rentalShops?: number;
       totalRecords: number;
     };
   } | null>(null);
@@ -64,9 +77,6 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
   const [acknowledgedWarning, setAcknowledgedWarning] = useState(false);
   const [inputConfirmation, setInputConfirmation] = useState('');
 
-  // Restore Execution Results
-  const [dbRestoreStatus, setDbRestoreStatus] = useState<'PENDING' | 'RESTORING' | 'VERIFIED' | 'FAILED'>('PENDING');
-
   useEffect(() => {
     if (isOpen) {
       setStep(1);
@@ -74,9 +84,20 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       setPreviewResult(null);
       setAcknowledgedWarning(false);
       setInputConfirmation('');
-      setDbRestoreStatus('PENDING');
+      loadAvailableBackups();
     }
   }, [isOpen]);
+
+  const loadAvailableBackups = async () => {
+    try {
+      const res = await apiService.getAvailableBackups();
+      if (res.success && Array.isArray(res.data)) {
+        setAvailableBackups(res.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load available backups:', err);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -116,6 +137,25 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
     }
   };
 
+  const handleValidateBackupId = async (backupId: string) => {
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+      const res = await apiService.validateRestoreBackup({ backupId });
+      if (!res.success || !res.data) {
+        throw new Error(res.message || 'Backup validation failed.');
+      }
+      setPreviewResult(res.data);
+      setStep(2);
+    } catch (err: any) {
+      console.error('[SystemRestoreModal] Validation error:', err);
+      setErrorMessage(err?.message || 'Selected backup could not be validated.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleExecuteRestore = async () => {
     if (!previewResult || !previewResult.token) return;
     const cleanConfirm = inputConfirmation.trim();
@@ -125,23 +165,19 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
     setStep(4);
     setLoading(true);
     setErrorMessage('');
-    setDbRestoreStatus('RESTORING');
 
     try {
       const res = await apiService.executeSystemRestore(previewResult.token, cleanConfirm);
 
       if (!res.success || !res.data) {
-        setDbRestoreStatus('FAILED');
         throw new Error(res.message || 'Database restoration failed.');
       }
 
-      setDbRestoreStatus('VERIFIED');
       setLoading(false);
       setStep(5);
     } catch (err: any) {
       console.error('[SystemRestoreModal] Restore execution error:', err);
-      setDbRestoreStatus('FAILED');
-      setErrorMessage(err?.message || 'Restore failed. The database has been rolled back safely.');
+      setErrorMessage(err?.message || 'Restore failed. The database has been protected.');
       setLoading(false);
     }
   };
@@ -151,16 +187,15 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
     onClose();
   };
 
-  const isExactConfirm =
-    inputConfirmation.trim() === 'RESTORE BACKUP' || inputConfirmation.trim() === 'RESTORE SYSTEM';
-  const canProceedToRestore = isExactConfirm && acknowledgedWarning && !loading;
+  const isExactConfirm = inputConfirmation.trim() === 'RESTORE BACKUP' || inputConfirmation.trim() === 'RESTORE SYSTEM';
+  const isRestoreEnabled = isExactConfirm && acknowledgedWarning && !loading;
 
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
+        backgroundColor: 'rgba(15, 23, 42, 0.75)',
         backdropFilter: 'blur(5px)',
         display: 'flex',
         alignItems: 'center',
@@ -173,11 +208,11 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
         className="card"
         style={{
           width: '100%',
-          maxWidth: '640px',
+          maxWidth: '740px',
           maxHeight: '92vh',
           overflowY: 'auto',
-          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
-          borderRadius: '12px',
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.4)',
+          borderRadius: '14px',
           border: '1px solid #E2E8F0',
           padding: 0,
           overflow: 'hidden',
@@ -187,69 +222,52 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
         {/* HEADER */}
         <div
           style={{
-            padding: '16px 22px',
-            backgroundColor:
-              step === 5
-                ? dbRestoreStatus === 'VERIFIED'
-                  ? '#065F46'
-                  : '#991B1B'
-                : '#1E293B',
+            backgroundColor: '#0F766E',
             color: '#FFFFFF',
+            padding: '18px 24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            transition: 'background-color 0.3s ease'
+            borderBottom: '1px solid rgba(255,255,255,0.1)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{
-                width: '36px',
-                height: '36px',
+                width: '40px',
+                height: '40px',
                 borderRadius: '8px',
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              {step === 5 ? (
-                dbRestoreStatus === 'FAILED' ? (
-                  <AlertTriangle size={20} />
-                ) : (
-                  <CheckCircle2 size={20} />
-                )
-              ) : (
-                <RotateCcw size={20} />
-              )}
+              <RotateCcw size={22} color="#FFFFFF" />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
-                {step === 5
-                  ? dbRestoreStatus === 'VERIFIED'
-                    ? 'System Restored Successfully'
-                    : 'Restore Failed'
-                  : 'Restore Operational Database'}
-              </h3>
-              <p style={{ margin: 0, fontSize: '12px', opacity: 0.85 }}>
-                {step === 5
-                  ? dbRestoreStatus === 'VERIFIED'
-                    ? 'Database verified and restored.'
-                    : 'Database restore could not be completed.'
-                  : 'Multi-Step Verified Restoration Engine'}
-              </p>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, letterSpacing: '-0.01em' }}>
+                SYSTEM DATABASE RESTORATION
+              </h2>
+              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.85)', marginTop: '2px' }}>
+                Multi-Domain Authoritative Package Restoration (Finance + Rental + Attachments)
+              </div>
             </div>
           </div>
           {step !== 4 && (
             <button
-              type="button"
               onClick={onClose}
+              disabled={loading}
               style={{
                 background: 'transparent',
                 border: 'none',
                 color: '#FFFFFF',
-                cursor: 'pointer',
-                opacity: 0.8
+                cursor: loading ? 'not-allowed' : 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
               <X size={20} />
@@ -257,30 +275,71 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
           )}
         </div>
 
-        {/* STEP PROGRESS BAR */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', backgroundColor: '#F8FAFC' }}>
-          {[
-            { num: 1, label: 'Upload' },
-            { num: 2, label: 'Validate' },
-            { num: 3, label: 'Confirm' },
-            { num: 4, label: 'Execute' },
-            { num: 5, label: 'Done' }
-          ].map((s) => (
-            <div
-              key={s.num}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                textAlign: 'center',
-                fontSize: '12px',
-                fontWeight: step === s.num ? 700 : 500,
-                color: step >= s.num ? '#2563EB' : '#94A3B8',
-                borderBottom: step === s.num ? '2px solid #2563EB' : '2px solid transparent'
-              }}
-            >
-              {s.num}. {s.label}
-            </div>
-          ))}
+        {/* STEP TABS */}
+        <div
+          style={{
+            display: 'flex',
+            borderBottom: '1px solid #E2E8F0',
+            backgroundColor: '#F8FAFC',
+            fontSize: '12px',
+            fontWeight: 600
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderBottom: step === 1 ? '3px solid #0F766E' : 'none',
+              color: step === 1 ? '#0F766E' : '#64748B'
+            }}
+          >
+            1. Select / Upload ZIP
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderBottom: step === 2 ? '3px solid #0F766E' : 'none',
+              color: step === 2 ? '#0F766E' : '#64748B'
+            }}
+          >
+            2. Validate & Preview
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderBottom: step === 3 ? '3px solid #0F766E' : 'none',
+              color: step === 3 ? '#0F766E' : '#64748B'
+            }}
+          >
+            3. Final Confirmation
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderBottom: step === 4 ? '3px solid #0F766E' : 'none',
+              color: step === 4 ? '#0F766E' : '#64748B'
+            }}
+          >
+            4. Restoring Data
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: '10px 4px',
+              textAlign: 'center',
+              borderBottom: step === 5 ? '3px solid #16A34A' : 'none',
+              color: step === 5 ? '#16A34A' : '#64748B'
+            }}
+          >
+            5. Restore Verified
+          </div>
         </div>
 
         {/* BODY */}
@@ -288,13 +347,13 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
           {errorMessage && (
             <div
               style={{
-                padding: '12px 16px',
                 backgroundColor: '#FEF2F2',
                 border: '1px solid #FCA5A5',
-                borderRadius: '8px',
                 color: '#991B1B',
+                padding: '12px 16px',
+                borderRadius: '8px',
+                marginBottom: '20px',
                 fontSize: '13px',
-                marginBottom: '16px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px'
@@ -305,19 +364,10 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
             </div>
           )}
 
-          {/* STEP 1: SELECT & UPLOAD */}
+          {/* STEP 1: UPLOAD / SELECT */}
           {step === 1 && (
             <div>
               <div
-                style={{
-                  border: `2px dashed ${isDragging ? '#2563EB' : '#CBD5E1'}`,
-                  borderRadius: '12px',
-                  padding: '36px 20px',
-                  textAlign: 'center',
-                  backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsDragging(true);
@@ -326,41 +376,108 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
                 onDrop={(e) => {
                   e.preventDefault();
                   setIsDragging(false);
-                  if (e.dataTransfer.files?.[0]) {
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
                     handleValidateUploadedFile(e.dataTransfer.files[0]);
                   }
                 }}
+                style={{
+                  border: isDragging ? '2px dashed #0F766E' : '2px dashed #CBD5E1',
+                  borderRadius: '12px',
+                  padding: '36px 20px',
+                  textAlign: 'center',
+                  backgroundColor: isDragging ? '#F0FDFA' : '#F8FAFC',
+                  transition: 'all 0.2s',
+                  marginBottom: '24px',
+                  cursor: 'pointer'
+                }}
                 onClick={() => {
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = '.zip,.json';
-                  input.onchange = (e: any) => {
-                    if (e.target?.files?.[0]) {
-                      handleValidateUploadedFile(e.target.files[0]);
-                    }
-                  };
-                  input.click();
+                  const input = document.getElementById('backupFileInput');
+                  if (input) input.click();
                 }}
               >
-                {loading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                    <RefreshCw size={28} className="spin" color="#2563EB" />
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#2563EB' }}>
-                      Validating backup package integrity &amp; SHA-256...
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <Upload size={32} color="#64748B" style={{ margin: '0 auto 10px' }} />
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
-                      Click to choose or drag &amp; drop a backup file
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748B' }}>
-                      Supports official portable packages (.ZIP) and JSON snapshots (.JSON) up to 100MB
-                    </div>
-                  </>
-                )}
+                <input
+                  id="backupFileInput"
+                  type="file"
+                  accept=".json,.zip"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleValidateUploadedFile(e.target.files[0]);
+                    }
+                  }}
+                />
+                <div
+                  style={{
+                    width: '54px',
+                    height: '54px',
+                    borderRadius: '50%',
+                    backgroundColor: '#E6FFFA',
+                    color: '#0F766E',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 12px auto'
+                  }}
+                >
+                  <Upload size={26} />
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                  Upload JSON Backup File
+                </div>
+                <div style={{ fontSize: '13px', color: '#64748B' }}>
+                  Drag &amp; drop your downloaded <code>.json</code> backup file here, or click to browse
+                </div>
               </div>
+
+              {/* Existing Server Backups List */}
+              {availableBackups.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B', marginBottom: '10px' }}>
+                    OR SELECT PREVIOUS BACKUP FROM SERVER / DRIVE
+                  </div>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '8px' }}>
+                    {availableBackups.slice(0, 5).map((b) => (
+                      <div
+                        key={b.fileId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 14px',
+                          borderBottom: '1px solid #F1F5F9',
+                          backgroundColor: '#FFFFFF'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <FileArchive size={18} color="#0F766E" />
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A' }}>{b.fileName}</div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>
+                              {new Date(b.createdTime).toLocaleString()} • {(b.sizeBytes / 1024).toFixed(1)} KB
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleValidateBackupId(b.fileId)}
+                          disabled={loading}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '6px 12px' }}
+                        >
+                          Select & Validate
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {loading && (
+                <div style={{ textAlign: 'center', marginTop: '16px', color: '#0F766E', fontSize: '13px', fontWeight: 600 }}>
+                  <RefreshCw size={18} className="animate-spin" style={{ display: 'inline', marginRight: '6px' }} />
+                  Unpacking archive and verifying SHA-256 checksums...
+                </div>
+              )}
             </div>
           )}
 
@@ -369,173 +486,234 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
             <div>
               <div
                 style={{
-                  padding: '16px',
-                  backgroundColor: '#F0FDF4',
-                  border: '1px solid #BBF7D0',
-                  borderRadius: '8px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px'
+                  backgroundColor: '#F0FDFA',
+                  border: '1px solid #99F6E4',
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  marginBottom: '20px'
                 }}
               >
-                <CheckCircle2 size={24} color="#166534" />
-                <div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#166534' }}>
-                    Package Verified: {previewResult.fileName}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0F766E', fontWeight: 700, fontSize: '14px' }}>
+                  <ShieldCheck size={18} />
+                  ARCHIVE INTEGRITY VERIFIED
+                </div>
+                <div style={{ fontSize: '12px', color: '#134E4A', marginTop: '4px', lineHeight: '1.5' }}>
+                  ✓ Manifest valid • ✓ SHA-256 Checksums match • ✓ Relationships intact • ✓ Original IDs preserved
+                </div>
+              </div>
+
+              {/* Record Comparison Grid */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B', marginBottom: '10px' }}>
+                  MULTI-DOMAIN RECORDS TO BE RESTORED ({previewResult.counts.totalRecords} total)
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '10px'
+                  }}
+                >
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Customers</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.customers}</div>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#166534' }}>
-                    Created: {new Date(previewResult.createdAt).toLocaleString()} | Schema: {previewResult.schemaVersion}
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Loans</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.loans}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Receipts</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.receipts}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Finance Ledger</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.dayBookEntries}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Rental Complexes</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.rentalComplexes ?? 0}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Rental Shops</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.rentalShops ?? 0}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Rent Collections</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.rentPayments ?? 0}</div>
+                  </div>
+                  <div style={{ backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <div style={{ fontSize: '11px', color: '#64748B' }}>Rental Expenses</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0F172A' }}>{previewResult.counts.rentalExpenses ?? 0}</div>
                   </div>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '10px',
-                  marginBottom: '16px'
-                }}
-              >
-                <div style={{ padding: '10px', backgroundColor: '#F8FAFC', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ fontSize: '11px', color: '#64748B' }}>Customers</div>
-                  <div style={{ fontSize: '16px', fontWeight: 700 }}>{previewResult.counts.customers}</div>
-                </div>
-                <div style={{ padding: '10px', backgroundColor: '#F8FAFC', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ fontSize: '11px', color: '#64748B' }}>Loans</div>
-                  <div style={{ fontSize: '16px', fontWeight: 700 }}>{previewResult.counts.loans}</div>
-                </div>
-                <div style={{ padding: '10px', backgroundColor: '#F8FAFC', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ fontSize: '11px', color: '#64748B' }}>Receipts</div>
-                  <div style={{ fontSize: '16px', fontWeight: 700 }}>{previewResult.counts.receipts}</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
-                  Back
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="btn btn-secondary"
+                >
+                  Choose Different Backup
                 </button>
-                <button type="button" className="btn btn-primary" onClick={() => setStep(3)}>
-                  <span>Continue to Confirmation</span>
-                  <ArrowRight size={14} />
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  className="btn"
+                  style={{
+                    backgroundColor: '#0F766E',
+                    color: '#FFFFFF',
+                    padding: '10px 22px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  Proceed to Confirmation <ArrowRight size={16} />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: CONFIRM */}
+          {/* STEP 3: FINAL CONFIRMATION */}
           {step === 3 && previewResult && (
             <div>
               <div
                 style={{
+                  backgroundColor: '#FFFBEB',
+                  border: '1px solid #FDE68A',
                   padding: '16px',
-                  backgroundColor: '#FEF2F2',
-                  border: '1px solid #FECACA',
-                  borderRadius: '8px',
-                  marginBottom: '16px'
+                  borderRadius: '10px',
+                  marginBottom: '20px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontWeight: 700, marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#B45309', fontWeight: 700, fontSize: '14px' }}>
                   <AlertTriangle size={18} />
-                  <span>Destructive Action Warning</span>
+                  AUTOMATIC SAFETY SNAPSHOT
                 </div>
-                <p style={{ margin: 0, fontSize: '12.5px', color: '#7F1D1D', lineHeight: 1.5 }}>
-                  Restoring will replace the current operational database with the contents of the verified backup package. An emergency safety rollback point will be automatically generated.
-                </p>
+                <div style={{ fontSize: '12px', color: '#92400E', marginTop: '4px', lineHeight: '1.5' }}>
+                  Before applying this backup, the system will automatically generate a safety snapshot of the current state.
+                  Restoring will replace current operational collections with records from <strong>{previewResult.fileName}</strong>.
+                </div>
               </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', cursor: 'pointer', fontSize: '13px' }}>
-                <input
-                  type="checkbox"
-                  checked={acknowledgedWarning}
-                  onChange={(e) => setAcknowledgedWarning(e.target.checked)}
-                  style={{ width: '16px', height: '16px' }}
-                />
-                <span>I understand that existing operational records will be replaced.</span>
-              </label>
-
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label" style={{ fontSize: '12.5px', fontWeight: 600 }}>
-                  Type <strong style={{ color: '#DC2626' }}>RESTORE BACKUP</strong> to confirm:
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1E293B', marginBottom: '6px' }}>
+                  Type <span style={{ color: '#0F766E', fontWeight: 700 }}>RESTORE BACKUP</span> to confirm:
                 </label>
                 <input
                   type="text"
-                  className="input-control"
-                  placeholder="RESTORE BACKUP"
                   value={inputConfirmation}
                   onChange={(e) => setInputConfirmation(e.target.value)}
+                  placeholder="RESTORE BACKUP"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: isExactConfirm ? '2px solid #16A34A' : '1px solid #CBD5E1',
+                    outline: 'none',
+                    backgroundColor: isExactConfirm ? '#F0FDF4' : '#FFFFFF'
+                  }}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '24px' }}>
+                <input
+                  type="checkbox"
+                  id="restoreWarningCheckbox"
+                  checked={acknowledgedWarning}
+                  onChange={(e) => setAcknowledgedWarning(e.target.checked)}
+                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <label htmlFor="restoreWarningCheckbox" style={{ fontSize: '12px', color: '#475569', cursor: 'pointer', lineHeight: '1.4' }}>
+                  I confirm that I want to restore the authoritative snapshot from backup {previewResult.backupId}. Original IDs and sequence counters will be synchronized.
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="btn btn-secondary"
+                >
                   Back
                 </button>
                 <button
                   type="button"
+                  onClick={handleExecuteRestore}
+                  disabled={!isRestoreEnabled}
                   className="btn"
                   style={{
-                    backgroundColor: canProceedToRestore ? '#DC2626' : '#94A3B8',
+                    backgroundColor: isRestoreEnabled ? '#0F766E' : '#94A3B8',
                     color: '#FFFFFF',
+                    padding: '10px 24px',
                     fontWeight: 700,
-                    cursor: canProceedToRestore ? 'pointer' : 'not-allowed'
+                    cursor: isRestoreEnabled ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: isRestoreEnabled ? '0 4px 12px rgba(15, 118, 110, 0.4)' : 'none'
                   }}
-                  disabled={!canProceedToRestore}
-                  onClick={handleExecuteRestore}
                 >
-                  Confirm &amp; Execute Restore
+                  <RotateCcw size={16} />
+                  Execute System Restore
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 4: EXECUTING */}
+          {/* STEP 4: RESTORING IN PROGRESS */}
           {step === 4 && (
-            <div style={{ textAlign: 'center', padding: '30px 10px' }}>
-              <RefreshCw size={36} className="spin" color="#2563EB" style={{ margin: '0 auto 16px' }} />
-              <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#1E293B', margin: '0 0 8px' }}>
-                Restoring Database...
-              </h4>
-              <p style={{ fontSize: '13px', color: '#64748B', margin: 0 }}>
-                Please do not close your browser. Atomic restore and schema verification in progress.
+            <div style={{ textAlign: 'center', padding: '30px 0' }}>
+              <div style={{ display: 'inline-block', marginBottom: '16px' }}>
+                <RefreshCw size={40} color="#0F766E" className="animate-spin" />
+              </div>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#0F172A' }}>
+                Restoring Database Records...
+              </h3>
+              <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '420px', margin: '0 auto' }}>
+                Writing Finance and Rental datasets to MongoDB and Local Storage, syncing sequence counters, and validating relationships.
               </p>
             </div>
           )}
 
-          {/* STEP 5: COMPLETE */}
-          {step === 5 && (
-            <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+          {/* STEP 5: RESTORE COMPLETE */}
+          {step === 5 && previewResult && (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div
                 style={{
-                  width: '56px',
-                  height: '56px',
+                  width: '64px',
+                  height: '64px',
                   borderRadius: '50%',
-                  backgroundColor: dbRestoreStatus === 'VERIFIED' ? '#DCFCE7' : '#FEE2E2',
-                  color: dbRestoreStatus === 'VERIFIED' ? '#16A34A' : '#DC2626',
+                  backgroundColor: '#DCFCE7',
+                  color: '#16A34A',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  margin: '0 auto 16px'
+                  margin: '0 auto 16px auto'
                 }}
               >
-                {dbRestoreStatus === 'VERIFIED' ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
+                <CheckCircle2 size={36} />
               </div>
-              <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px', color: '#1E293B' }}>
-                {dbRestoreStatus === 'VERIFIED' ? 'Restoration Successfully Verified!' : 'Restoration Encountered Errors'}
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 700, color: '#0F172A' }}>
+                System Database Restored Successfully!
               </h3>
-              <p style={{ fontSize: '13px', color: '#64748B', margin: '0 0 24px' }}>
-                {dbRestoreStatus === 'VERIFIED'
-                  ? 'All operational data tables and relations have been verified and restored.'
-                  : errorMessage || 'Restoration failed. Safety backup rollback preserved your previous data.'}
+              <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '440px', margin: '0 auto 20px auto', lineHeight: '1.5' }}>
+                Restored <strong>{previewResult.counts.totalRecords} records</strong> across Finance and Rental domains.
+                Original primary identifiers, sequence counters, and file references have been re-established.
               </p>
+
               <button
                 type="button"
-                className="btn btn-primary"
-                style={{ margin: '0 auto', minWidth: '160px', justifyContent: 'center' }}
                 onClick={handleFinish}
+                className="btn btn-primary"
+                style={{ padding: '10px 24px', fontWeight: 600 }}
               >
-                Complete &amp; Reload Data
+                Reload Application State
               </button>
             </div>
           )}
@@ -544,3 +722,5 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
     </div>
   );
 };
+
+export default SystemRestoreModal;

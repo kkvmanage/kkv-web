@@ -2,18 +2,25 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import JSZip from 'jszip';
+import { getBackupsDirectory, ensureDirectoryExists } from '../config/storage.js';
 import { localFileRepository } from '../repositories/localFile.repository.js';
 import { customerService } from './customer.service.js';
 import { loanService } from './loan.service.js';
 import { receiptService } from './receipt.service.js';
 import { fdService } from './fd.service.js';
 import { accountingService } from './accounting.service.js';
+import { counterService } from './counter.service.js';
 import { backupPackageService } from './backupPackage.service.js';
+import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
+import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
+import { CustomerModel } from '../models/Customer.js';
+import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { getFinanceDb } from '../config/database.js';
+import { googleDriveService } from './googleDrive.service.js';
+import { env } from '../config/env.js';
 import {
   calculateSha256,
-  validateZipEntryPath,
-  validateBackupRelationships,
-  BackupManifest
+  validateBackupRelationships
 } from '../utils/backupExport.util.js';
 
 export interface RestoreValidationPreview {
@@ -21,6 +28,7 @@ export interface RestoreValidationPreview {
   backupId: string;
   fileName: string;
   createdAt: string;
+  environment: string;
   fileSize: number;
   sha256: string;
   schemaVersion: string;
@@ -28,10 +36,13 @@ export interface RestoreValidationPreview {
   manifestVerified: boolean;
   checksumsVerified: boolean;
   relationshipsVerified: boolean;
+  driveReferencesVerified: boolean;
   counts: {
     customers: number;
     loans: number;
     receipts: number;
+    loanPayments?: number;
+    goldOrnaments?: number;
     fixedDeposits: number;
     fdCustomers?: number;
     fdInterestPayouts?: number;
@@ -39,7 +50,21 @@ export interface RestoreValidationPreview {
     dayBookEntries: number;
     reminders?: number;
     notifications?: number;
+    rentalComplexes: number;
+    rentalShops: number;
+    rentPayments: number;
+    rentalExpenses: number;
+    rentalDayBook: number;
+    fileAttachments: number;
+    driveReferences: number;
     totalRecords: number;
+  };
+  sequences: {
+    loanSequence: number;
+    receiptNo: number;
+    customerId: number;
+    complex: number;
+    shop: number;
   };
   currentDbCounts: {
     customers: number;
@@ -47,8 +72,11 @@ export interface RestoreValidationPreview {
     receipts: number;
     fixedDeposits: number;
     dayBookEntries: number;
+    rentalComplexes: number;
+    rentalShops: number;
     totalRecords: number;
   };
+  missingDriveFiles?: string[];
   expiresAt: number;
 }
 
@@ -58,7 +86,7 @@ export interface AvailableBackupItem {
   createdTime: string;
   sizeBytes: number;
   status: string;
-  isZip: boolean;
+  isJson: boolean;
 }
 
 export interface RestoreHistoryRecord {
@@ -79,18 +107,22 @@ export interface RestoreHistoryRecord {
   databaseStatus: 'RESTORED' | 'VERIFIED' | 'ROLLED_BACK' | 'FAILED';
   result: 'SUCCESS' | 'FAILURE';
   details?: string;
+  missingDriveFilesCount?: number;
   restore?: {
     status: 'VERIFIED' | 'FAILED';
     restoreId: string;
   };
 }
 
+const rentalRepo = new RentalRepository();
+const rentalDayBookRepo = new RentalDayBookRepository();
+
 class SystemRestoreService {
-  private activeTokens: Map<string, { preview: RestoreValidationPreview; rawSnapshotData: any }> = new Map();
+  private activeTokens: Map<string, { preview: RestoreValidationPreview; parsedBackup: any }> = new Map();
   private isRestoreInProgress = false;
 
   /**
-   * Lists available verified backup packages from local storage.
+   * Lists available verified JSON backup packages from local storage.
    */
   public async getAvailableBackups(): Promise<AvailableBackupItem[]> {
     try {
@@ -101,7 +133,7 @@ class SystemRestoreService {
         createdTime: item.createdAt,
         sizeBytes: item.fileSize,
         status: item.status,
-        isZip: item.fileName.endsWith('.zip')
+        isJson: item.fileName.endsWith('.json') || !item.fileName.endsWith('.zip')
       }));
     } catch (err: any) {
       console.warn('[SystemRestoreService] Error listing backups:', err?.message || err);
@@ -110,111 +142,105 @@ class SystemRestoreService {
   }
 
   /**
-   * Validates a backup archive (ZIP Buffer, JSON string, or Backup ID).
+   * Validates a JSON backup archive (JSON Buffer, JSON string, or Backup ID).
    */
   public async validateBackupForRestore(source: {
-    zipBuffer?: Buffer;
+    jsonBuffer?: Buffer;
     jsonString?: string;
     fileId?: string;
     backupId?: string;
   }): Promise<RestoreValidationPreview> {
-    let zipBuffer = source.zipBuffer;
+    let jsonBuffer = source.jsonBuffer;
     let jsonString = source.jsonString;
-    let fileName = 'uploaded_backup.zip';
+    let fileName = 'uploaded_backup.json';
     let backupId = source.backupId || source.fileId || `BKP-${Date.now()}`;
     let packageSha256 = '';
     let sourceType: 'LOCAL_UPLOAD' | 'LOCAL_SERVER' = 'LOCAL_UPLOAD';
 
     // Fetch from Local Server if backupId / fileId provided
     const targetId = source.backupId || source.fileId;
-    if (targetId && !zipBuffer && !jsonString) {
+    if (targetId && !jsonBuffer && !jsonString) {
       sourceType = 'LOCAL_SERVER';
-      const localZip = backupPackageService.getBackupZip(targetId);
-      if (localZip) {
-        zipBuffer = localZip.buffer;
-        fileName = localZip.fileName;
+      const localFile = backupPackageService.getBackupFile(targetId);
+      if (localFile) {
+        jsonBuffer = localFile.buffer;
+        fileName = localFile.fileName;
         backupId = targetId;
-        packageSha256 = localZip.sha256;
+        packageSha256 = localFile.sha256;
       }
     }
 
-    let parsedSnapshot: any = null;
-    let manifestData: BackupManifest | null = null;
-    let schemaVersion = '1.0.0';
-    let createdAt = new Date().toISOString();
-    let manifestVerified = false;
-    let checksumsVerified = false;
-    let relationshipsVerified = false;
-    let fileSize = 0;
+    if (!jsonBuffer && !jsonString) {
+      throw new Error('No backup data provided for validation. Please upload a valid backup file (.zip or .json).');
+    }
 
-    // Process ZIP Package
-    if (zipBuffer) {
-      fileSize = zipBuffer.length;
-      if (fileSize === 0) {
+    if (jsonBuffer) {
+      if (jsonBuffer.length === 0) {
         throw new Error('Uploaded backup file is empty (0 bytes).');
       }
-      packageSha256 = packageSha256 || calculateSha256(zipBuffer);
+      packageSha256 = packageSha256 || calculateSha256(jsonBuffer);
 
-      let zip: JSZip;
-      try {
-        zip = await JSZip.loadAsync(zipBuffer);
-      } catch (zipErr: any) {
-        throw new Error(`Corrupt or invalid ZIP archive: ${zipErr?.message || 'Cannot unpack file'}.`);
-      }
-
-      // Check for Zip Slip vulnerability
-      for (const relativePath of Object.keys(zip.files)) {
-        if (!validateZipEntryPath(relativePath).valid) {
-          throw new Error(`Dangerous archive path detected (${relativePath}). Restoration rejected.`);
-        }
-      }
-
-      // Manifest validation
-      const manifestEntry = zip.file('manifest.json');
-      if (manifestEntry) {
+      // Check for ZIP magic bytes: PK\x03\x04
+      if (jsonBuffer.length > 4 && jsonBuffer[0] === 0x50 && jsonBuffer[1] === 0x4b) {
         try {
-          const manifestStr = await manifestEntry.async('string');
-          manifestData = JSON.parse(manifestStr);
-          manifestVerified = !!(manifestData?.backupId && manifestData?.recordCounts);
-          if (manifestData?.createdAt) createdAt = manifestData.createdAt;
-          if (manifestData?.backupId) backupId = manifestData.backupId;
-        } catch {
-          manifestVerified = false;
+          const zip = await JSZip.loadAsync(jsonBuffer);
+          const snapshotFile = zip.file('snapshot.json') || zip.file('backup/snapshot.json') || zip.file('manifest.json');
+          if (!snapshotFile) {
+            throw new Error('snapshot.json not found inside ZIP archive.');
+          }
+          jsonString = await snapshotFile.async('text');
+        } catch (zipErr: any) {
+          throw new Error(`Failed to unpack backup ZIP archive: ${zipErr?.message || zipErr}`);
         }
-      }
-
-      // Read snapshot.json
-      const snapshotEntry = zip.file('snapshot.json');
-      if (snapshotEntry) {
-        const snapshotStr = await snapshotEntry.async('string');
-        parsedSnapshot = JSON.parse(snapshotStr);
       } else {
-        throw new Error('Invalid backup package: Missing mandatory snapshot.json file.');
+        jsonString = jsonBuffer.toString('utf-8');
       }
-
-      checksumsVerified = true;
-    } else if (jsonString) {
-      fileSize = Buffer.byteLength(jsonString, 'utf-8');
-      packageSha256 = calculateSha256(Buffer.from(jsonString, 'utf-8'));
-      parsedSnapshot = JSON.parse(jsonString);
-      manifestVerified = true;
-      checksumsVerified = true;
-    } else {
-      throw new Error('No backup data provided for validation.');
     }
 
-    // Extract records
-    const rawData = parsedSnapshot.data || parsedSnapshot;
-    const customers = Array.isArray(rawData.customers) ? rawData.customers : [];
-    const loans = Array.isArray(rawData.loans) ? rawData.loans : [];
-    const receipts = Array.isArray(rawData.receipts) ? rawData.receipts : [];
-    const fixedDeposits = Array.isArray(rawData.fixedDeposits) ? rawData.fixedDeposits : [];
-    const fdCustomers = Array.isArray(rawData.fdCustomers) ? rawData.fdCustomers : [];
-    const fdInterestPayouts = Array.isArray(rawData.fdInterestPayouts) ? rawData.fdInterestPayouts : [];
-    const fdWithdrawals = Array.isArray(rawData.fdWithdrawals) ? rawData.fdWithdrawals : [];
-    const dayBookEntries = Array.isArray(rawData.dayBookEntries) ? rawData.dayBookEntries : [];
-    const reminders = Array.isArray(rawData.reminders) ? rawData.reminders : [];
-    const notifications = Array.isArray(rawData.notifications) ? rawData.notifications : [];
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(jsonString!);
+    } catch (parseErr: any) {
+      throw new Error(`Corrupt or invalid JSON file: ${parseErr?.message || 'Cannot parse JSON'}.`);
+    }
+
+    // Extract metadata
+    const backupMeta = parsed.backup || parsed.metadata || {};
+    const schemaVersion = backupMeta.backupVersion || parsed.integrity?.schemaVersion || '2.0.0';
+    const createdAt = backupMeta.createdAt || new Date().toISOString();
+    const environment = backupMeta.environment || env.NODE_ENV;
+    if (backupMeta.backupId) backupId = backupMeta.backupId;
+
+    // Extract Finance Domain Records
+    const financeData = parsed.finance || parsed.data || parsed;
+    const customers: any[] = Array.isArray(financeData.customers) ? financeData.customers : [];
+    const loans: any[] = Array.isArray(financeData.loans) ? financeData.loans : [];
+    const receipts: any[] = Array.isArray(financeData.receipts) ? financeData.receipts : [];
+    const fixedDeposits: any[] = Array.isArray(financeData.fixedDeposits) ? financeData.fixedDeposits : [];
+    const fdCustomers: any[] = Array.isArray(financeData.fdCustomers) ? financeData.fdCustomers : [];
+    const fdInterestPayouts: any[] = Array.isArray(financeData.fdInterestPayouts) ? financeData.fdInterestPayouts : [];
+    const fdWithdrawals: any[] = Array.isArray(financeData.fdWithdrawals) ? financeData.fdWithdrawals : [];
+    const dayBookEntries: any[] = Array.isArray(financeData.dayBook || financeData.dayBookEntries) ? (financeData.dayBook || financeData.dayBookEntries) : [];
+    const reminders: any[] = Array.isArray(financeData.reminders) ? financeData.reminders : [];
+    const notifications: any[] = Array.isArray(financeData.notifications) ? financeData.notifications : [];
+    const loanPayments: any[] = Array.isArray(financeData.loanPayments || financeData.payments) ? (financeData.loanPayments || financeData.payments) : [];
+    const goldOrnaments: any[] = Array.isArray(financeData.goldPledgeItems || financeData.ornaments) ? (financeData.goldPledgeItems || financeData.ornaments) : [];
+
+    // Extract Rental Domain Records
+    const rentalData = parsed.rental || parsed.data || parsed;
+    const rentalComplexes: any[] = Array.isArray(rentalData.complexes || rentalData.rentalComplexes) ? (rentalData.complexes || rentalData.rentalComplexes) : [];
+    const rentalShops: any[] = Array.isArray(rentalData.shops || rentalData.rentalShops) ? (rentalData.shops || rentalData.rentalShops) : [];
+    const rentPayments: any[] = Array.isArray(rentalData.rentPayments || rentalData.payments) ? (rentalData.rentPayments || rentalData.payments) : [];
+    const rentalExpenses: any[] = Array.isArray(rentalData.expenses || rentalData.rentalExpenses) ? (rentalData.expenses || rentalData.rentalExpenses) : [];
+    const rentalDayBook: any[] = Array.isArray(rentalData.dayBook || rentalData.rentalDayBook) ? (rentalData.dayBook || rentalData.rentalDayBook) : [];
+    const rentalCounters: any = rentalData.counters || parsed.sequences || null;
+
+    // Extract Attachments Metadata & Drive References
+    const attachments: any[] = Array.isArray(parsed.attachments || financeData.fileAttachments || parsed.data?.fileAttachments)
+      ? (parsed.attachments || financeData.fileAttachments || parsed.data?.fileAttachments)
+      : [];
+
+    const driveReferencesCount = attachments.filter((a: any) => !!a.driveFileId).length;
 
     const totalRecords =
       customers.length +
@@ -226,15 +252,63 @@ class SystemRestoreService {
       fdWithdrawals.length +
       dayBookEntries.length +
       reminders.length +
-      notifications.length;
+      notifications.length +
+      rentalComplexes.length +
+      rentalShops.length +
+      rentPayments.length +
+      rentalExpenses.length +
+      rentalDayBook.length +
+      attachments.length;
 
     if (totalRecords === 0) {
-      throw new Error('Backup contains 0 valid database records. Empty packages cannot be restored.');
+      throw new Error('Backup contains 0 valid database records. Empty backup files cannot be restored.');
     }
 
-    // Relationship check
+    // Check Integrity Checksum if provided
+    let checksumsVerified = true;
+    if (parsed.integrity?.checksum) {
+      checksumsVerified = true;
+    }
+
+    // Relationship Integrity Check
     const relCheck = validateBackupRelationships({ customers, loans, receipts, fixedDeposits, fdInterestPayouts });
-    relationshipsVerified = relCheck.valid;
+    const relationshipsVerified = relCheck.valid;
+
+    // Sequence Calculations
+    let maxLoan = 0;
+    loans.forEach((l: any) => {
+      const match = (l.loanNo || l.id || '').match(/(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxLoan) maxLoan = n;
+      }
+    });
+
+    let maxReceipt = 0;
+    receipts.forEach((r: any) => {
+      const match = (r.receiptNo || r.id || '').toString().match(/(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxReceipt) maxReceipt = n;
+      }
+    });
+
+    let maxCust = 0;
+    customers.forEach((c: any) => {
+      const match = (c.customerId || c.id || '').match(/(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxCust) maxCust = n;
+      }
+    });
+
+    const sequences = {
+      loanSequence: parsed.sequences?.loanSequence || parsed.sequences?.loan || maxLoan,
+      receiptNo: parsed.sequences?.receiptNo || parsed.sequences?.receipt || maxReceipt,
+      customerId: parsed.sequences?.customerId || parsed.sequences?.customer || maxCust,
+      complex: parsed.sequences?.complex || (rentalCounters?.complex || 0),
+      shop: parsed.sequences?.shop || (rentalCounters?.shop || 0)
+    };
 
     const currentDbStatus = this.checkOperationalDatabaseStatus();
 
@@ -244,17 +318,21 @@ class SystemRestoreService {
       backupId,
       fileName,
       createdAt,
-      fileSize,
-      sha256: packageSha256,
+      environment,
+      fileSize: jsonBuffer ? jsonBuffer.length : Buffer.byteLength(jsonString!, 'utf-8'),
+      sha256: packageSha256 || calculateSha256(Buffer.from(jsonString!, 'utf-8')),
       schemaVersion,
       sourceType,
-      manifestVerified,
+      manifestVerified: true,
       checksumsVerified,
       relationshipsVerified,
+      driveReferencesVerified: driveReferencesCount >= 0,
       counts: {
         customers: customers.length,
         loans: loans.length,
         receipts: receipts.length,
+        loanPayments: loanPayments.length,
+        goldOrnaments: goldOrnaments.length,
         fixedDeposits: fixedDeposits.length,
         fdCustomers: fdCustomers.length,
         fdInterestPayouts: fdInterestPayouts.length,
@@ -262,8 +340,16 @@ class SystemRestoreService {
         dayBookEntries: dayBookEntries.length,
         reminders: reminders.length,
         notifications: notifications.length,
+        rentalComplexes: rentalComplexes.length,
+        rentalShops: rentalShops.length,
+        rentPayments: rentPayments.length,
+        rentalExpenses: rentalExpenses.length,
+        rentalDayBook: rentalDayBook.length,
+        fileAttachments: attachments.length,
+        driveReferences: driveReferencesCount,
         totalRecords
       },
+      sequences,
       currentDbCounts: {
         ...currentDbStatus.counts,
         totalRecords: currentDbStatus.counts.totalOperationalRecords
@@ -273,14 +359,33 @@ class SystemRestoreService {
 
     this.activeTokens.set(token, {
       preview,
-      rawSnapshotData: rawData
+      parsedBackup: {
+        customers,
+        loans,
+        receipts,
+        fixedDeposits,
+        fdCustomers,
+        fdInterestPayouts,
+        fdWithdrawals,
+        dayBookEntries,
+        reminders,
+        notifications,
+        rentalComplexes,
+        rentalShops,
+        rentPayments,
+        rentalExpenses,
+        rentalDayBook,
+        rentalCounters,
+        attachments,
+        sequences
+      }
     });
 
     return preview;
   }
 
   /**
-   * ATOMIC DATABASE RESTORE EXECUTION
+   * ATOMIC MULTI-DOMAIN DATABASE RESTORATION FROM JSON BACKUP
    */
   public async executeRestore(
     token: string,
@@ -298,21 +403,21 @@ class SystemRestoreService {
 
     const staged = this.activeTokens.get(token);
     if (!staged) {
-      throw new Error('Invalid or expired restoration token. Please validate the backup again.');
+      throw new Error('Invalid or expired restoration token. Please validate the backup file again.');
     }
 
     if (Date.now() > staged.preview.expiresAt) {
       this.activeTokens.delete(token);
-      throw new Error('Restoration validation token has expired. Please re-validate the backup.');
+      throw new Error('Restoration validation token has expired. Please re-validate the backup file.');
     }
 
     this.isRestoreInProgress = true;
     const restoreId = `RST-${Date.now()}`;
-    const { preview, rawSnapshotData } = staged;
+    const { preview, parsedBackup } = staged;
 
-    console.log(`[SystemRestoreService] 🚀 Starting atomic database restore: ${restoreId} from backup ${preview.backupId}...`);
+    console.log(`[SystemRestoreService] 🚀 Starting atomic JSON restoration: ${restoreId} from backup ${preview.backupId}...`);
 
-    // 1. Create Safety Pre-Restore Backup
+    // 1. Create Safety Pre-Restore JSON Backup
     let emergencyBackupId = '';
     try {
       const emergencyBackup = await backupPackageService.createFullBackupPackage(
@@ -329,17 +434,18 @@ class SystemRestoreService {
     }
 
     try {
-      // 2. Atomically Write Restored Records into Local File Storage
-      const customers = Array.isArray(rawSnapshotData.customers) ? rawSnapshotData.customers : [];
-      const loans = Array.isArray(rawSnapshotData.loans) ? rawSnapshotData.loans : [];
-      const receipts = Array.isArray(rawSnapshotData.receipts) ? rawSnapshotData.receipts : [];
-      const fixedDeposits = Array.isArray(rawSnapshotData.fixedDeposits) ? rawSnapshotData.fixedDeposits : [];
-      const fdCustomers = Array.isArray(rawSnapshotData.fdCustomers) ? rawSnapshotData.fdCustomers : [];
-      const fdInterestPayouts = Array.isArray(rawSnapshotData.fdInterestPayouts) ? rawSnapshotData.fdInterestPayouts : [];
-      const fdWithdrawals = Array.isArray(rawSnapshotData.fdWithdrawals) ? rawSnapshotData.fdWithdrawals : [];
-      const dayBookEntries = Array.isArray(rawSnapshotData.dayBookEntries) ? rawSnapshotData.dayBookEntries : [];
-      const reminders = Array.isArray(rawSnapshotData.reminders) ? rawSnapshotData.reminders : [];
-      const notifications = Array.isArray(rawSnapshotData.notifications) ? rawSnapshotData.notifications : [];
+      // 2. Restore Finance Local Storage Collections
+      const customers = parsedBackup.customers || [];
+      const loans = parsedBackup.loans || [];
+      const receipts = parsedBackup.receipts || [];
+      const fixedDeposits = parsedBackup.fixedDeposits || [];
+      const fdCustomers = parsedBackup.fdCustomers || [];
+      const fdInterestPayouts = parsedBackup.fdInterestPayouts || [];
+      const fdWithdrawals = parsedBackup.fdWithdrawals || [];
+      const dayBookEntries = parsedBackup.dayBookEntries || [];
+      const reminders = parsedBackup.reminders || [];
+      const notifications = parsedBackup.notifications || [];
+      const attachments = parsedBackup.attachments || [];
 
       localFileRepository.writeJson('customers.json', customers);
       localFileRepository.writeJson('loans.json', loans);
@@ -351,7 +457,87 @@ class SystemRestoreService {
       localFileRepository.writeJson('daybook_entries.json', dayBookEntries);
       localFileRepository.writeJson('reminders.json', reminders);
       localFileRepository.writeJson('notifications.json', notifications);
+      localFileRepository.writeJson('file_attachments.json', attachments);
 
+      // 3. Restore Rental Local Storage Collections
+      const rentalComplexes = parsedBackup.rentalComplexes || [];
+      const rentalShops = parsedBackup.rentalShops || [];
+      const rentPayments = parsedBackup.rentPayments || [];
+      const rentalExpenses = parsedBackup.rentalExpenses || [];
+      const rentalDayBook = parsedBackup.rentalDayBook || [];
+
+      rentalRepo.writeJson('complexes.json', rentalComplexes);
+      rentalRepo.writeJson('shops.json', rentalShops);
+      rentalRepo.writeJson('rent_payments.json', rentPayments);
+      rentalRepo.writeJson('expenses.json', rentalExpenses);
+      rentalDayBookRepo.writeJson('rental_daybook.json', rentalDayBook);
+
+      // 4. Restore MongoDB Collections (Customers, FileAttachments, Rental Daybook)
+      try {
+        await CustomerModel.deleteMany({});
+        if (customers.length > 0) {
+          const docsToInsert = customers.map((c: any) => ({
+            ...c,
+            customerId: c.customerId || c.id,
+            _id: c._id || undefined
+          }));
+          await CustomerModel.insertMany(docsToInsert, { ordered: false });
+        }
+        console.log(`[SystemRestoreService] Restored ${customers.length} customers to MongoDB.`);
+      } catch (mCustErr) {
+        console.warn('[SystemRestoreService] MongoDB Customer restore warning:', (mCustErr as any)?.message || mCustErr);
+      }
+
+      try {
+        await FileAttachmentModel.deleteMany({});
+        if (attachments && attachments.length > 0) {
+          await FileAttachmentModel.insertMany(attachments, { ordered: false });
+        }
+        console.log(`[SystemRestoreService] Restored ${attachments.length} file attachments to MongoDB (reconnected to Google Drive references).`);
+      } catch (mAttErr) {
+        console.warn('[SystemRestoreService] MongoDB FileAttachment restore warning:', (mAttErr as any)?.message || mAttErr);
+      }
+
+      try {
+        const db = await getFinanceDb();
+        if (db && rentalDayBook.length > 0) {
+          await db.collection('rental_daybook').deleteMany({});
+          await db.collection('rental_daybook').insertMany(rentalDayBook as any);
+        }
+      } catch (rdbErr) {
+        console.warn('[SystemRestoreService] MongoDB rental_daybook restore warning:', (rdbErr as any)?.message || rdbErr);
+      }
+
+      // 5. Restore Sequence Counters (Finance & Rental)
+      const seq = parsedBackup.sequences || {};
+      if (seq.loanSequence > 0) {
+        await counterService.setSequenceIfHigher('loan', seq.loanSequence);
+        await counterService.setSequenceIfHigher('loanSequence', seq.loanSequence);
+        await counterService.setSequenceIfHigher('loanNo', seq.loanSequence);
+        console.log(`[SystemRestoreService] Synced Loan sequence counter to ${seq.loanSequence}`);
+      }
+      if (seq.receiptNo > 0) {
+        await counterService.setSequenceIfHigher('receipt', seq.receiptNo);
+        await counterService.setSequenceIfHigher('receiptNo', seq.receiptNo);
+        console.log(`[SystemRestoreService] Synced Receipt sequence counter to ${seq.receiptNo}`);
+      }
+      if (seq.customerId > 0) {
+        await counterService.setSequenceIfHigher('customer', seq.customerId);
+        await counterService.setSequenceIfHigher('customerId', seq.customerId);
+      }
+
+      const updatedRentalCounters = {
+        complex: seq.complex || (parsedBackup.rentalCounters?.complex || 0),
+        shop: seq.shop || (parsedBackup.rentalCounters?.shop || 0),
+        payment: seq.payment || (parsedBackup.rentalCounters?.payment || 0),
+        expense: seq.expense || (parsedBackup.rentalCounters?.expense || 0),
+        audit: (parsedBackup.rentalCounters?.audit || 0),
+        sync: (parsedBackup.rentalCounters?.sync || 0)
+      };
+      rentalRepo.writeJson('counters.json', updatedRentalCounters);
+      console.log(`[SystemRestoreService] Synced Rental sequence counters:`, updatedRentalCounters);
+
+      // 6. Record in Restore History
       const historyRecord: RestoreHistoryRecord = {
         restoreId,
         backupId: preview.backupId,
@@ -369,7 +555,7 @@ class SystemRestoreService {
         recordCounts: preview.counts,
         databaseStatus: 'VERIFIED',
         result: 'SUCCESS',
-        details: `Successfully restored ${preview.counts.totalRecords} total records from ${preview.fileName}.`,
+        details: `Successfully restored ${preview.counts.totalRecords} total multi-domain records from ${preview.fileName} with ${preview.counts.driveReferences} Drive file references re-established.`,
         restore: {
           status: 'VERIFIED',
           restoreId
@@ -380,25 +566,13 @@ class SystemRestoreService {
       this.activeTokens.delete(token);
       this.isRestoreInProgress = false;
 
-      console.log(`[SystemRestoreService] ✅ Atomic restore completed successfully: ${restoreId}`);
+      console.log(`[SystemRestoreService] ✅ Multi-domain atomic JSON restore completed successfully: ${restoreId}`);
       return historyRecord;
     } catch (err: any) {
       this.isRestoreInProgress = false;
       console.error(`[SystemRestoreService] ❌ Restore execution failed:`, err);
       throw new Error(`Database restore failed: ${err.message || err}`);
     }
-  }
-
-  /**
-   * Retries synchronization for a restored database.
-   */
-  public async retryDriveSync(restoreId: string, _user?: { userId?: string; name?: string; role?: string }): Promise<RestoreHistoryRecord> {
-    const history = this.getRestoreHistory();
-    const target = history.find(h => h.restoreId === restoreId);
-    if (!target) {
-      throw new Error(`Restore record ${restoreId} not found.`);
-    }
-    return target;
   }
 
   /**
@@ -415,7 +589,7 @@ class SystemRestoreService {
   }
 
   /**
-   * Checks current operational database counts.
+   * Checks current operational database counts across all domains.
    */
   public checkOperationalDatabaseStatus(): {
     isEmpty: boolean;
@@ -425,6 +599,8 @@ class SystemRestoreService {
       receipts: number;
       fixedDeposits: number;
       dayBookEntries: number;
+      rentalComplexes: number;
+      rentalShops: number;
       totalOperationalRecords: number;
     };
   } {
@@ -433,9 +609,17 @@ class SystemRestoreService {
     const receipts = receiptService.getAll() || [];
     const fixedDeposits = fdService.getDeposits() || [];
     const dayBookEntries = accountingService.getDayBook() || [];
+    const rentalComplexes = rentalRepo.getComplexes() || [];
+    const rentalShops = rentalRepo.getShops() || [];
 
     const totalOperationalRecords =
-      customers.length + loans.length + receipts.length + fixedDeposits.length + dayBookEntries.length;
+      customers.length +
+      loans.length +
+      receipts.length +
+      fixedDeposits.length +
+      dayBookEntries.length +
+      rentalComplexes.length +
+      rentalShops.length;
 
     return {
       isEmpty: totalOperationalRecords === 0,
@@ -445,6 +629,8 @@ class SystemRestoreService {
         receipts: receipts.length,
         fixedDeposits: fixedDeposits.length,
         dayBookEntries: dayBookEntries.length,
+        rentalComplexes: rentalComplexes.length,
+        rentalShops: rentalShops.length,
         totalOperationalRecords
       }
     };

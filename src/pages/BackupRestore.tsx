@@ -89,14 +89,14 @@ export const BackupRestore: React.FC = () => {
 
   const handleCreateFullBackup = async () => {
     setCreatingBackup(true);
-    showToast('Generating complete portable backup package (.ZIP)...', 'info');
+    showToast('Generating complete authoritative JSON backup...', 'info');
     try {
       const res = await apiService.createBackupPackage();
       if (res.success && res.data) {
-        showToast('Backup package created and verified successfully!', 'success');
+        showToast('Full JSON backup created and verified successfully!', 'success');
         loadHistory();
       } else {
-        showToast(res.message || 'Failed to create backup package', 'error');
+        showToast(res.message || 'Failed to create JSON backup', 'error');
       }
     } catch (err: any) {
       showToast(`Backup error: ${err.message}`, 'error');
@@ -206,28 +206,30 @@ export const BackupRestore: React.FC = () => {
         <div className="lg:col-span-7 space-y-6">
           {/* CREATE BACKUP CARD */}
           <Card
-            title="Create Complete Backup Package"
-            subtitle="Generates an encrypted portable ZIP archive with JSON snapshot, CSV exports, manifest, and SHA-256 checksums"
+            title="Create Full JSON Backup"
+            subtitle="Generates an authoritative single JSON backup file with Finance, Rental, Sequences, and Drive file references"
           >
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs space-y-2 mb-4">
               <div className="font-bold text-slate-900 dark:text-white">
-                Included in Backup Archive:
+                Included in JSON Backup:
               </div>
               <ul className="list-disc list-inside space-y-1 text-slate-600 dark:text-slate-400">
-                <li>Authoritative database snapshot (<code className="text-primary-600 dark:text-primary-400">snapshot.json</code>)</li>
-                <li>Individual entity CSV exports (<code className="text-primary-600 dark:text-primary-400">data/*.csv</code>)</li>
-                <li>Cryptographic integrity manifest (<code className="text-primary-600 dark:text-primary-400">manifest.json</code> &amp; <code className="text-primary-600 dark:text-primary-400">SHA256SUMS.txt</code>)</li>
+                <li>Complete Finance domain (Customers, Loans, Receipts, Payments, Ornaments, Fixed Deposits, Day Book)</li>
+                <li>Complete Rental domain (Complexes, Shops, Rent Collections, Expenses, Rental Day Book)</li>
+                <li>Attachment metadata &amp; Google Drive file references (no embedded binaries)</li>
+                <li>Sequence and counter state for seamless next numbering</li>
+                <li>Cryptographic SHA-256 integrity checksum</li>
               </ul>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
               <Button
                 variant="primary"
-                icon={creatingBackup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileArchive className="w-4 h-4" />}
+                icon={creatingBackup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 disabled={creatingBackup}
                 onClick={handleCreateFullBackup}
               >
-                {creatingBackup ? 'Creating Package...' : 'Create Backup Package (.ZIP)'}
+                {creatingBackup ? 'Creating JSON Backup...' : 'Create Full JSON Backup'}
               </Button>
 
               <Button
@@ -235,7 +237,7 @@ export const BackupRestore: React.FC = () => {
                 icon={<RotateCcw className="w-4 h-4" />}
                 onClick={() => setShowRestoreModal(true)}
               >
-                Restore From Backup
+                Upload JSON &amp; Restore
               </Button>
             </div>
           </Card>
@@ -243,7 +245,7 @@ export const BackupRestore: React.FC = () => {
           {/* BACKUP HISTORY TABLE */}
           <Card
             title="Backup History & Downloads"
-            subtitle="Verified server archives available for instant retrieval and offline storage"
+            subtitle="Verified server JSON backups available for instant retrieval and restore"
           >
             {loadingHistory ? (
               <div className="text-center py-8 text-slate-500">
@@ -252,32 +254,34 @@ export const BackupRestore: React.FC = () => {
               </div>
             ) : backupHistory.length === 0 ? (
               <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
-                No backup packages generated yet. Click "Create Backup Package" above.
+                No backup files generated yet. Click "Create Full JSON Backup" above.
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
                 {backupHistory.map((b) => (
                   <div
                     key={b.backupId}
-                    className="p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs"
+                    className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between text-xs gap-3 flex-wrap"
                   >
-                    <div>
+                    <div className="min-w-[200px] flex-1">
                       <strong className="text-slate-900 dark:text-white block font-mono text-xs">
                         {b.fileName}
                       </strong>
                       <span className="text-slate-500 text-[11px] mt-0.5 block">
-                        {new Date(b.createdAt).toLocaleString()} • {(b.fileSize / 1024).toFixed(1)} KB • {b.totalRecords || 0} records
+                        {new Date(b.createdAt).toLocaleString()} • {(b.fileSize / 1024).toFixed(1)} KB • {b.recordCounts?.totalRecords || b.totalRecords || 0} records
                       </span>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      icon={<Download className="w-3.5 h-3.5" />}
-                      onClick={() => handleDownloadBackup(b.backupId)}
-                    >
-                      Download
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={<Download className="w-3.5 h-3.5" />}
+                        onClick={() => handleDownloadBackup(b.backupId)}
+                      >
+                        Download JSON
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

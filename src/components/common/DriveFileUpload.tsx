@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, Image as ImageIcon, CheckCircle, AlertCircle, Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { apiService } from '../../services/api';
 
 export interface DriveFileItem {
   fileId: string;
@@ -7,6 +8,9 @@ export interface DriveFileItem {
   mimeType?: string;
   webViewLink?: string;
   webContentLink?: string;
+  viewUrl?: string;
+  downloadUrl?: string;
+  driveUrl?: string;
   size?: number;
 }
 
@@ -16,7 +20,10 @@ export interface DriveFileUploadProps {
   maxSizeBytes?: number;
   customerId?: string;
   loanId?: string;
-  category?: 'profile' | 'kyc' | 'document' | 'receipt';
+  entityType?: string;
+  entityId?: string;
+  documentType?: string;
+  category?: 'profile' | 'kyc' | 'document' | 'receipt' | string;
   folderId?: string;
   files?: DriveFileItem[];
   onUploadSuccess?: (fileItem: DriveFileItem) => void;
@@ -26,8 +33,14 @@ export interface DriveFileUploadProps {
 
 export const DriveFileUpload: React.FC<DriveFileUploadProps> = ({
   label = 'Upload Document',
-  accept = '.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf',
+  accept = '.jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf',
   maxSizeBytes = 10 * 1024 * 1024,
+  customerId,
+  loanId,
+  entityType,
+  entityId,
+  documentType,
+  category = 'document',
   files = [],
   onUploadSuccess,
   onFileDeleted,
@@ -46,13 +59,14 @@ export const DriveFileUpload: React.FC<DriveFileUploadProps> = ({
     const file = selectedFiles[0];
 
     if (file.size > maxSizeBytes) {
-      setErrorMessage(`File "${file.name}" exceeds maximum allowed size of 10MB.`);
+      const maxMb = maxSizeBytes / (1024 * 1024);
+      setErrorMessage(`File "${file.name}" exceeds maximum allowed size of ${maxMb}MB.`);
       return;
     }
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!['jpg', 'jpeg', 'png', 'pdf'].includes(ext || '')) {
-      setErrorMessage(`Invalid file format "${ext}". Only JPG, JPEG, PNG, and PDF are supported.`);
+    if (!['jpg', 'jpeg', 'png', 'webp', 'pdf'].includes(ext || '')) {
+      setErrorMessage(`Invalid file format "${ext}". Only JPG, JPEG, PNG, WEBP, and PDF are supported.`);
       return;
     }
 
@@ -61,44 +75,59 @@ export const DriveFileUpload: React.FC<DriveFileUploadProps> = ({
 
   const uploadFile = async (file: File) => {
     setUploading(true);
-    setProgress(30);
+    setProgress(10);
     setErrorMessage('');
     setSuccessMessage('');
 
+    const resolvedEntityType = entityType || (customerId ? 'customer' : loanId ? 'loan' : category) || 'general';
+    const resolvedEntityId = entityId || customerId || loanId || 'general';
+    const resolvedDocType = documentType || category || 'document';
+
     try {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setProgress(100);
+      const result = await apiService.uploadFile(file, {
+        entityType: resolvedEntityType,
+        entityId: resolvedEntityId,
+        documentType: resolvedDocType,
+        fileName: file.name,
+        onProgress: (pct) => setProgress(pct)
+      });
+
+      if (result.success && result.data) {
+        const item = result.data;
         const newFile: DriveFileItem = {
-          fileId: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          name: file.name,
-          mimeType: file.type,
-          webViewLink: reader.result as string,
-          size: file.size
+          fileId: item.fileId || item.id,
+          name: item.originalFileName || file.name,
+          mimeType: item.mimeType || file.type,
+          viewUrl: apiService.getFileViewUrl(item.viewUrl || `/files/${item.fileId}/view`),
+          webViewLink: item.webViewLink || apiService.getFileViewUrl(item.viewUrl || `/files/${item.fileId}/view`),
+          downloadUrl: apiService.getFileViewUrl(item.downloadUrl || `/files/${item.fileId}/download`),
+          driveUrl: item.driveUrl,
+          size: item.fileSize || file.size
         };
 
         setUploadedFiles((prev) => (multiple ? [...prev, newFile] : [newFile]));
-        setSuccessMessage(`Successfully attached "${file.name}"`);
+        setSuccessMessage(`Successfully uploaded "${file.name}" to Google Drive`);
         if (onUploadSuccess) onUploadSuccess(newFile);
-        setUploading(false);
-      };
-      reader.onerror = () => {
-        setErrorMessage('Failed to read file.');
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
+      } else {
+        setErrorMessage(result.message || 'File upload failed. Please try again.');
+      }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error occurred during file upload.');
-      setUploading(false);
+      setErrorMessage(err.message || 'Error occurred during Google Drive upload.');
     } finally {
+      setUploading(false);
       setProgress(0);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleDelete = (fileId: string) => {
+  const handleDelete = async (fileId: string) => {
     setUploadedFiles((prev) => prev.filter((f) => f.fileId !== fileId));
     if (onFileDeleted) onFileDeleted(fileId);
+    try {
+      await apiService.deleteFile(fileId);
+    } catch {
+      // Ignored
+    }
   };
 
   return (

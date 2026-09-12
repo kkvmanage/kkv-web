@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import JSZip from 'jszip';
 import { getBackupsDirectory, ensureDirectoryExists } from '../config/storage.js';
 import { localFileRepository } from '../repositories/localFile.repository.js';
@@ -8,12 +9,14 @@ import { loanService } from './loan.service.js';
 import { receiptService } from './receipt.service.js';
 import { fdService } from './fd.service.js';
 import { accountingService } from './accounting.service.js';
-import {
-  objectsToCsv,
-  calculateSha256,
-  BackupManifest,
-  BackupManifestFile
-} from '../utils/backupExport.util.js';
+import { counterService } from './counter.service.js';
+import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
+import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
+import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { CustomerModel } from '../models/Customer.js';
+import { googleDriveService } from './googleDrive.service.js';
+import { env } from '../config/env.js';
+import { calculateSha256 } from '../utils/backupExport.util.js';
 
 export interface BackupHistoryRecord {
   backupId: string;
@@ -26,11 +29,43 @@ export interface BackupHistoryRecord {
     name: string;
     role: string;
   };
-  recordCounts: BackupManifest['recordCounts'];
+  recordCounts: {
+    customers: number;
+    loans: number;
+    receipts: number;
+    loanPayments: number;
+    goldOrnaments: number;
+    fixedDeposits: number;
+    fdCustomers?: number;
+    fdInterestPayouts?: number;
+    fdWithdrawals?: number;
+    dayBookEntries: number;
+    reminders?: number;
+    notifications?: number;
+    auditLogs?: number;
+    rentalComplexes: number;
+    rentalShops: number;
+    rentPayments: number;
+    rentalExpenses: number;
+    rentalDayBook: number;
+    fileAttachments: number;
+    totalRecords: number;
+  };
+  sequences: {
+    loanSequence: number;
+    receiptNo: number;
+    customerId: number;
+    complex: number;
+    shop: number;
+    payment: number;
+    expense: number;
+  };
   backupType?: 'FULL_BACKUP' | 'PRE_RESTORE_BACKUP' | 'RESTORED_STATE' | 'EMERGENCY_BACKUP' | 'PRE_WIPE_BACKUP';
   downloadAcknowledged: boolean;
   downloadAcknowledgedAt?: string;
   downloadAcknowledgedBy?: string;
+  driveBackupFileId?: string;
+  driveFolderId?: string;
   status: 'CREATED' | 'VERIFIED' | 'LOCAL_VERIFIED' | 'FAILED' | 'RESTORED';
 }
 
@@ -44,6 +79,9 @@ function formatBackupTimestamp(d: Date = new Date()): string {
   const ss = pad(d.getSeconds());
   return `${YYYY}-${MM}-${DD}_${hh}-${mm}-${ss}`;
 }
+
+const rentalRepo = new RentalRepository();
+const rentalDayBookRepo = new RentalDayBookRepository();
 
 class BackupPackageService {
   private historyFile = 'backups_history.json';
@@ -62,12 +100,16 @@ class BackupPackageService {
   }
 
   /**
-   * Generates a complete, portable ZIP backup package containing:
-   * - manifest.json
-   * - snapshot.json
-   * - data/*.csv (all major entities)
-   * - schema/backup-schema-version.json
-   * - checksums/SHA256SUMS.txt
+   * Generates ONE single Authoritative JSON Backup File containing:
+   * - Backup metadata (ID, version, timestamp, environment, databaseType)
+   * - Finance domain (customers, loans, receipts, payments, ornaments, fixedDeposits, dayBook)
+   * - Rental domain (complexes, shops, rentPayments, expenses, dayBook, counters)
+   * - Attachment metadata & Google Drive file references (no binary blobs)
+   * - Sequence counters (exact state for continuous numbering)
+   * - Required non-sensitive master data
+   * - Cryptographic SHA-256 integrity checksum
+   *
+   * Also optionally uploads the JSON backup file to Google Drive System Backups if configured.
    */
   public async createFullBackupPackage(
     user?: { userId?: string; name?: string; role?: string },
@@ -78,12 +120,29 @@ class BackupPackageService {
     const timestampStr = formatBackupTimestamp(timestamp);
     const dateStr = timestamp.toISOString().slice(0, 10);
     const backupId = `BKP-${dateStr.replace(/-/g, '')}-${timestamp.getTime().toString().slice(-4)}`;
-    const fileName = `KKV_GOLD_FINANCE_${backupType}_${timestampStr}.zip`;
+    const fileName = backupType === 'PRE_WIPE_BACKUP'
+      ? `KKV_GOLD_FINANCE_WIPE_BACKUP_${timestampStr}.zip`
+      : `KKV_GOLD_FINANCE_FULL_BACKUP_${timestampStr}.zip`;
 
-    console.log(`[BackupPackageService] 📦 Starting complete backup package generation: ${backupId} (${fileName})...`);
+    console.log(`[BackupPackageService] 📦 Starting complete backup ZIP generation: ${backupId} (${fileName})...`);
 
-    // 1. Fetch All Operational Entities
-    const customers = customerService.getAll() || [];
+    // 1. Fetch Finance Entities (Combining Local Storage + MongoDB Customers)
+    let customers = customerService.getAll() || [];
+    try {
+      const mongoCustomers = await CustomerModel.find({}).lean();
+      if (mongoCustomers && mongoCustomers.length > 0) {
+        const custMap = new Map<string, any>();
+        customers.forEach(c => custMap.set(c.id || (c as any).customerId, c));
+        mongoCustomers.forEach((mc: any) => {
+          const id = mc.customerId || mc.id || mc._id?.toString();
+          custMap.set(id, { ...mc, id });
+        });
+        customers = Array.from(custMap.values());
+      }
+    } catch (mErr) {
+      console.warn('[BackupPackageService] MongoDB Customer fetch notice:', (mErr as any)?.message || mErr);
+    }
+
     const loans = loanService.getAll() || [];
     const receipts = receiptService.getAll() || [];
     const fixedDeposits = fdService.getDeposits() || [];
@@ -95,10 +154,10 @@ class BackupPackageService {
     const notifications = localFileRepository.readJson<any[]>('notifications.json', []) || [];
     const auditLogs = localFileRepository.readJson<any[]>('audit_logs.json', []) || [];
 
-    // Auxiliary entity extractions
+    // Auxiliary Finance entity extractions
     const customerKycList: any[] = [];
     customers.forEach(c => {
-      if ((c as any).kyc) customerKycList.push({ customerId: c.id, ...(c as any).kyc });
+      if ((c as any).kyc) customerKycList.push({ customerId: c.id || (c as any).customerId, ...(c as any).kyc });
     });
 
     const loanPaymentsList: any[] = [];
@@ -116,14 +175,74 @@ class BackupPackageService {
       }
     });
 
-    const recordCounts: BackupManifest['recordCounts'] = {
+    // 2. Fetch Rental Entities
+    const rentalComplexes = rentalRepo.getComplexes() || [];
+    const rentalShops = rentalRepo.getShops() || [];
+    const rentPayments = rentalRepo.getPayments() || [];
+    const rentalExpenses = rentalRepo.getExpenses() || [];
+    const rentalAuditLogs = rentalRepo.getAuditLogs() || [];
+    let rentalDayBook: any[] = [];
+    try {
+      rentalDayBook = await rentalDayBookRepo.getManualEntries();
+    } catch {
+      rentalDayBook = rentalDayBookRepo.readJson('rental_daybook.json', []) || [];
+    }
+    const rentalCounters = rentalRepo.readJson('counters.json', {
+      complex: 0,
+      shop: 0,
+      payment: 0,
+      expense: 0,
+      audit: 0,
+      sync: 0
+    });
+
+    // 3. Fetch File Attachments Metadata (with Drive references)
+    let fileAttachments: any[] = [];
+    try {
+      fileAttachments = await FileAttachmentModel.find({}).lean();
+    } catch (attErr) {
+      console.warn('[BackupPackageService] MongoDB FileAttachment fetch notice:', (attErr as any)?.message || attErr);
+      fileAttachments = localFileRepository.readJson<any[]>('file_attachments.json', []) || [];
+    }
+
+    // 4. Fetch Permitted Master Data (No Secrets/Passwords)
+    const masterSettings = localFileRepository.readJson('master_settings.json', null);
+    const systemConfig = localFileRepository.readJson('system_config.json', null);
+    const printerSettings = localFileRepository.readJson('printer_settings.json', null);
+    const branchProfile = localFileRepository.readJson('branch_profile.json', null);
+    const permittedMasterData = {
+      masterSettings,
+      systemConfig,
+      printerSettings,
+      branchProfile
+    };
+
+    // 5. Sequence Counters
+    const currentCounters = localFileRepository.readJson<any>('counters.json', {
+      customerId: 0,
+      loanSequence: 0,
+      loanNo: 0,
+      receiptNo: 0,
+      fdNo: 0
+    });
+
+    const sequences = {
+      loanSequence: currentCounters.loanSequence || currentCounters.loanNo || counterService.getHighestExistingLoanNumber(),
+      receiptNo: currentCounters.receiptNo || (receipts.length > 0 ? Math.max(...receipts.map((r: any) => parseInt(r.receiptNo || r.id || '0', 10) || 0)) : 0),
+      customerId: currentCounters.customerId || customers.length,
+      complex: rentalCounters.complex || 0,
+      shop: rentalCounters.shop || 0,
+      payment: rentalCounters.payment || 0,
+      expense: rentalCounters.expense || 0
+    };
+
+    // Calculate record counts
+    const recordCounts: BackupHistoryRecord['recordCounts'] = {
       customers: customers.length,
-      customerKyc: customerKycList.length,
       loans: loans.length,
-      loanPayments: loanPaymentsList.length,
-      loanInterestHistory: loanInterestHistoryList.length,
-      goldPledgeItems: goldPledgeItemsList.length,
       receipts: receipts.length,
+      loanPayments: loanPaymentsList.length,
+      goldOrnaments: goldPledgeItemsList.length,
       fixedDeposits: fixedDeposits.length,
       fdCustomers: fdCustomers.length,
       fdInterestPayouts: fdInterestPayouts.length,
@@ -132,6 +251,12 @@ class BackupPackageService {
       reminders: reminders.length,
       notifications: notifications.length,
       auditLogs: auditLogs.length,
+      rentalComplexes: rentalComplexes.length,
+      rentalShops: rentalShops.length,
+      rentPayments: rentPayments.length,
+      rentalExpenses: rentalExpenses.length,
+      rentalDayBook: rentalDayBook.length,
+      fileAttachments: fileAttachments.length,
       totalRecords:
         customers.length +
         loans.length +
@@ -142,23 +267,65 @@ class BackupPackageService {
         fdWithdrawals.length +
         dayBookEntries.length +
         reminders.length +
-        notifications.length
+        notifications.length +
+        rentalComplexes.length +
+        rentalShops.length +
+        rentPayments.length +
+        rentalExpenses.length +
+        rentalDayBook.length +
+        fileAttachments.length
     };
 
-    // 2. Build Authoritative JSON Snapshot
-    const snapshotPayload = {
-      backupId,
-      applicationName: 'KKV GOLD FINANCE',
-      applicationVersion: '2.5.0',
-      backupSchemaVersion: '1.0.0',
-      createdAt: timestamp.toISOString(),
-      timestamp: timestamp.getTime(),
-      createdBy: {
-        userId: user?.userId || 'ADMIN-001',
-        name: user?.name || 'Administrator',
-        role: user?.role || 'Admin'
+    // 6. Build Complete Single JSON Backup Structure
+    const backupPayload: any = {
+      backup: {
+        application: 'KKV Gold Finance & Rental Management',
+        backupVersion: '2.0.0',
+        backupId,
+        backupType,
+        createdAt: timestamp.toISOString(),
+        timestamp: timestamp.getTime(),
+        createdBy: {
+          userId: user?.userId || 'ADMIN-001',
+          name: user?.name || 'Administrator',
+          role: user?.role || 'Admin'
+        },
+        environment: env.NODE_ENV,
+        databaseType: 'Hybrid (MongoDB + Local JSON)'
       },
-      counts: recordCounts,
+      recordCounts,
+      sequences,
+      finance: {
+        customers,
+        customerKyc: customerKycList,
+        loans,
+        loanPayments: loanPaymentsList,
+        loanInterestHistory: loanInterestHistoryList,
+        goldPledgeItems: goldPledgeItemsList,
+        receipts,
+        fixedDeposits,
+        fdCustomers,
+        fdInterestPayouts,
+        fdWithdrawals,
+        dayBook: dayBookEntries,
+        reminders,
+        notifications,
+        auditLogs
+      },
+      rental: {
+        complexes: rentalComplexes,
+        shops: rentalShops,
+        rentPayments,
+        expenses: rentalExpenses,
+        dayBook: rentalDayBook,
+        auditLogs: rentalAuditLogs,
+        counters: rentalCounters
+      },
+      attachments: fileAttachments,
+      system: {
+        requiredMasterData: permittedMasterData
+      },
+      // Root-level backward-compatibility fields
       data: {
         customers,
         loans,
@@ -170,67 +337,38 @@ class BackupPackageService {
         dayBookEntries,
         reminders,
         notifications,
-        auditLogs
+        auditLogs,
+        rentalComplexes,
+        rentalShops,
+        rentPayments,
+        rentalExpenses,
+        rentalDayBook,
+        fileAttachments
       }
     };
 
-    const snapshotJsonStr = JSON.stringify(snapshotPayload, null, 2);
-    const snapshotBuffer = Buffer.from(snapshotJsonStr, 'utf-8');
+    // 6. Build Snapshot JSON & ZIP Package
+    const finalJsonString = JSON.stringify(backupPayload, null, 2);
+    const jsonBuffer = Buffer.from(finalJsonString, 'utf-8');
+    const snapshotSha256 = calculateSha256(jsonBuffer);
 
-    // 3. Generate CSV Exports
-    const filesToPackage: { path: string; buffer: Buffer }[] = [
-      { path: 'snapshot.json', buffer: snapshotBuffer },
-      { path: 'data/customers.csv', buffer: Buffer.from(objectsToCsv(customers), 'utf-8') },
-      { path: 'data/customer_kyc.csv', buffer: Buffer.from(objectsToCsv(customerKycList), 'utf-8') },
-      { path: 'data/loans.csv', buffer: Buffer.from(objectsToCsv(loans), 'utf-8') },
-      { path: 'data/loan_payments.csv', buffer: Buffer.from(objectsToCsv(loanPaymentsList), 'utf-8') },
-      { path: 'data/loan_interest_history.csv', buffer: Buffer.from(objectsToCsv(loanInterestHistoryList), 'utf-8') },
-      { path: 'data/gold_pledge_items.csv', buffer: Buffer.from(objectsToCsv(goldPledgeItemsList), 'utf-8') },
-      { path: 'data/receipts.csv', buffer: Buffer.from(objectsToCsv(receipts), 'utf-8') },
-      { path: 'data/fixed_deposits.csv', buffer: Buffer.from(objectsToCsv(fixedDeposits), 'utf-8') },
-      { path: 'data/fd_customers.csv', buffer: Buffer.from(objectsToCsv(fdCustomers), 'utf-8') },
-      { path: 'data/fd_payouts.csv', buffer: Buffer.from(objectsToCsv(fdInterestPayouts), 'utf-8') },
-      { path: 'data/fd_withdrawals.csv', buffer: Buffer.from(objectsToCsv(fdWithdrawals), 'utf-8') },
-      { path: 'data/daybook.csv', buffer: Buffer.from(objectsToCsv(dayBookEntries), 'utf-8') },
-      { path: 'data/notifications.csv', buffer: Buffer.from(objectsToCsv(notifications), 'utf-8') },
-      { path: 'data/audit_logs.csv', buffer: Buffer.from(objectsToCsv(auditLogs), 'utf-8') },
-      {
-        path: 'schema/backup-schema-version.json',
-        buffer: Buffer.from(
-          JSON.stringify(
-            {
-              schemaVersion: '1.0.0',
-              compatibleVersions: ['1.0.0'],
-              application: 'KKV Gold Finance',
-              description: 'Official Database Export and Restoration Schema'
-            },
-            null,
-            2
-          ),
-          'utf-8'
-        )
-      }
-    ];
+    // Embed snapshot checksum into integrity section
+    backupPayload.integrity = {
+      checksum: snapshotSha256,
+      schemaVersion: '2.0.0'
+    };
 
-    // 4. Build Manifest & Checksums
-    const manifestFiles: BackupManifestFile[] = [];
-    const sha256Lines: string[] = [];
+    const serializedJson = JSON.stringify(backupPayload, null, 2);
+    const finalSnapshotBuffer = Buffer.from(serializedJson, 'utf-8');
+    const finalSnapshotSha256 = calculateSha256(finalSnapshotBuffer);
 
-    for (const f of filesToPackage) {
-      const sha = calculateSha256(f.buffer);
-      manifestFiles.push({
-        path: f.path,
-        size: f.buffer.length,
-        sha256: sha
-      });
-      sha256Lines.push(`${sha}  ${f.path}`);
-    }
-
-    const manifest: BackupManifest = {
+    // Build Manifest
+    const manifestData = {
+      application: 'KKV Gold Finance',
+      backupType,
+      backupVersion: '2.0.0',
       backupId,
-      applicationName: 'KKV GOLD FINANCE',
-      applicationVersion: '2.5.0',
-      backupSchemaVersion: '1.0.0',
+      fileName,
       createdAt: timestamp.toISOString(),
       createdBy: {
         userId: user?.userId || 'ADMIN-001',
@@ -238,35 +376,83 @@ class BackupPackageService {
         role: user?.role || 'Admin'
       },
       recordCounts,
-      files: manifestFiles
+      sequences,
+      sha256: finalSnapshotSha256,
+      includesDriveReferences: true,
+      includesSecrets: false
     };
 
-    const manifestJsonStr = JSON.stringify(manifest, null, 2);
-    const manifestBuffer = Buffer.from(manifestJsonStr, 'utf-8');
-    const sha256SumsBuffer = Buffer.from(sha256Lines.join('\n') + '\n', 'utf-8');
-
-    filesToPackage.push({ path: 'manifest.json', buffer: manifestBuffer });
-    filesToPackage.push({ path: 'checksums/SHA256SUMS.txt', buffer: sha256SumsBuffer });
-
-    // 5. Construct ZIP Package
+    // Build JSZip Archive
     const zip = new JSZip();
-    for (const file of filesToPackage) {
-      zip.file(file.path, file.buffer);
-    }
+    zip.file('snapshot.json', serializedJson);
+    zip.file('manifest.json', JSON.stringify(manifestData, null, 2));
+    zip.file('version.json', JSON.stringify({ schemaVersion: '2.0.0', application: 'KKV Gold Finance', version: '2.0.0', createdAt: timestamp.toISOString() }, null, 2));
+    zip.file('checksums.json', JSON.stringify({ 'snapshot.json': finalSnapshotSha256, schemaVersion: '2.0.0' }, null, 2));
+
+    // Structured Domain Folders
+    const financeFolder = zip.folder('finance')!;
+    financeFolder.file('customers.json', JSON.stringify(customers, null, 2));
+    financeFolder.file('loans.json', JSON.stringify(loans, null, 2));
+    financeFolder.file('receipts.json', JSON.stringify(receipts, null, 2));
+    financeFolder.file('fixed_deposits.json', JSON.stringify(fixedDeposits, null, 2));
+    financeFolder.file('daybook.json', JSON.stringify(dayBookEntries, null, 2));
+
+    const rentalFolder = zip.folder('rental')!;
+    rentalFolder.file('complexes.json', JSON.stringify(rentalComplexes, null, 2));
+    rentalFolder.file('shops.json', JSON.stringify(rentalShops, null, 2));
+    rentalFolder.file('payments.json', JSON.stringify(rentPayments, null, 2));
+    rentalFolder.file('expenses.json', JSON.stringify(rentalExpenses, null, 2));
+    rentalFolder.file('daybook.json', JSON.stringify(rentalDayBook, null, 2));
+
+    const attFolder = zip.folder('attachments')!;
+    attFolder.file('file_attachments.json', JSON.stringify(fileAttachments, null, 2));
+
+    const sysFolder = zip.folder('system')!;
+    sysFolder.file('master_data.json', JSON.stringify(permittedMasterData, null, 2));
 
     const zipBuffer = await zip.generateAsync({
       type: 'nodebuffer',
       compression: 'DEFLATE',
       compressionOptions: { level: 9 }
     });
-
     const zipSha256 = calculateSha256(zipBuffer);
-    const localFilePath = path.join(this.backupsDir, fileName);
-    fs.writeFileSync(localFilePath, zipBuffer);
 
-    console.log(`[BackupPackageService] ✅ ZIP created: ${fileName} (${zipBuffer.length} bytes, SHA-256: ${zipSha256})`);
+    // Save ZIP package to local storage
+    const localZipPath = path.join(this.backupsDir, fileName);
+    fs.writeFileSync(localZipPath, zipBuffer);
 
-    // 6. Record in History
+    // Also write JSON snapshot for direct fallback
+    const jsonFileName = `KKV_GOLD_FINANCE_BACKUP_${timestampStr}.json`;
+    const localJsonPath = path.join(this.backupsDir, jsonFileName);
+    fs.writeFileSync(localJsonPath, finalSnapshotBuffer);
+
+    console.log(`[BackupPackageService] ✅ Backup ZIP package created: ${fileName} (${zipBuffer.length} bytes, SHA-256: ${zipSha256})`);
+
+    // 7. Upload Backup ZIP to Google Drive (System Backups / Wipe Backups / YYYY / MM)
+    let driveBackupFileId: string | undefined;
+    let driveFolderId: string | undefined;
+    try {
+      if (googleDriveService.isReady()) {
+        const rootFolderId = env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+        const systemBackupsFolderId = await googleDriveService.getOrCreateFolder('System Backups', rootFolderId);
+        const folderName = backupType === 'PRE_WIPE_BACKUP' ? 'Wipe Backups' : 'Full Backups';
+        const targetBackupsFolderId = await googleDriveService.getOrCreateFolder(folderName, systemBackupsFolderId);
+        const yearFolderId = await googleDriveService.getOrCreateFolder(timestamp.getFullYear().toString(), targetBackupsFolderId);
+        const monthFolderId = await googleDriveService.getOrCreateFolder(
+          (timestamp.getMonth() + 1).toString().padStart(2, '0'),
+          yearFolderId
+        );
+        driveFolderId = monthFolderId;
+
+        const uploadRes = await googleDriveService.uploadBuffer(zipBuffer, fileName, 'application/zip', monthFolderId);
+        driveBackupFileId = uploadRes.fileId;
+        console.log(`[BackupPackageService] ☁️ Uploaded backup ZIP to Google Drive: ${uploadRes.fileId}`);
+      }
+    } catch (driveErr) {
+      console.warn('[BackupPackageService] Google Drive backup upload warning:', (driveErr as any)?.message || driveErr);
+    }
+
+    // 8. Record in History
     const historyRecord: BackupHistoryRecord = {
       backupId,
       fileName,
@@ -279,14 +465,17 @@ class BackupPackageService {
         role: user?.role || 'Admin'
       },
       recordCounts,
+      sequences,
       backupType,
       downloadAcknowledged: false,
+      driveBackupFileId,
+      driveFolderId,
       status: 'LOCAL_VERIFIED'
     };
 
     this.saveHistoryRecord(historyRecord);
 
-    // Write audit log
+    // 9. Write System Audit Log
     const auditRecord = {
       id: `AUDIT-BKP-${Date.now()}`,
       timestamp: timestamp.toISOString(),
@@ -296,7 +485,8 @@ class BackupPackageService {
       fileName,
       fileSize: zipBuffer.length,
       sha256: zipSha256,
-      details: `Full backup package created with ${recordCounts.totalRecords} total operational records.`
+      driveBackupFileId: driveBackupFileId || null,
+      details: `Full backup ZIP package created with ${recordCounts.totalRecords} total operational records (Finance + Rental + Attachments).`
     };
     const currentLogs = localFileRepository.readJson<any[]>('audit_logs.json', []);
     localFileRepository.writeJson('audit_logs.json', [auditRecord, ...currentLogs.slice(0, 500)]);
@@ -305,15 +495,15 @@ class BackupPackageService {
   }
 
   /**
-   * Retrieves the raw ZIP buffer for authenticated download.
+   * Retrieves the raw JSON buffer for authenticated download.
    */
-  public getBackupZip(backupIdOrFileName: string): { buffer: Buffer; fileName: string; fileSize: number; sha256: string } | null {
+  public getBackupFile(backupIdOrFileName: string): { buffer: Buffer; fileName: string; fileSize: number; sha256: string } | null {
     const history = this.getBackupHistory();
     const record = history.find(r => r.backupId === backupIdOrFileName || r.fileName === backupIdOrFileName);
 
     let targetFileName = record ? record.fileName : backupIdOrFileName;
-    if (!targetFileName.endsWith('.zip')) {
-      targetFileName = `${targetFileName}.zip`;
+    if (!targetFileName.endsWith('.json') && !targetFileName.endsWith('.zip')) {
+      targetFileName = `${targetFileName}.json`;
     }
 
     const filePath = path.join(this.backupsDir, targetFileName);
@@ -331,6 +521,11 @@ class BackupPackageService {
       fileSize: buffer.length,
       sha256
     };
+  }
+
+  // Alias for backward compatibility
+  public getBackupZip(backupIdOrFileName: string) {
+    return this.getBackupFile(backupIdOrFileName);
   }
 
   /**
@@ -353,14 +548,13 @@ class BackupPackageService {
       this.updateHistoryRecord(record);
     }
 
-    // Audit log
     const auditRecord = {
       id: `AUDIT-DL-${Date.now()}`,
       timestamp: now,
       action: 'BACKUP_DOWNLOADED_ACKNOWLEDGED',
       user: user?.name || 'Administrator',
       backupId,
-      details: 'Administrator explicitly acknowledged downloading the verified backup package to local workstation.'
+      details: 'Administrator explicitly acknowledged downloading the verified JSON backup package.'
     };
     const currentLogs = localFileRepository.readJson<any[]>('audit_logs.json', []);
     localFileRepository.writeJson('audit_logs.json', [auditRecord, ...currentLogs.slice(0, 500)]);

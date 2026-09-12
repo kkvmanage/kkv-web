@@ -11,6 +11,7 @@ import {
 } from '../controllers/customerController.js';
 import { handleUploadMiddleware } from '../middleware/uploadMiddleware.js';
 import { authenticateUser, authorizePermission, authorizeRoles } from '../middleware/auth.middleware.js';
+import { getLoansByCustomerId } from '../controllers/loan.controller.js';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.use(authenticateUser);
 // Operational Endpoints: Fine-grained permissions
 router.get('/', authorizePermission('customers', 'view'), getCustomers);
 router.get('/search', authorizePermission('customers', 'view'), searchCustomers);
+router.get('/:id/loans', authorizePermission('loans', 'view'), getLoansByCustomerId);
 router.get('/:id', authorizePermission('customers', 'view'), getCustomerById);
 router.post('/', authorizePermission('customers', 'create'), handleUploadMiddleware, createCustomer);
 router.put('/:id', authorizePermission('customers', 'update'), handleUploadMiddleware, updateCustomer);

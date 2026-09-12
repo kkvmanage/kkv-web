@@ -1,1 +1,28 @@
-[]
+[
+  {
+    "_id": "6aa53ee798f8b0a99e98bc22",
+    "id": "RCPT-1789214439918",
+    "receiptNo": 1,
+    "loanId": "L-1789214439865",
+    "loanNo": "GL-1",
+    "customerId": "KKV-2026-000001",
+    "customerName": "shyam",
+    "kind": "NEW LOAN",
+    "loanType": "Gold Loan",
+    "amount": 100000,
+    "principalComponent": 100000,
+    "interestComponent": 0,
+    "odCharges": 0,
+    "otherCharges": 0,
+    "discount": 0,
+    "tdsAmount": 0,
+    "paymentMode": "Cash",
+    "date": "12-09-2026",
+    "daysLate": 0,
+    "notes": "New Loan Disbursement",
+    "processedBy": "Admin",
+    "createdAt": "2026-09-12T12:00:39.920Z",
+    "updatedAt": "2026-09-12T12:00:39.920Z",
+    "__v": 0
+  }
+]

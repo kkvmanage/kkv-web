@@ -136,6 +136,7 @@ export class LoanService {
 
       return {
         ...it,
+        id: it.id || `item_${idx + 1}_${Date.now()}`,
         qty: qtyNum,
         grossWeight: grossVal,
         deductionWeight: deductionVal,

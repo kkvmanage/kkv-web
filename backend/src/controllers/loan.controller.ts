@@ -133,3 +133,17 @@ export const addLoanPayment = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getLoansByCustomerId = async (req: Request, res: Response) => {
+  const customerId = req.params.customerId || req.params.id;
+  const allLoans = await loanService.getAllAsync();
+  const customerLoans = allLoans.filter(l => 
+    l.customerId === customerId || 
+    (l as any).customerId?.toString() === customerId ||
+    l.customerId?.toLowerCase() === customerId?.toLowerCase()
+  );
+  return res.json({
+    success: true,
+    data: customerLoans
+  });
+};

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import { env } from '../config/env.js';
 import { UserModel, IUser, IUserPermissions, UserRole, normalizeUserPermissions } from '../models/User.js';
 
@@ -87,12 +88,21 @@ export const authenticateUser = async (
     const userId = decoded.sub || decoded.id || decoded.uid;
     const userEmail = decoded.email?.toLowerCase().trim();
 
-    const user = await UserModel.findOne({
-      $or: [
-        ...(userId ? [{ _id: userId }, { staffId: userId }, { uid: userId }] : []),
-        ...(userEmail ? [{ email: userEmail }] : [])
-      ]
-    }).lean() as IUser | null;
+    const orClauses: any[] = [];
+    if (userId) {
+      if (mongoose.Types.ObjectId.isValid(userId)) {
+        orClauses.push({ _id: userId });
+      }
+      orClauses.push({ staffId: userId });
+      orClauses.push({ uid: userId });
+    }
+    if (userEmail) {
+      orClauses.push({ email: userEmail });
+    }
+
+    const user = orClauses.length > 0
+      ? (await UserModel.findOne({ $or: orClauses }).lean() as IUser | null)
+      : null;
 
     if (!user) {
       res.status(401).json({

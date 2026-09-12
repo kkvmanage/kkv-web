@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "_id": "6aa53ee798f8b0a99e98bc23",
+    "id": "db-1789214439955",
+    "time": "05:30 PM",
+    "billNo": "1",
+    "particulars": "Loan Disbursement (GL-1) - shyam",
+    "accountHead": "Gold Loan Portfolio",
+    "mode": "Cash",
+    "cashIn": 0,
+    "cashOut": 100000,
+    "bankIn": 0,
+    "bankOut": 0,
+    "cashBal": -100000,
+    "bankBal": 0,
+    "tdsAmount": 0,
+    "customerName": "shyam",
+    "loanNo": "GL-1",
+    "date": "12-09-2026",
+    "createdAt": "2026-09-12T12:00:39.956Z",
+    "updatedAt": "2026-09-12T12:00:39.956Z",
+    "__v": 0
+  }
+]

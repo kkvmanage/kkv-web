@@ -17,7 +17,23 @@ const FixedDepositSchema = new Schema(
     idNumber: { type: String },
     address: { type: String, default: '' },
     depositDate: { type: String, required: true, index: true },
-    maturityDate: { type: String, required: true },
+    maturityDate: {
+      type: String,
+      default: function(this: any) {
+        if (this.depositDate) {
+          const parts = this.depositDate.split(/[-/]/);
+          if (parts.length === 3) {
+            const d = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const y = parseInt(parts[2], 10);
+            const tenure = this.tenureMonths || 12;
+            const dt = new Date(y, m + tenure, d);
+            return dt.toLocaleDateString('en-GB').replace(/\//g, '-');
+          }
+        }
+        return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB').replace(/\//g, '-');
+      }
+    },
     principal: { type: Number, required: true, default: 0 },
     remainingPrincipal: { type: Number },
     totalWithdrawnPrincipal: { type: Number, default: 0 },

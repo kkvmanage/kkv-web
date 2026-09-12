@@ -22,6 +22,8 @@ const router = Router();
 router.use(authenticateUser);
 
 // Operational Endpoints: Fine-grained permissions
+router.get('/', authorizePermission('fd', 'view'), getFixedDeposits);
+router.post('/', authorizePermission('fd', 'create'), createFixedDeposit);
 router.get('/config', authorizePermission('fd', 'view'), getFDConfiguration);
 router.get('/customers', authorizePermission('fd', 'view'), getFDCustomers);
 router.post('/customers', authorizePermission('fd', 'create'), createFDCustomer);

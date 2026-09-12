@@ -7,7 +7,10 @@ export interface ILoanDocument extends Document, Omit<Loan, 'id'> {
 
 const OrnamentItemSchema = new Schema(
   {
-    id: { type: String, required: true },
+    id: {
+      type: String,
+      default: () => 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
+    },
     item: { type: String, required: true },
     qty: { type: Number, required: true, default: 1 },
     purity: { type: String, required: true, default: '22ct' },

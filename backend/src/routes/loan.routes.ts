@@ -8,7 +8,8 @@ import {
   deleteLoan,
   closeLoan,
   getLoanPayments,
-  addLoanPayment
+  addLoanPayment,
+  getLoansByCustomerId
 } from '../controllers/loan.controller.js';
 import { authenticateUser, authorizePermission, authorizeRoles } from '../middleware/auth.middleware.js';
 
@@ -20,6 +21,7 @@ router.use(authenticateUser);
 // Operational Endpoints: Module-action permissions
 router.get('/next-sequence', authorizePermission('loans', 'view'), getNextSequence);
 router.get('/', authorizePermission('loans', 'view'), getLoans);
+router.get('/customer/:customerId', authorizePermission('loans', 'view'), getLoansByCustomerId);
 router.get('/:loanNo', authorizePermission('loans', 'view'), getLoanByNo);
 router.post('/', authorizePermission('loans', 'create'), createLoan);
 router.put('/:id', authorizePermission('loans', 'update'), updateLoan);

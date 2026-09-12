@@ -143,10 +143,27 @@ export class FDService {
     // Monthly payout = (Principal * RatePA) / (12 * 100)
     const monthlyPayout = principal.times(ratePA).dividedBy(1200).toDecimalPlaces(2).toNumber();
 
+    const depositDate = data.depositDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+    let maturityDate = data.maturityDate;
+    if (!maturityDate) {
+      const parts = depositDate.split(/[-/]/);
+      if (parts.length === 3) {
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        const dt = new Date(y, m + serverTenureMonths, d);
+        maturityDate = dt.toLocaleDateString('en-GB').replace(/\//g, '-');
+      } else {
+        maturityDate = new Date(Date.now() + serverTenureMonths * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB').replace(/\//g, '-');
+      }
+    }
+
     const newFD: FixedDeposit = {
       ...data,
       id: `FD-${Date.now()}`,
       fdNo,
+      depositDate,
+      maturityDate,
       principal: principal.toNumber(),
       remainingPrincipal: data.remainingPrincipal ?? principal.toNumber(),
       totalWithdrawnPrincipal: data.totalWithdrawnPrincipal ?? 0,

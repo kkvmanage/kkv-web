@@ -2464,7 +2464,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomers((prev) => [newCust, ...prev.filter(c => c.id !== id)]);
 
     // Persist to backend
-    apiService.createCustomer(newCust).catch((err) => {
+    apiService.createCustomer(newCust).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
       console.warn('[AppContext] Customer backend save sync warning:', err);
     });
 

@@ -84,8 +84,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.warn('[API Auth] 401 Unauthorized received. Session expired.');
-      setStoredAuthToken(null);
+      console.warn('[API Auth] 401 Unauthorized received on request:', error.config?.url);
     }
     if (!error.response) {
       console.warn('[API Error] Unable to connect to KKV Gold Finance backend. Make sure the backend is running on port 8080.');
@@ -114,7 +113,6 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T 
     
     if (res.status === 401) {
       console.warn(`[Auth 401] Unauthorized on ${endpoint}`);
-      setStoredAuthToken(null);
       return null;
     }
 
@@ -377,6 +375,12 @@ export const apiService = {
   // ── Loans ──────────────────────────────────────────────────────────────────
   async getLoans() {
     return fetchJson<any[]>('/loans');
+  },
+  async getLoanByNo(loanNo: string) {
+    return fetchJson<any>(`/loans/${loanNo}`);
+  },
+  async getCustomerLoans(customerId: string) {
+    return fetchJson<any[]>(`/customers/${customerId}/loans`);
   },
   async createLoan(loan: any) {
     return fetchJson<any>('/loans', {

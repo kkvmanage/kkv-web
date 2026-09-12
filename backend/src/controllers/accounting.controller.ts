@@ -1,16 +1,16 @@
 import { Request, Response } from 'express';
 import { accountingService } from '../services/accounting.service.js';
 
-export const getDayBook = (req: Request, res: Response) => {
-  const entries = accountingService.getDayBook();
+export const getDayBook = async (req: Request, res: Response) => {
+  const entries = await accountingService.getDayBookAsync();
   return res.json({
     success: true,
     data: entries
   });
 };
 
-export const addVoucher = (req: Request, res: Response) => {
-  const entry = accountingService.addEntry(req.body);
+export const addVoucher = async (req: Request, res: Response) => {
+  const entry = await accountingService.addEntryAsync(req.body);
   return res.status(201).json({
     success: true,
     message: 'Voucher recorded successfully',
@@ -18,32 +18,32 @@ export const addVoucher = (req: Request, res: Response) => {
   });
 };
 
-export const getBalances = (req: Request, res: Response) => {
-  const balances = accountingService.getBalances();
+export const getBalances = async (req: Request, res: Response) => {
+  const balances = await accountingService.getBalancesAsync();
   return res.json({
     success: true,
     data: balances
   });
 };
 
-export const getTrialBalance = (req: Request, res: Response) => {
-  const tb = accountingService.getTrialBalance();
+export const getTrialBalance = async (req: Request, res: Response) => {
+  const tb = await accountingService.getTrialBalance();
   return res.json({
     success: true,
     data: tb
   });
 };
 
-export const getProfitAndLoss = (req: Request, res: Response) => {
-  const pl = accountingService.getProfitAndLoss();
+export const getProfitAndLoss = async (req: Request, res: Response) => {
+  const pl = await accountingService.getProfitAndLoss();
   return res.json({
     success: true,
     data: pl
   });
 };
 
-export const getBalanceSheet = (req: Request, res: Response) => {
-  const bs = accountingService.getBalanceSheet();
+export const getBalanceSheet = async (req: Request, res: Response) => {
+  const bs = await accountingService.getBalanceSheet();
   return res.json({
     success: true,
     data: bs

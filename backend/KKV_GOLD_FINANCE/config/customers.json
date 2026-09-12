@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "customerId": 1,
+    "name": "Admin Created Customer",
+    "mobile": "9876543210",
+    "address": "123 Admin Lane",
+    "branchId": "MAIN",
+    "complexId": "COMP-1",
+    "id": "CUST-001",
+    "phoneNormalized": "",
+    "activeLoansCount": 0,
+    "totalBorrowed": 0,
+    "status": "VERIFIED",
+    "joinedDate": "12/09/2026",
+    "isDeleted": false,
+    "deletedAt": null,
+    "deletedBy": null,
+    "kycDocumentDriveIds": [],
+    "createdAt": "2026-09-12T07:59:42.983Z",
+    "updatedAt": "2026-09-12T07:59:42.983Z"
+  }
+]

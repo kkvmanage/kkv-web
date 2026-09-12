@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { dashboardService } from '../services/dashboard.service.js';
 
-export const getDashboardSummary = (req: Request, res: Response) => {
+export const getDashboardSummary = async (req: Request, res: Response) => {
   try {
     const user = req.user;
     const requestedBranch = typeof req.query.branchId === 'string' ? req.query.branchId : undefined;
@@ -20,7 +20,7 @@ export const getDashboardSummary = (req: Request, res: Response) => {
       branchId = userBranch;
     }
 
-    const summary = dashboardService.getSummary(user, branchId);
+    const summary = await dashboardService.getSummaryAsync(user, branchId);
     return res.json({
       success: true,
       message: 'Dashboard summary retrieved',
@@ -36,4 +36,3 @@ export const getDashboardSummary = (req: Request, res: Response) => {
     });
   }
 };
-

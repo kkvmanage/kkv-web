@@ -420,17 +420,44 @@ export const apiService = {
       body: JSON.stringify(fd),
     });
   },
-  async payFDInterest(fdNo: string, amount: number, mode: string) {
+  async payFDInterest(fdNo: string, amount: number, mode: string, dueDate?: string, periodKey?: string) {
     return fetchJson<any>(`/fd/deposits/${fdNo}/payout`, {
       method: 'POST',
-      body: JSON.stringify({ amount, mode })
+      body: JSON.stringify({ amount, mode, dueDate, periodKey })
     });
   },
-  async withdrawFD(fdNo: string, mode: string, notes?: string) {
+  async withdrawFD(
+    fdNo: string,
+    mode: string,
+    notes?: string,
+    withdrawalAmount?: number,
+    transactionReference?: string,
+    bankName?: string
+  ) {
     return fetchJson<any>(`/fd/deposits/${fdNo}/withdraw`, {
       method: 'POST',
-      body: JSON.stringify({ mode, notes })
+      body: JSON.stringify({ mode, notes, withdrawalAmount, transactionReference, bankName })
     });
+  },
+  async renewFD(fdNo: string, periodMonths: number, notes?: string) {
+    return fetchJson<any>(`/fd/deposits/${fdNo}/renew`, {
+      method: 'POST',
+      body: JSON.stringify({ periodMonths, notes })
+    });
+  },
+  async deleteFixedDeposit(fdNo: string) {
+    return fetchJson<{ success: boolean; message: string }>(`/fd/deposits/${fdNo}`, {
+      method: 'DELETE'
+    });
+  },
+  async getFDPayouts() {
+    return fetchJson<any[]>('/fd/payouts');
+  },
+  async getFDWithdrawals() {
+    return fetchJson<any[]>('/fd/withdrawals');
+  },
+  async getFDRenewals() {
+    return fetchJson<any[]>('/fd/renewals');
   },
   async getFDConfig() {
     return fetchJson<any>('/fd/config');
@@ -442,7 +469,7 @@ export const apiService = {
     });
   },
   async bulkUpdateFDDates(fdNos: string[], newDepositDate?: string, offsetDays?: number) {
-    return fetchJson<any>('/fd/deposits/bulk-date-change', {
+    return fetchJson<any>(`/fd/deposits/bulk-date-change`, {
       method: 'POST',
       body: JSON.stringify({ fdNos, newDepositDate, offsetDays })
     });

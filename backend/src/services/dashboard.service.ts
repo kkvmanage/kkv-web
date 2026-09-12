@@ -4,7 +4,7 @@ import { loanService } from './loan.service.js';
 import { receiptService } from './receipt.service.js';
 import { fdService } from './fd.service.js';
 import { accountingService } from './accounting.service.js';
-import { Loan, Receipt } from '../types/index.js';
+import { Loan, Receipt, Customer, FixedDeposit } from '../types/index.js';
 
 export interface MonthlyTrend {
   monthKey: string;     // e.g. "2026-09"
@@ -81,12 +81,19 @@ function parseRecordDate(dateStr?: string, createdAt?: string): Date | null {
 }
 
 export class DashboardService {
-  public getSummary(user?: any, branchId?: string): DashboardSummaryData {
-    let customers = customerService.getAll();
-    let loans = loanService.getAll();
-    let receipts = receiptService.getAll();
-    let fds = fdService.getDeposits();
-    const balances = accountingService.getBalances();
+  private calculateSummary(
+    rawCustomers: Customer[],
+    rawLoans: Loan[],
+    rawReceipts: Receipt[],
+    rawFds: FixedDeposit[],
+    balances: { cashInHand: number; cashAtBank: number },
+    user?: any,
+    branchId?: string
+  ): DashboardSummaryData {
+    let customers = rawCustomers;
+    let loans = rawLoans;
+    let receipts = rawReceipts;
+    let fds = rawFds;
 
     // Enforce branch scope
     if (user && user.role !== 'ADMIN') {
@@ -253,7 +260,26 @@ export class DashboardService {
       recentTransactions
     };
   }
+
+  public async getSummaryAsync(user?: any, branchId?: string): Promise<DashboardSummaryData> {
+    const [customers, loans, receipts, fds, balances] = await Promise.all([
+      customerService.getAllAsync(),
+      loanService.getAllAsync(),
+      receiptService.getAllAsync(),
+      fdService.getDepositsAsync(),
+      accountingService.getBalancesAsync()
+    ]);
+    return this.calculateSummary(customers, loans, receipts, fds, balances, user, branchId);
+  }
+
+  public getSummary(user?: any, branchId?: string): DashboardSummaryData {
+    const customers = customerService.getAll();
+    const loans = loanService.getAll();
+    const receipts = receiptService.getAll();
+    const fds = fdService.getDeposits();
+    const balances = accountingService.getBalances();
+    return this.calculateSummary(customers, loans, receipts, fds, balances, user, branchId);
+  }
 }
 
 export const dashboardService = new DashboardService();
-

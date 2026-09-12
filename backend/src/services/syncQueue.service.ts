@@ -10,6 +10,7 @@ export type SyncEntityType =
   | 'fd_customer'
   | 'fd_interest_payout'
   | 'fd_withdrawal'
+  | 'fd_renewal'
   | 'daybook'
   | 'reminder'
   | 'notification'

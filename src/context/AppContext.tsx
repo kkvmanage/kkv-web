@@ -850,6 +850,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchKeys.push('fd');
         promises.push(apiService.getFDCustomers());
         fetchKeys.push('fdCustomers');
+        promises.push(apiService.getFDPayouts());
+        fetchKeys.push('fdInterestPayouts');
+        promises.push(apiService.getFDWithdrawals());
+        fetchKeys.push('fdWithdrawals');
+        promises.push(apiService.getFDRenewals());
+        fetchKeys.push('fdRenewals');
       }
       if (canView('accounting')) {
         promises.push(apiService.getDayBook());
@@ -880,6 +886,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           else if (key === 'receipts' && Array.isArray(val)) setReceipts(val);
           else if (key === 'fd' && Array.isArray(val)) setFixedDeposits(val);
           else if (key === 'fdCustomers' && Array.isArray(val)) setFdCustomers(val);
+          else if (key === 'fdInterestPayouts' && Array.isArray(val)) setFdInterestPayouts(val);
+          else if (key === 'fdWithdrawals' && Array.isArray(val)) setFdWithdrawals(val);
+          else if (key === 'fdRenewals' && Array.isArray(val)) setFdRenewals(val);
           else if (key === 'dayBook' && Array.isArray(val)) setDayBookEntries(val);
           else if (key === 'masterSettings') {
             // val may be the response body — extract .data if present
@@ -2232,6 +2241,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
+
+    // Authoritative backend persistence & sync
+    apiService.createLoan({
+      ...loanData,
+      loanNo,
+      receiptBillNo: receiptNo
+    }).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend loan creation warning:', err);
+    });
+
     showToast(`Loan ${loanNo} issued successfully!`, 'success');
     return newLoan;
   };
@@ -2308,6 +2329,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
 
+    // Authoritative backend persistence & sync
+    apiService.createReceipt(newReceipt).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend receipt creation warning:', err);
+    });
+
     showToast(`Receipt #${receiptNo} recorded successfully!`, 'success');
     return newReceipt;
   };
@@ -2359,6 +2387,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
+
+    // Authoritative backend persistence & sync
+    apiService.createFixedDeposit(newFd).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD creation warning:', err);
+    });
+
     showToast(`Fixed Deposit ${fdNo} issued successfully!`, 'success');
     return newFd;
   };
@@ -2370,6 +2406,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString().split('T')[0]
     };
     setFdCustomers(prev => [newCust, ...prev]);
+
+    // Authoritative backend persistence & sync
+    apiService.createFDCustomer(newCust).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD Customer creation warning:', err);
+    });
+
     showToast(`FD Customer ${newCust.name} saved successfully!`, 'success');
     return newCust;
   };
@@ -2667,6 +2711,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDayBookEntries((prev) => [dbEntry, ...prev]);
+
+    // Authoritative backend persistence & sync
+    apiService.payFDInterest(targetFD.fdNo, payoutAmount, mode, dueDateToPay, periodKeyToPay).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD Interest payout warning:', err);
+    });
+
     showToast(`Interest payout of ₹${payoutAmount.toLocaleString('en-IN')} recorded for ${targetFD.fdNo} (${dueDateToPay})`, 'success');
     return true;
   };
@@ -2782,6 +2834,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDayBookEntries(prev => [dbEntry, ...prev]);
+
+    // Authoritative backend persistence & sync
+    apiService.withdrawFD(fdNo, mode, notes, amountToWithdraw, transactionReference, bankName).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD withdrawal warning:', err);
+    });
+
     showToast(
       isFullyWithdrawn
         ? `Fixed Deposit ${fdNo} closed and fully refunded (₹${amountToWithdraw.toLocaleString('en-IN')})`
@@ -2861,6 +2921,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setDayBookEntries(prev => [dbEntry, ...prev]);
 
+    // Authoritative backend persistence & sync
+    apiService.renewFD(fdNo, periodMonths, notes).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD renewal warning:', err);
+    });
+
     showToast(`Fixed Deposit ${fdNo} renewed for ${periodMonths} months. New maturity: ${newMaturityDate}`, 'success');
     return true;
   };
@@ -2877,6 +2944,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFdInterestPayouts((prev) => prev.filter((p) => p.fdNo !== fdNo));
     setFdWithdrawals((prev) => prev.filter((w) => w.fdNo !== fdNo));
     setFdRenewals((prev) => prev.filter((r) => r.fdNo !== fdNo));
+
+    // Authoritative backend persistence & sync
+    apiService.deleteFixedDeposit(fdNo).then(() => {
+      reloadAllData().catch(() => {});
+    }).catch((err) => {
+      console.warn('[AppContext] Backend FD delete warning:', err);
+    });
 
     showToast(`Fixed Deposit ${fdNo} permanently deleted.`, 'success');
     return true;

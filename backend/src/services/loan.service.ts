@@ -10,23 +10,106 @@ import { adminService } from './admin.service.js';
 import { counterService } from './counter.service.js';
 import { googleDriveService } from './googleDrive.service.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
+import { LoanModel } from '../models/Loan.js';
+import { isMongoConnected, ensureMongoConnected } from '../config/database.js';
 
 const FILE_NAME = 'loans.json';
-
 const initialLoans: Loan[] = [];
 
 export class LoanService {
+  private hasSeededToMongo = false;
+
+  private async ensureSeeded(): Promise<void> {
+    if (this.hasSeededToMongo) return;
+    try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
+      if (isMongoConnected()) {
+        const count = await LoanModel.countDocuments();
+        if (count === 0) {
+          const fileLoans = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
+          if (Array.isArray(fileLoans) && fileLoans.length > 0) {
+            for (const l of fileLoans) {
+              await LoanModel.findOneAndUpdate(
+                { $or: [{ id: l.id }, { loanNo: l.loanNo }] },
+                { $set: l },
+                { upsert: true }
+              );
+            }
+            console.log(`[LoanService] Migrated ${fileLoans.length} loans from JSON to MongoDB.`);
+          }
+        }
+        this.hasSeededToMongo = true;
+      }
+    } catch (err) {
+      console.warn('[LoanService] Seed to Mongo note:', err);
+    }
+  }
+
+  public async getAllAsync(): Promise<Loan[]> {
+    await this.ensureSeeded();
+    try {
+      if (isMongoConnected()) {
+        const dbLoans = await LoanModel.find({ isDeleted: { $ne: true } })
+          .sort({ createdAt: -1 })
+          .lean();
+        if (Array.isArray(dbLoans)) {
+          const mapped: Loan[] = dbLoans.map((l: any) => ({
+            ...l,
+            id: l.id || l._id?.toString()
+          }));
+          localFileRepository.writeJson(FILE_NAME, mapped);
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn('[LoanService] MongoDB read failed, falling back to local file:', err);
+    }
+
+    let list = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
+    if (!Array.isArray(list)) {
+      list = [];
+    }
+    return list.filter((l) => !l.isDeleted);
+  }
+
   public getAll(): Loan[] {
     let list = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
     if (!Array.isArray(list)) {
       list = [];
     }
-    return list;
+    return list.filter((l) => !l.isDeleted);
+  }
+
+  public async getByIdAsync(id: string): Promise<Loan | null> {
+    await this.ensureSeeded();
+    try {
+      if (isMongoConnected()) {
+        const dbLoan = await LoanModel.findOne({
+          isDeleted: { $ne: true },
+          $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }]
+        }).lean();
+        if (dbLoan) {
+          return {
+            ...(dbLoan as any),
+            id: (dbLoan as any).id || (dbLoan as any)._id?.toString()
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[LoanService] getByIdAsync Mongo error:', err);
+    }
+    return this.getById(id);
   }
 
   public getById(id: string): Loan | null {
     const loans = this.getAll();
     return loans.find((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase()) || null;
+  }
+
+  public async getByLoanNoAsync(loanNo: string): Promise<Loan | null> {
+    return this.getByIdAsync(loanNo);
   }
 
   public getByLoanNo(loanNo: string): Loan | null {
@@ -113,13 +196,17 @@ export class LoanService {
     };
   }
 
-  public async create(loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string }): Promise<Loan> {
-    const loans = this.getAll();
+  public async create(loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }): Promise<Loan> {
     let seq: number;
     let loanNo: string;
     if (loanData.loanNo && /^GL-\d+$/i.test(loanData.loanNo.trim())) {
       loanNo = loanData.loanNo.trim().toUpperCase();
       seq = parseInt(loanNo.replace(/\D/g, ''), 10);
+      await counterService.setSequenceIfHigher('loanSequence', seq);
+      await counterService.setSequenceIfHigher('loanNo', seq);
+    } else if (loanData.receiptBillNo && Number(loanData.receiptBillNo) > 0) {
+      seq = Number(loanData.receiptBillNo);
+      loanNo = `GL-${seq}`;
       await counterService.setSequenceIfHigher('loanSequence', seq);
       await counterService.setSequenceIfHigher('loanNo', seq);
     } else {
@@ -434,6 +521,7 @@ export class LoanService {
       principal: effectivePrincipal,
       id,
       loanNo,
+      receiptBillNo: seq,
       loanType: matchedType ? matchedType.name : loanData.loanType,
       loanTypeId: matchedType ? matchedType.id : (loanData.loanTypeId || 'gold-loan'),
       loanTypeName: matchedType ? matchedType.name : (loanData.loanTypeName || loanData.loanType),
@@ -489,10 +577,24 @@ export class LoanService {
       updatedAt: new Date().toISOString()
     };
 
+    // ── 1. AUTHORITATIVE PERSISTENCE TO MONGODB ─────────────────────────────
+    try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
+      if (isMongoConnected()) {
+        await LoanModel.create(newLoan);
+      }
+    } catch (mongoErr: any) {
+      console.error('[LoanService] Critical MongoDB save error for loan:', mongoErr);
+      throw new Error('Database persistence failed: ' + (mongoErr?.message || mongoErr));
+    }
+
+    // ── 2. LOCAL FILE REPOSITORY & SYNC QUEUE ───────────────────────────────
+    const loans = this.getAll();
     loans.unshift(newLoan);
     localFileRepository.writeJson(FILE_NAME, loans);
 
-    // Enqueue background sync event
     syncQueueService.enqueue('loan', newLoan.loanNo, 'CREATE', newLoan);
 
     // Update customer active loans count
@@ -532,7 +634,7 @@ export class LoanService {
       const cashDisbursed = isCash ? effectivePrincipal : isSplit ? (newLoan.cashAmount || 0) : 0;
       const bankDisbursed = isCash ? 0 : isSplit ? (newLoan.bankAmount || 0) : effectivePrincipal;
 
-      accountingService.addEntry({
+      await accountingService.addEntryAsync({
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         billNo: String(seq),
         particulars: `Loan Disbursement (${loanNo}) - ${newLoan.customerName}`,
@@ -553,6 +655,32 @@ export class LoanService {
     return newLoan;
   }
 
+  public async closeLoanAsync(loanNo: string): Promise<Loan | null> {
+    try {
+      if (isMongoConnected()) {
+        const updated = await LoanModel.findOneAndUpdate(
+          { loanNo: new RegExp(`^${loanNo}$`, 'i') },
+          { $set: { outstandingPrincipal: 0, status: 'CLOSED', updatedAt: new Date().toISOString() } },
+          { new: true }
+        ).lean();
+        if (updated) {
+          const mapped: Loan = { ...(updated as any), id: (updated as any).id || (updated as any)._id?.toString() };
+          const loans = this.getAll();
+          const idx = loans.findIndex((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase());
+          if (idx !== -1) {
+            loans[idx] = mapped;
+            localFileRepository.writeJson(FILE_NAME, loans);
+          }
+          syncQueueService.enqueue('loan', mapped.loanNo, 'UPDATE', mapped);
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn('[LoanService] closeLoanAsync Mongo error:', err);
+    }
+    return this.closeLoan(loanNo);
+  }
+
   public closeLoan(loanNo: string): Loan | null {
     const loans = this.getAll();
     const index = loans.findIndex((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase());
@@ -563,7 +691,41 @@ export class LoanService {
 
     localFileRepository.writeJson(FILE_NAME, loans);
     syncQueueService.enqueue('loan', loans[index].loanNo, 'UPDATE', loans[index]);
+
+    if (isMongoConnected()) {
+      LoanModel.findOneAndUpdate(
+        { loanNo: new RegExp(`^${loanNo}$`, 'i') },
+        { $set: { outstandingPrincipal: 0, status: 'CLOSED', updatedAt: new Date().toISOString() } }
+      ).catch(() => {});
+    }
+
     return loans[index];
+  }
+
+  public async updateAsync(id: string, updates: Partial<Loan>): Promise<Loan | null> {
+    try {
+      if (isMongoConnected()) {
+        const updated = await LoanModel.findOneAndUpdate(
+          { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
+          { $set: { ...updates, updatedAt: new Date().toISOString() } },
+          { new: true }
+        ).lean();
+        if (updated) {
+          const mapped: Loan = { ...(updated as any), id: (updated as any).id || (updated as any)._id?.toString() };
+          const loans = this.getAll();
+          const idx = loans.findIndex((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase());
+          if (idx !== -1) {
+            loans[idx] = mapped;
+            localFileRepository.writeJson(FILE_NAME, loans);
+          }
+          syncQueueService.enqueue('loan', mapped.loanNo, 'UPDATE', mapped);
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn('[LoanService] updateAsync Mongo error:', err);
+    }
+    return this.update(id, updates);
   }
 
   public update(id: string, updates: Partial<Loan>): Loan | null {
@@ -575,7 +737,29 @@ export class LoanService {
     loans[index] = { ...loans[index], ...updates, loanNo: originalLoanNo, id: originalId };
     localFileRepository.writeJson(FILE_NAME, loans);
     syncQueueService.enqueue('loan', loans[index].loanNo, 'UPDATE', loans[index]);
+
+    if (isMongoConnected()) {
+      LoanModel.findOneAndUpdate(
+        { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
+        { $set: { ...updates, updatedAt: new Date().toISOString() } }
+      ).catch(() => {});
+    }
+
     return loans[index];
+  }
+
+  public async deleteAsync(id: string): Promise<boolean> {
+    try {
+      if (isMongoConnected()) {
+        await LoanModel.findOneAndUpdate(
+          { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
+          { $set: { isDeleted: true, updatedAt: new Date().toISOString() } }
+        );
+      }
+    } catch (err) {
+      console.warn('[LoanService] deleteAsync Mongo error:', err);
+    }
+    return this.delete(id);
   }
 
   public delete(id: string): boolean {
@@ -584,6 +768,14 @@ export class LoanService {
     if (filtered.length === loans.length) return false;
     localFileRepository.writeJson(FILE_NAME, filtered);
     syncQueueService.enqueue('loan', id, 'DELETE', { id, isDeleted: true });
+
+    if (isMongoConnected()) {
+      LoanModel.findOneAndUpdate(
+        { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
+        { $set: { isDeleted: true, updatedAt: new Date().toISOString() } }
+      ).catch(() => {});
+    }
+
     return true;
   }
 }

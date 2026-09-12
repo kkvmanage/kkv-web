@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { receiptService } from '../services/receipt.service.js';
 
-export const getReceipts = (req: Request, res: Response) => {
-  const receipts = receiptService.getAll();
+export const getReceipts = async (req: Request, res: Response) => {
+  const receipts = await receiptService.getAllAsync();
   return res.json({
     success: true,
     message: 'Receipts retrieved successfully',
@@ -11,8 +11,10 @@ export const getReceipts = (req: Request, res: Response) => {
   });
 };
 
-export const getReceiptByNo = (req: Request, res: Response) => {
-  const receipt = receiptService.getByReceiptNo(Number(req.params.receiptNo)) || receiptService.getById(req.params.receiptNo);
+export const getReceiptByNo = async (req: Request, res: Response) => {
+  const receipt =
+    (await receiptService.getByReceiptNoAsync(Number(req.params.receiptNo))) ||
+    (await receiptService.getByIdAsync(req.params.receiptNo));
   if (!receipt) {
     return res.status(404).json({
       success: false,

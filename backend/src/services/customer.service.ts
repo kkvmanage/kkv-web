@@ -1,8 +1,9 @@
 import { googleDriveRepository } from '../repositories/googleDrive.repository.js';
 import { syncQueueService } from './syncQueue.service.js';
 import { counterService } from './counter.service.js';
-import { getFinanceDb } from '../config/database.js';
+import { getFinanceDb, isMongoConnected, ensureMongoConnected } from '../config/database.js';
 import { Customer } from '../types/index.js';
+import { CustomerModel } from '../models/Customer.js';
 
 const FILE_NAME = 'customers.json';
 
@@ -18,6 +19,33 @@ export function normalizePhone(phone: string): string {
 const initialCustomers: Customer[] = [];
 
 export class CustomerService {
+  public async getAllAsync(includeDeleted: boolean = false): Promise<Customer[]> {
+    try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
+      if (isMongoConnected()) {
+        const query = includeDeleted ? {} : { isDeleted: { $ne: true } };
+        const dbCusts = await CustomerModel.find(query).sort({ createdAt: -1 }).lean();
+        if (Array.isArray(dbCusts)) {
+          const mapped: Customer[] = dbCusts.map((c: any) => ({
+            ...c,
+            id: c.customerId || c._id?.toString(),
+            name: c.fullName || c.name,
+            phone: c.phoneNumber || c.phone,
+            idProof: c.idProofType || c.idProof,
+            idNumber: c.idProofNumber || c.idNumber,
+            customerPhoto: c.customerPhoto?.url || c.customerPhoto || null
+          }));
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn('[CustomerService] getAllAsync Mongo error:', err);
+    }
+    return this.getAll(includeDeleted);
+  }
+
   public getAll(includeDeleted: boolean = false): Customer[] {
     let list = googleDriveRepository.readJson<Customer[]>(FILE_NAME, initialCustomers);
     if (!Array.isArray(list)) {
@@ -133,6 +161,18 @@ export class CustomerService {
     customers.unshift(newCustomer);
     googleDriveRepository.writeJson(FILE_NAME, customers);
 
+    try {
+      if (isMongoConnected()) {
+        await CustomerModel.findOneAndUpdate(
+          { $or: [{ customerId: newCustomer.id }, { id: newCustomer.id }] },
+          { $set: newCustomer },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (mongoErr) {
+      console.warn('[CustomerService] Mongo save customer error:', mongoErr);
+    }
+
     // 5. Enqueue Durable Background Sync Outbox Event to Google Drive
     syncQueueService.enqueue('customer', newCustomer.id, 'CREATE', newCustomer);
 
@@ -169,6 +209,18 @@ export class CustomerService {
 
     customers[index] = updatedCustomer;
     googleDriveRepository.writeJson(FILE_NAME, customers);
+
+    try {
+      if (isMongoConnected()) {
+        await CustomerModel.findOneAndUpdate(
+          { $or: [{ customerId: currentCust.id }, { id: currentCust.id }] },
+          { $set: updatedCustomer },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (mongoErr) {
+      console.warn('[CustomerService] Mongo update customer error:', mongoErr);
+    }
 
     // Increment version in MongoDB Identity & Sync Index
     try {
@@ -218,6 +270,13 @@ export class CustomerService {
 
     googleDriveRepository.writeJson(FILE_NAME, customers);
 
+    if (isMongoConnected()) {
+      CustomerModel.updateOne(
+        { $or: [{ customerId: id }, { id }] },
+        { $set: { isDeleted: true, deletedAt: customers[index].deletedAt, deletedBy: customers[index].deletedBy } }
+      ).catch((err: any) => console.warn('[CustomerService] Mongo soft delete error:', err));
+    }
+
     // Enqueue background sync event
     syncQueueService.enqueue('customer', id, 'DELETE', { id, isDeleted: true });
 
@@ -244,6 +303,14 @@ export class CustomerService {
     customers[index].deletedBy = null;
 
     googleDriveRepository.writeJson(FILE_NAME, customers);
+
+    if (isMongoConnected()) {
+      CustomerModel.updateOne(
+        { $or: [{ customerId: id }, { id }] },
+        { $set: { isDeleted: false, deletedAt: null, deletedBy: null } }
+      ).catch((err: any) => console.warn('[CustomerService] Mongo restore error:', err));
+    }
+
     return { success: true, message: 'Customer restored successfully' };
   }
 
@@ -270,6 +337,12 @@ export class CustomerService {
       (c) => c.id !== custId && (numericCustIdStr ? c.customerId?.toString() !== numericCustIdStr : true)
     );
     googleDriveRepository.writeJson(FILE_NAME, updatedCustomers);
+
+    if (isMongoConnected()) {
+      CustomerModel.deleteMany({ $or: [{ customerId: custId }, { id: custId }] }).catch((err: any) =>
+        console.warn('[CustomerService] Mongo permanent delete error:', err)
+      );
+    }
 
     // 2. Cascade delete all loans connected to customerId from loans.json
     const loans = googleDriveRepository.readJson<any[]>('loans.json', []);

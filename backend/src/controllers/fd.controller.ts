@@ -2,25 +2,32 @@ import { Request, Response } from 'express';
 import { fdService } from '../services/fd.service.js';
 import { adminService } from '../services/admin.service.js';
 
-export const getFDCustomers = (req: Request, res: Response) => {
-  const customers = fdService.getCustomers();
+export const getFDCustomers = async (req: Request, res: Response) => {
+  const customers = await fdService.getCustomersAsync();
   return res.json({
     success: true,
     data: customers
   });
 };
 
-export const createFDCustomer = (req: Request, res: Response) => {
-  const newCust = fdService.createCustomer(req.body);
-  return res.status(201).json({
-    success: true,
-    message: 'FD Customer created',
-    data: newCust
-  });
+export const createFDCustomer = async (req: Request, res: Response) => {
+  try {
+    const newCust = await fdService.createCustomer(req.body);
+    return res.status(201).json({
+      success: true,
+      message: 'FD Customer created',
+      data: newCust
+    });
+  } catch (err: any) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to create FD customer'
+    });
+  }
 };
 
-export const getFixedDeposits = (req: Request, res: Response) => {
-  const deposits = fdService.getDeposits();
+export const getFixedDeposits = async (req: Request, res: Response) => {
+  const deposits = await fdService.getDepositsAsync();
   return res.json({
     success: true,
     data: deposits
@@ -43,9 +50,9 @@ export const createFixedDeposit = async (req: Request, res: Response) => {
   }
 };
 
-export const payFDInterest = (req: Request, res: Response) => {
-  const { amount, mode } = req.body;
-  const payout = fdService.payInterest(req.params.fdNo, Number(amount), mode);
+export const payFDInterest = async (req: Request, res: Response) => {
+  const { amount, mode, dueDate, periodKey } = req.body;
+  const payout = await fdService.payInterest(req.params.fdNo, Number(amount), mode, dueDate, periodKey);
   if (!payout) {
     return res.status(404).json({ success: false, message: `FD ${req.params.fdNo} not found` });
   }
@@ -56,16 +63,71 @@ export const payFDInterest = (req: Request, res: Response) => {
   });
 };
 
-export const withdrawFD = (req: Request, res: Response) => {
-  const { mode, notes } = req.body;
-  const withdrawal = fdService.withdraw(req.params.fdNo, mode, notes);
+export const withdrawFD = async (req: Request, res: Response) => {
+  const { mode, notes, withdrawalAmount, transactionReference, bankName } = req.body;
+  const withdrawal = await fdService.withdraw(
+    req.params.fdNo,
+    mode,
+    notes,
+    withdrawalAmount ? Number(withdrawalAmount) : undefined,
+    transactionReference,
+    bankName
+  );
   if (!withdrawal) {
-    return res.status(404).json({ success: false, message: `FD ${req.params.fdNo} not found` });
+    return res.status(404).json({ success: false, message: `FD ${req.params.fdNo} not found or already closed` });
   }
   return res.json({
     success: true,
     message: 'FD withdrawn successfully',
     data: withdrawal
+  });
+};
+
+export const renewFD = async (req: Request, res: Response) => {
+  const { periodMonths, notes } = req.body;
+  const renewal = await fdService.renew(req.params.fdNo, Number(periodMonths) || 12, notes);
+  if (!renewal) {
+    return res.status(400).json({ success: false, message: `FD ${req.params.fdNo} cannot be renewed` });
+  }
+  return res.json({
+    success: true,
+    message: 'FD renewed successfully',
+    data: renewal
+  });
+};
+
+export const deleteFixedDeposit = async (req: Request, res: Response) => {
+  const deleted = await fdService.deleteDeposit(req.params.fdNo);
+  if (!deleted) {
+    return res.status(404).json({ success: false, message: `FD ${req.params.fdNo} not found` });
+  }
+  return res.json({
+    success: true,
+    message: 'FD deleted successfully'
+  });
+};
+
+export const getFDPayouts = async (req: Request, res: Response) => {
+  const payouts = await fdService.getPayoutsAsync();
+  return res.json({
+    success: true,
+    data: payouts
+  });
+};
+
+export const getFDWithdrawals = async (req: Request, res: Response) => {
+  const withdrawals = await fdService.getWithdrawalsAsync();
+  return res.json({
+    success: true,
+    data: withdrawals
+  });
+};
+
+export const getFDRenewals = async (req: Request, res: Response) => {
+  const renewals = await fdService.getRenewalsAsync();
+  return res.json({
+    success: true,
+    data: renewals
   });
 };
 
@@ -167,4 +229,3 @@ export const updateFDConfiguration = (req: Request, res: Response) => {
     data: updatedMaster
   });
 };
-

@@ -23,8 +23,8 @@ export const getNextSequence = async (req: Request, res: Response) => {
   }
 };
 
-export const getLoans = (req: Request, res: Response) => {
-  const loans = loanService.getAll();
+export const getLoans = async (req: Request, res: Response) => {
+  const loans = await loanService.getAllAsync();
   return res.json({
     success: true,
     message: 'Loans retrieved successfully',
@@ -33,8 +33,8 @@ export const getLoans = (req: Request, res: Response) => {
   });
 };
 
-export const getLoanByNo = (req: Request, res: Response) => {
-  const loan = loanService.getByLoanNo(req.params.loanNo) || loanService.getById(req.params.loanNo);
+export const getLoanByNo = async (req: Request, res: Response) => {
+  const loan = (await loanService.getByLoanNoAsync(req.params.loanNo)) || (await loanService.getByIdAsync(req.params.loanNo));
   if (!loan) {
     return res.status(404).json({
       success: false,
@@ -65,8 +65,8 @@ export const createLoan = async (req: Request, res: Response) => {
   }
 };
 
-export const updateLoan = (req: Request, res: Response) => {
-  const updated = loanService.update(req.params.id || req.params.loanNo, req.body);
+export const updateLoan = async (req: Request, res: Response) => {
+  const updated = await loanService.updateAsync(req.params.id || req.params.loanNo, req.body);
   if (!updated) {
     return res.status(404).json({
       success: false,
@@ -80,8 +80,8 @@ export const updateLoan = (req: Request, res: Response) => {
   });
 };
 
-export const deleteLoan = (req: Request, res: Response) => {
-  const deleted = loanService.delete(req.params.id || req.params.loanNo);
+export const deleteLoan = async (req: Request, res: Response) => {
+  const deleted = await loanService.deleteAsync(req.params.id || req.params.loanNo);
   if (!deleted) {
     return res.status(404).json({
       success: false,
@@ -94,8 +94,8 @@ export const deleteLoan = (req: Request, res: Response) => {
   });
 };
 
-export const closeLoan = (req: Request, res: Response) => {
-  const closedLoan = loanService.closeLoan(req.params.loanNo);
+export const closeLoan = async (req: Request, res: Response) => {
+  const closedLoan = await loanService.closeLoanAsync(req.params.loanNo);
   if (!closedLoan) {
     return res.status(404).json({
       success: false,
@@ -109,20 +109,27 @@ export const closeLoan = (req: Request, res: Response) => {
   });
 };
 
-export const getLoanPayments = (req: Request, res: Response) => {
+export const getLoanPayments = async (req: Request, res: Response) => {
   const loanNo = req.params.id || req.params.loanNo;
-  const receipts = receiptService.getAll().filter(r => r.loanNo === loanNo || r.loanId === loanNo);
+  const receipts = (await receiptService.getAllAsync()).filter(r => r.loanNo === loanNo || r.loanId === loanNo);
   return res.json({
     success: true,
     data: receipts
   });
 };
 
-export const addLoanPayment = (req: Request, res: Response) => {
-  const newReceipt = receiptService.create(req.body);
-  return res.status(201).json({
-    success: true,
-    message: 'Payment recorded successfully',
-    data: newReceipt
-  });
+export const addLoanPayment = async (req: Request, res: Response) => {
+  try {
+    const newReceipt = await receiptService.create(req.body);
+    return res.status(201).json({
+      success: true,
+      message: 'Payment recorded successfully',
+      data: newReceipt
+    });
+  } catch (err: any) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to add payment'
+    });
+  }
 };

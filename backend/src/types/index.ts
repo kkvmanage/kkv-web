@@ -284,6 +284,11 @@ export interface Loan {
   documentDriveIds?: string[];
   receiptDriveIds?: string[];
   driveFolderId?: string;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  branchId?: string;
+  complexId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -311,6 +316,8 @@ export interface Receipt {
   daysLate?: number;
   notes?: string;
   driveFileId?: string;
+  branchId?: string;
+  complexId?: string;
 }
 
 export interface DayBookEntry {
@@ -330,6 +337,8 @@ export interface DayBookEntry {
   customerName?: string;
   loanNo?: string;
   date: string;
+  branchId?: string;
+  complexId?: string;
 }
 
 export interface FixedDeposit {
@@ -345,6 +354,8 @@ export interface FixedDeposit {
   depositDate: string;
   maturityDate: string;
   principal: number;
+  remainingPrincipal?: number;
+  totalWithdrawnPrincipal?: number;
   tenureMonths?: number;
   interestRatePA: number;
   receivingMethod: 'Cash' | 'Bank' | 'UPI';
@@ -354,6 +365,13 @@ export interface FixedDeposit {
   nomineeName?: string;
   nomineeRelation?: string;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  branchId?: string;
+  complexId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 
   // ── IMMUTABLE CONTRACTUAL SNAPSHOT FIELDS ──────────────────────────────
   fdInterestRateSnapshot?: number;
@@ -365,17 +383,27 @@ export interface FixedDeposit {
 
 export interface FDInterestPayout {
   id: string;
+  payoutId?: string;
   fdNo: string;
+  customerId?: string;
   depositorName: string;
   amount: number;
   date: string;
+  dueDate?: string;
+  periodKey?: string;
   mode: 'Cash' | 'Bank' | 'UPI';
   status: 'PAID' | 'PENDING';
+  branchId?: string;
+  complexId?: string;
 }
 
 export interface FDWithdrawal {
   id: string;
+  withdrawalId?: string;
+  fdId?: string;
   fdNo: string;
+  customerId?: string;
+  customerPhone?: string;
   depositorName: string;
   principalAmount: number;
   interestPaid: number;
@@ -383,10 +411,36 @@ export interface FDWithdrawal {
   withdrawalDate: string;
   mode: 'Cash' | 'Bank' | 'UPI';
   notes?: string;
+  branchId?: string;
+  complexId?: string;
+}
+
+export interface FDRenewal {
+  id: string;
+  renewalId?: string;
+  fdId?: string;
+  fdNo: string;
+  customerId?: string;
+  depositorName?: string;
+  previousMaturityDate?: string;
+  oldMaturityDate?: string;
+  newMaturityDate: string;
+  renewalPeriodMonths?: number;
+  periodMonths?: number;
+  oldInterestRate?: number;
+  newInterestRate?: number;
+  interestRateAtRenewal?: number;
+  payoutFrequency?: string;
+  renewalDate: string;
+  notes?: string;
+  status?: string;
+  branchId?: string;
+  complexId?: string;
 }
 
 export interface FDCustomer {
   id: string;
+  customerId?: string | number;
   name: string;
   phone: string;
   email?: string;
@@ -401,6 +455,11 @@ export interface FDCustomer {
   profilePhotoDriveId?: string;
   kycDocumentDriveIds?: string[];
   driveFolderId?: string;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  branchId?: string;
+  complexId?: string;
 }
 
 export interface AmountBand {

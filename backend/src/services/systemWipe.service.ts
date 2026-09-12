@@ -347,29 +347,35 @@ class SystemWipeService {
       sync: 0
     });
 
-    // 3. Clear MongoDB Collections (Customers, FileAttachments, Rental Daybook)
-    // NOTE: Does NOT delete files in Google Drive! Only clears database attachment records.
+    // 3. Clear MongoDB Collections across all operational Finance and Rental domains
+    // NOTE: Does NOT delete actual files in Google Drive! Only clears database attachment records.
     try {
-      await CustomerModel.deleteMany({});
-      console.log('[SystemWipeService] MongoDB Customer collection wiped.');
-    } catch (mCustErr) {
-      console.warn('[SystemWipeService] Notice: CustomerModel deleteMany error:', (mCustErr as any)?.message || mCustErr);
-    }
+      await Promise.all([
+        CustomerModel.deleteMany({}),
+        LoanModel.deleteMany({}),
+        ReceiptModel.deleteMany({}),
+        FixedDepositModel.deleteMany({}),
+        FDCustomerModel.deleteMany({}),
+        FDInterestPayoutModel.deleteMany({}),
+        FDWithdrawalModel.deleteMany({}),
+        FDRenewalModel.deleteMany({}),
+        DayBookModel.deleteMany({}),
+        FileAttachmentModel.deleteMany({})
+      ]);
 
-    try {
-      await FileAttachmentModel.deleteMany({});
-      console.log('[SystemWipeService] MongoDB FileAttachment collection wiped (Drive binary files preserved).');
-    } catch (mAttErr) {
-      console.warn('[SystemWipeService] Notice: FileAttachmentModel deleteMany error:', (mAttErr as any)?.message || mAttErr);
-    }
-
-    try {
       const db = await getFinanceDb();
       if (db) {
-        await db.collection('rental_daybook').deleteMany({});
+        await Promise.all([
+          db.collection('rental_complexes').deleteMany({}),
+          db.collection('rental_shops').deleteMany({}),
+          db.collection('rental_payments').deleteMany({}),
+          db.collection('rental_expenses').deleteMany({}),
+          db.collection('rental_daybook').deleteMany({})
+        ]);
       }
-    } catch (rdbErr) {
-      console.warn('[SystemWipeService] Notice: MongoDB rental_daybook deleteMany error:', (rdbErr as any)?.message || rdbErr);
+      console.log('[SystemWipeService] All MongoDB Finance & Rental operational collections wiped successfully.');
+    } catch (mErr) {
+      console.warn('[SystemWipeService] Notice clearing MongoDB collections:', (mErr as any)?.message || mErr);
     }
 
     // 4. Reset sequence counters in memory and storage to 0
@@ -394,14 +400,29 @@ class SystemWipeService {
     };
     localFileRepository.writeJson('audit_logs.json', [wipeAuditRecord]);
 
-    // 6. Post-Wipe Verification Assertion Check
+    // 6. Post-Wipe Verification Assertion Check (Local storage + MongoDB)
     const customersAfter = localFileRepository.readJson<any[]>('customers.json', []);
     const loansAfter = localFileRepository.readJson<any[]>('loans.json', []);
     const receiptsAfter = localFileRepository.readJson<any[]>('receipts.json', []);
     const complexesAfter = rentalRepo.getComplexes();
     const shopsAfter = rentalRepo.getShops();
 
-    if (customersAfter.length !== 0 || loansAfter.length !== 0 || receiptsAfter.length !== 0 || complexesAfter.length !== 0 || shopsAfter.length !== 0) {
+    const [mongoCusts, mongoLoans, mongoRcpts] = await Promise.all([
+      CustomerModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0),
+      LoanModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0),
+      ReceiptModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0)
+    ]);
+
+    if (
+      customersAfter.length !== 0 ||
+      loansAfter.length !== 0 ||
+      receiptsAfter.length !== 0 ||
+      complexesAfter.length !== 0 ||
+      shopsAfter.length !== 0 ||
+      mongoCusts !== 0 ||
+      mongoLoans !== 0 ||
+      mongoRcpts !== 0
+    ) {
       throw new Error('Database wipe assertion failed: Operational collections were not completely cleared.');
     }
 

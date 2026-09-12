@@ -14,6 +14,14 @@ import { backupPackageService } from './backupPackage.service.js';
 import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { CustomerModel } from '../models/Customer.js';
+import { LoanModel } from '../models/Loan.js';
+import { ReceiptModel } from '../models/Receipt.js';
+import { FixedDepositModel } from '../models/FixedDeposit.js';
+import { FDCustomerModel } from '../models/FDCustomer.js';
+import { FDInterestPayoutModel } from '../models/FDInterestPayout.js';
+import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
+import { FDRenewalModel } from '../models/FDRenewal.js';
+import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { getFinanceDb } from '../config/database.js';
 import { googleDriveService } from './googleDrive.service.js';
@@ -472,7 +480,7 @@ class SystemRestoreService {
       rentalRepo.writeJson('expenses.json', rentalExpenses);
       rentalDayBookRepo.writeJson('rental_daybook.json', rentalDayBook);
 
-      // 4. Restore MongoDB Collections (Customers, FileAttachments, Rental Daybook)
+      // 4. Restore MongoDB Collections across all operational Finance and Rental domains
       try {
         await CustomerModel.deleteMany({});
         if (customers.length > 0) {
@@ -483,29 +491,83 @@ class SystemRestoreService {
           }));
           await CustomerModel.insertMany(docsToInsert, { ordered: false });
         }
-        console.log(`[SystemRestoreService] Restored ${customers.length} customers to MongoDB.`);
-      } catch (mCustErr) {
-        console.warn('[SystemRestoreService] MongoDB Customer restore warning:', (mCustErr as any)?.message || mCustErr);
-      }
 
-      try {
+        await LoanModel.deleteMany({});
+        if (loans.length > 0) {
+          await LoanModel.insertMany(loans.map((l: any) => ({ ...l, id: l.id || l.loanNo, _id: l._id || undefined })), { ordered: false });
+        }
+
+        await ReceiptModel.deleteMany({});
+        if (receipts.length > 0) {
+          await ReceiptModel.insertMany(receipts.map((r: any) => ({ ...r, id: r.id || `RCPT-${r.receiptNo}`, _id: r._id || undefined })), { ordered: false });
+        }
+
+        await FixedDepositModel.deleteMany({});
+        if (fixedDeposits.length > 0) {
+          await FixedDepositModel.insertMany(fixedDeposits.map((f: any) => ({ ...f, id: f.id || f.fdNo, _id: f._id || undefined })), { ordered: false });
+        }
+
+        await FDCustomerModel.deleteMany({});
+        if (fdCustomers.length > 0) {
+          await FDCustomerModel.insertMany(fdCustomers.map((fc: any) => ({ ...fc, id: fc.id || `fdc-${Date.now()}`, _id: fc._id || undefined })), { ordered: false });
+        }
+
+        await FDInterestPayoutModel.deleteMany({});
+        if (fdInterestPayouts.length > 0) {
+          await FDInterestPayoutModel.insertMany(fdInterestPayouts, { ordered: false });
+        }
+
+        await FDWithdrawalModel.deleteMany({});
+        if (fdWithdrawals.length > 0) {
+          await FDWithdrawalModel.insertMany(fdWithdrawals, { ordered: false });
+        }
+
+        await FDRenewalModel.deleteMany({});
+        const fdRenewals = parsedBackup.fdRenewals || (parsedBackup.finance && parsedBackup.finance.fdRenewals) || [];
+        if (fdRenewals.length > 0) {
+          await FDRenewalModel.insertMany(fdRenewals, { ordered: false });
+        }
+
+        await DayBookModel.deleteMany({});
+        if (dayBookEntries.length > 0) {
+          await DayBookModel.insertMany(dayBookEntries, { ordered: false });
+        }
+
         await FileAttachmentModel.deleteMany({});
         if (attachments && attachments.length > 0) {
           await FileAttachmentModel.insertMany(attachments, { ordered: false });
         }
-        console.log(`[SystemRestoreService] Restored ${attachments.length} file attachments to MongoDB (reconnected to Google Drive references).`);
-      } catch (mAttErr) {
-        console.warn('[SystemRestoreService] MongoDB FileAttachment restore warning:', (mAttErr as any)?.message || mAttErr);
-      }
 
-      try {
         const db = await getFinanceDb();
-        if (db && rentalDayBook.length > 0) {
+        if (db) {
+          await db.collection('rental_complexes').deleteMany({});
+          if (rentalComplexes.length > 0) {
+            await db.collection('rental_complexes').insertMany(rentalComplexes as any);
+          }
+
+          await db.collection('rental_shops').deleteMany({});
+          if (rentalShops.length > 0) {
+            await db.collection('rental_shops').insertMany(rentalShops as any);
+          }
+
+          await db.collection('rental_payments').deleteMany({});
+          if (rentPayments.length > 0) {
+            await db.collection('rental_payments').insertMany(rentPayments as any);
+          }
+
+          await db.collection('rental_expenses').deleteMany({});
+          if (rentalExpenses.length > 0) {
+            await db.collection('rental_expenses').insertMany(rentalExpenses as any);
+          }
+
           await db.collection('rental_daybook').deleteMany({});
-          await db.collection('rental_daybook').insertMany(rentalDayBook as any);
+          if (rentalDayBook.length > 0) {
+            await db.collection('rental_daybook').insertMany(rentalDayBook as any);
+          }
         }
-      } catch (rdbErr) {
-        console.warn('[SystemRestoreService] MongoDB rental_daybook restore warning:', (rdbErr as any)?.message || rdbErr);
+        console.log(`[SystemRestoreService] Restored all collections across Finance & Rental to MongoDB.`);
+      } catch (mErr) {
+        console.warn('[SystemRestoreService] MongoDB restore collections warning:', (mErr as any)?.message || mErr);
       }
 
       // 5. Restore Sequence Counters (Finance & Rental)

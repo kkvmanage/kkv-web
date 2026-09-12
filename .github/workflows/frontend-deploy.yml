@@ -28,115 +28,163 @@ jobs:
 
           script: |
             set -euo pipefail
+            trap 'echo "Error: Deployment failed at line $LINENO: command \"$BASH_COMMAND\" exited with status $?" >&2' ERR
 
             echo "======================================"
-            echo "Acquiring Deployment Lock..."
+            echo "Deployment Lock"
             echo "======================================"
-            exec 200>/tmp/kkv-frontend-deploy.lock
-            if ! flock -n 200; then
-              echo "Error: Another frontend deployment is currently in progress. Aborting." >&2
+            if ! command -v flock >/dev/null 2>&1; then
+              echo "Error: flock command is not available on the server." >&2
               exit 1
             fi
 
-            echo "======================================"
-            echo "Verifying Server Swap & Memory"
-            echo "======================================"
-            SWAP_TOTAL_MB=$(free -m | awk '/^Swap:/ {print $2}')
-            if [ -z "$SWAP_TOTAL_MB" ] || [ "$SWAP_TOTAL_MB" -lt 1024 ]; then
-              echo "Configuring 2GB persistent swap space to prevent OOM build failures..."
-              if [ ! -f /swapfile ]; then
-                sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
-                sudo chmod 600 /swapfile
-                sudo mkswap /swapfile
-              fi
-              sudo swapon /swapfile 2>/dev/null || true
-              if ! grep -q '/swapfile' /etc/fstab; then
-                echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-              fi
-              echo "Swap configured successfully."
-            else
-              echo "Sufficient swap space detected: ${SWAP_TOTAL_MB}MB"
+            exec 200>/tmp/kkv-frontend-deploy.lock
+            if ! flock -n 200; then
+              echo "Error: Another frontend deployment is currently running. Aborting to prevent conflicts." >&2
+              exit 1
             fi
+            echo "Deployment lock acquired successfully."
 
             echo "======================================"
-            echo "System Resources Before Build"
+            echo "Swap & Memory Verification"
             echo "======================================"
-            echo "CPU cores: $(nproc)"
-            free -h
+            echo "Checking sudo privileges..."
+            if ! sudo -n true 2>/dev/null; then
+              echo "Error: Passwordless sudo is required for ubuntu user to manage swap and Nginx." >&2
+              exit 1
+            fi
+            echo "Passwordless sudo verified."
+
+            echo "Reading system memory and swap status..."
+            SWAP_TOTAL_MB=$(awk '/^SwapTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+            SWAP_TOTAL_MB="${SWAP_TOTAL_MB:-0}"
+            echo "Detected current SwapTotal: ${SWAP_TOTAL_MB} MB"
+
+            if [ "$SWAP_TOTAL_MB" -ge 1024 ]; then
+              echo "Sufficient swap space detected (${SWAP_TOTAL_MB} MB)."
+            else
+              echo "Configuring 2GB persistent swap space..."
+              if [ ! -f /swapfile ]; then
+                echo "Creating /swapfile..."
+                if ! sudo fallocate -l 2G /swapfile 2>/dev/null; then
+                  echo "fallocate failed, using dd..."
+                  sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+                fi
+                sudo chmod 600 /swapfile
+                sudo mkswap /swapfile
+              else
+                echo "/swapfile already exists on disk."
+                sudo chmod 600 /swapfile
+              fi
+
+              if ! swapon --show 2>/dev/null | grep -q '/swapfile'; then
+                echo "Activating /swapfile..."
+                sudo swapon /swapfile 2>/dev/null || true
+              fi
+
+              if ! grep -qE '^[[:space:]]*/swapfile[[:space:]]+none[[:space:]]+swap' /etc/fstab 2>/dev/null; then
+                echo "Adding /swapfile to /etc/fstab..."
+                echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+              else
+                echo "/swapfile entry already present in /etc/fstab."
+              fi
+              echo "Swap configuration verified."
+            fi
+
+            echo "=== Swap Diagnostics ==="
+            free -h || true
             swapon --show || true
+            cat /proc/swaps || true
+
+            echo "=== Filesystem Diagnostics ==="
             df -h /
+            ls -lh /swapfile 2>/dev/null || true
+
+            echo "=== Runtime Versions ==="
             node --version || true
             npm --version || true
 
             echo "======================================"
-            echo "Git Repository Safety Check"
+            echo "Git Synchronization"
             echo "======================================"
             cd /home/ubuntu/kkv-web
-            echo "Repository: $(pwd)"
+            echo "Repository Path: $(pwd)"
 
             echo "Checking for active Git processes..."
             ACTIVE_GIT_PIDS=$(pgrep -d ' ' -x git || true)
             if [ -n "$ACTIVE_GIT_PIDS" ]; then
               echo "Active Git process detected (PIDs: $ACTIVE_GIT_PIDS):"
-              ps -p $ACTIVE_GIT_PIDS -u -f || ps aux | grep '[g]it' || true
-              echo "Error: A Git process is currently running on the server. Aborting deployment to prevent corruption." >&2
+              ps -p $ACTIVE_GIT_PIDS -u -f 2>/dev/null || ps aux | grep '[g]it' || true
+              echo "Error: Git process is actively running. Aborting deployment." >&2
               exit 1
             fi
-            echo "No active Git processes found."
+            echo "No active Git processes."
 
-            echo "Checking Git repository lock state..."
+            echo "Cleaning stale Git lock files..."
             if [ -f .git/index.lock ]; then
-              echo "Stale .git/index.lock detected with no active Git process. Safely removing..."
+              echo "Removing stale .git/index.lock..."
               rm -f .git/index.lock
               echo "Removed stale Git index.lock"
             fi
 
             if [ -f .git/HEAD.lock ]; then
-              echo "Stale .git/HEAD.lock detected. Safely removing..."
+              echo "Removing stale .git/HEAD.lock..."
               rm -f .git/HEAD.lock
             fi
 
             if [ -f .git/config.lock ]; then
-              echo "Stale .git/config.lock detected. Safely removing..."
+              echo "Removing stale .git/config.lock..."
               rm -f .git/config.lock
             fi
 
-            # Clean any stale lock files under refs
             find .git/refs -name "*.lock" -type f -delete 2>/dev/null || true
 
-            echo "Current Git status before sync:"
+            echo "Git status before sync:"
             git status
 
-            echo "======================================"
-            echo "Syncing Repository with GitHub"
-            echo "======================================"
             echo "Fetching latest code from origin main..."
             git fetch origin main
 
-            echo "Syncing working tree with origin/main..."
+            echo "Resetting working tree to origin/main..."
             git reset --hard origin/main
 
-            echo "Cleaning old build artifacts..."
-            rm -rf dist
-
-            echo "Creating frontend environment..."
+            echo "======================================"
+            echo "Frontend Environment"
+            echo "======================================"
             printf 'VITE_API_BASE_URL=%s\nVITE_API_URL=%s\n' '${{ secrets.VITE_API_BASE_URL }}' '${{ secrets.VITE_API_BASE_URL }}' > .env
+            echo "Frontend .env generated with production API URL."
 
-            echo "Installing dependencies (lockfile-based)..."
+            echo "======================================"
+            echo "Dependency Installation"
+            echo "======================================"
+            echo "Installing dependencies via npm ci..."
             npm ci
 
-            echo "Building frontend with controlled memory allocation..."
+            echo "======================================"
+            echo "Frontend Build"
+            echo "======================================"
+            echo "Cleaning old dist artifacts..."
+            rm -rf dist
+
+            echo "Building frontend with controlled Node memory heap..."
             NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
-            echo "======================================"
-            echo "System Resources After Build"
-            echo "======================================"
+            echo "=== System Memory After Build ==="
             free -h
 
-            echo "Verifying frontend build artifacts..."
-            test -f dist/index.html
+            echo "======================================"
+            echo "Build Verification"
+            echo "======================================"
+            if [ ! -f dist/index.html ]; then
+              echo "Error: dist/index.html not found! Frontend build failed." >&2
+              exit 1
+            fi
+            echo "dist/index.html found."
             du -sh dist
 
+            echo "======================================"
+            echo "Nginx Validation"
+            echo "======================================"
             echo "Testing Nginx configuration..."
             sudo nginx -t
 
@@ -144,5 +192,6 @@ jobs:
             sudo systemctl reload nginx
 
             echo "======================================"
-            echo "Frontend Deployment Successful!"
+            echo "Deployment Complete"
             echo "======================================"
+            echo "Frontend deployed and served successfully!"

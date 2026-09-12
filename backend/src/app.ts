@@ -33,36 +33,38 @@ const isOriginAllowed = (origin?: string): boolean => {
   return false;
 };
 
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS Blocked] Origin not allowed: ${origin}`);
+      callback(null, false);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'user-role',
+    'user-id',
+    'user-name',
+    'x-actor-uid',
+    'x-actor-email',
+    'x-idempotency-key',
+    'Accept',
+    'X-Requested-With',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ],
+  maxAge: 86400
+};
+
 // ── 1. Robust Standard CORS & OPTIONS Preflight Middleware ──────────────────
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || isOriginAllowed(origin)) {
-        callback(null, true);
-      } else {
-        callback(null, false);
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'user-role',
-      'user-id',
-      'user-name',
-      'x-actor-uid',
-      'x-actor-email',
-      'x-idempotency-key',
-      'Accept',
-      'X-Requested-With',
-      'Origin',
-      'Access-Control-Request-Method',
-      'Access-Control-Request-Headers'
-    ],
-    maxAge: 86400
-  })
-);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ── 2. Security Headers (configured safely for cross-origin APIs) ───────────
 app.use(

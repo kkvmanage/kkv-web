@@ -7,12 +7,12 @@ let customApiBaseUrl: string | null = null;
 export const getApiBaseUrl = (): string => {
   if (customApiBaseUrl) return customApiBaseUrl;
 
-  const envValue = import.meta.env.VITE_API_BASE_URL;
+  const envValue = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
   const raw = (
     envValue ||
     (typeof window !== 'undefined' && (window as any).__FINANCE_API_URL__) ||
-    (import.meta.env.PROD ? 'https://tstbck.duckdns.org/api' : 'http://localhost:8080/api')
+    (import.meta.env.PROD ? 'https://tstbck.duckdns.org/api' : 'http://127.0.0.1:8080/api')
   ).trim();
   const clean = raw.endsWith('/') ? raw.slice(0, -1) : raw;
   return clean.endsWith('/api') ? clean : `${clean}/api`;

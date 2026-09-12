@@ -7,7 +7,6 @@ import {
   RotateCcw,
   ArrowRight,
   AlertTriangle,
-  FileArchive,
   ShieldCheck
 } from 'lucide-react';
 import { apiService } from '../../services/api';
@@ -30,9 +29,6 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
 
   // Dragging state
   const [isDragging, setIsDragging] = useState(false);
-
-  // Available Server Backups
-  const [availableBackups, setAvailableBackups] = useState<any[]>([]);
 
   // Validation Preview Result
   const [previewResult, setPreviewResult] = useState<{
@@ -84,20 +80,8 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       setPreviewResult(null);
       setAcknowledgedWarning(false);
       setInputConfirmation('');
-      loadAvailableBackups();
     }
   }, [isOpen]);
-
-  const loadAvailableBackups = async () => {
-    try {
-      const res = await apiService.getAvailableBackups();
-      if (res.success && Array.isArray(res.data)) {
-        setAvailableBackups(res.data);
-      }
-    } catch (err) {
-      console.warn('Failed to load available backups:', err);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -126,25 +110,6 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       const res = await apiService.validateRestoreBackup({ file });
       if (!res.success || !res.data) {
         throw new Error(res.message || 'Backup validation failed. Archive is invalid or corrupted.');
-      }
-      setPreviewResult(res.data);
-      setStep(2);
-    } catch (err: any) {
-      console.error('[SystemRestoreModal] Validation error:', err);
-      setErrorMessage(err?.message || 'Selected backup could not be validated.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleValidateBackupId = async (backupId: string) => {
-    setLoading(true);
-    setErrorMessage('');
-
-    try {
-      const res = await apiService.validateRestoreBackup({ backupId });
-      if (!res.success || !res.data) {
-        throw new Error(res.message || 'Backup validation failed.');
       }
       setPreviewResult(res.data);
       setStep(2);
@@ -364,7 +329,7 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
             </div>
           )}
 
-          {/* STEP 1: UPLOAD / SELECT */}
+          {/* STEP 1: UPLOAD / SELECT LOCAL ZIP */}
           {step === 1 && (
             <div>
               <div
@@ -383,22 +348,22 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
                 style={{
                   border: isDragging ? '2px dashed #0F766E' : '2px dashed #CBD5E1',
                   borderRadius: '12px',
-                  padding: '36px 20px',
+                  padding: '40px 20px',
                   textAlign: 'center',
                   backgroundColor: isDragging ? '#F0FDFA' : '#F8FAFC',
                   transition: 'all 0.2s',
-                  marginBottom: '24px',
+                  marginBottom: '16px',
                   cursor: 'pointer'
                 }}
                 onClick={() => {
-                  const input = document.getElementById('backupFileInput');
+                  const input = document.getElementById('backupZipFileInput');
                   if (input) input.click();
                 }}
               >
                 <input
-                  id="backupFileInput"
+                  id="backupZipFileInput"
                   type="file"
-                  accept=".json,.zip"
+                  accept=".zip,.json"
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
@@ -408,74 +373,31 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
                 />
                 <div
                   style={{
-                    width: '54px',
-                    height: '54px',
+                    width: '60px',
+                    height: '60px',
                     borderRadius: '50%',
                     backgroundColor: '#E6FFFA',
                     color: '#0F766E',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    margin: '0 auto 12px auto'
+                    margin: '0 auto 14px auto'
                   }}
                 >
-                  <Upload size={26} />
+                  <Upload size={28} />
                 </div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
-                  Upload JSON Backup File
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#1E293B', marginBottom: '6px' }}>
+                  Select Backup ZIP Archive from Computer
                 </div>
-                <div style={{ fontSize: '13px', color: '#64748B' }}>
-                  Drag &amp; drop your downloaded <code>.json</code> backup file here, or click to browse
+                <div style={{ fontSize: '13px', color: '#64748B', maxWidth: '440px', margin: '0 auto', lineHeight: 1.5 }}>
+                  Click to browse or drag and drop your downloaded <code>.zip</code> (or <code>.json</code>) backup archive here to validate and restore original data.
                 </div>
               </div>
-
-              {/* Existing Server Backups List */}
-              {availableBackups.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#1E293B', marginBottom: '10px' }}>
-                    OR SELECT PREVIOUS BACKUP FROM SERVER / DRIVE
-                  </div>
-                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: '8px' }}>
-                    {availableBackups.slice(0, 5).map((b) => (
-                      <div
-                        key={b.fileId}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '10px 14px',
-                          borderBottom: '1px solid #F1F5F9',
-                          backgroundColor: '#FFFFFF'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <FileArchive size={18} color="#0F766E" />
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A' }}>{b.fileName}</div>
-                            <div style={{ fontSize: '11px', color: '#64748B' }}>
-                              {new Date(b.createdTime).toLocaleString()} • {(b.sizeBytes / 1024).toFixed(1)} KB
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleValidateBackupId(b.fileId)}
-                          disabled={loading}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '12px', padding: '6px 12px' }}
-                        >
-                          Select & Validate
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {loading && (
                 <div style={{ textAlign: 'center', marginTop: '16px', color: '#0F766E', fontSize: '13px', fontWeight: 600 }}>
                   <RefreshCw size={18} className="animate-spin" style={{ display: 'inline', marginRight: '6px' }} />
-                  Unpacking archive and verifying SHA-256 checksums...
+                  Unpacking ZIP archive and verifying cryptographic checksums...
                 </div>
               )}
             </div>

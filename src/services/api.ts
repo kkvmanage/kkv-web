@@ -199,20 +199,39 @@ export const apiService = {
   async getMe() {
     const token = getStoredAuthToken();
     if (!token) return null;
-    const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        signal: controller.signal
+      });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          console.warn(`[Auth] Session invalid or expired (${res.status}). Clearing token.`);
+          setStoredAuthToken(null);
+        }
+        return null;
       }
-    });
-    if (!res.ok) {
-      if (res.status === 401) {
-        setStoredAuthToken(null);
+
+      const json = await res.json();
+      return json.user || json.data || json;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.warn('[Auth] Session validation request timed out.');
+      } else {
+        console.warn('[Auth] Session validation network error:', err?.message || err);
       }
       return null;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    const json = await res.json();
-    return json.user || json.data || json;
   },
 
   async changePassword(payload: { currentPassword: string; newPassword: string }) {

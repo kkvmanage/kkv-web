@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp, defaultLoanTypes } from '../context/AppContext';
-import { Users, CreditCard, DollarSign, CheckCircle2, PiggyBank, Wallet, Building2, Bell, Database, X, Save, Lock, Plus, Trash2, Search, CloudDownload, Eye, Edit3, RotateCcw, AlertTriangle, Clock, Percent, Monitor, Smartphone, Tablet, Laptop, Activity, LogOut, RefreshCw, Shield, Info } from 'lucide-react';
+import { Users, CreditCard, DollarSign, CheckCircle2, PiggyBank, Wallet, Building2, Bell, Database, X, Save, Lock, Plus, Trash2, Search, Eye, Edit3, RotateCcw, AlertTriangle, Clock, Percent, Monitor, Smartphone, Tablet, Laptop, Activity, LogOut, RefreshCw, Shield, Info, Upload } from 'lucide-react';
 import { AmountBand, Customer, DeviceSession, OverdueEscalationTier } from '../types';
 import { formatRelativeTime, maskIpAddress } from '../utils/deviceUtils';
 import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
@@ -28,9 +28,6 @@ import { getApiBaseUrl, getStoredAuthToken } from '../services/api';
 export const AdminPanel: React.FC = () => {
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
-  const [showHiddenRestoreSection, setShowHiddenRestoreSection] = useState(false);
-  const [dangerClickCount, setDangerClickCount] = useState(0);
-  const [dangerClickTimer, setDangerClickTimer] = useState<any>(null);
   const {
     userRole,
     loans,
@@ -159,22 +156,6 @@ export const AdminPanel: React.FC = () => {
 
   const handleDangerZoneTabClick = () => {
     setMasterSubTab('danger');
-
-    const nextCount = dangerClickCount + 1;
-    setDangerClickCount(nextCount);
-
-    if (dangerClickTimer) clearTimeout(dangerClickTimer);
-
-    if (nextCount >= 5) {
-      setShowHiddenRestoreSection(true);
-      setDangerClickCount(0);
-      showToast('System Restore interface unlocked.', 'info');
-    } else {
-      const timer = setTimeout(() => {
-        setDangerClickCount(0);
-      }, 5000);
-      setDangerClickTimer(timer);
-    }
   };
 
   // Overdue calculation method description selection
@@ -3215,44 +3196,47 @@ export const AdminPanel: React.FC = () => {
 
                 {masterSubTab === 'danger' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ padding: '20px', backgroundColor: 'rgba(201, 106, 106, 0.08)', border: '1px solid rgba(201, 106, 106, 0.35)', borderRadius: 'var(--radius-md)' }}>
-                      <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#991B1B' }}>WIPE ALL DATA</h4>
-                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                        Warning: Permanently delete all customer, loan, payment, and financial ledger data. Requires verified Google Drive backup before deletion.
+                    {/* WIPE ALL DATA ACTION */}
+                    <div style={{ padding: '20px', backgroundColor: 'rgba(220, 38, 38, 0.06)', border: '1px solid rgba(220, 38, 38, 0.3)', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <Trash2 size={18} color="#DC2626" />
+                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#991B1B', margin: 0 }}>WIPE ALL DATA</h4>
+                      </div>
+                      <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.5 }}>
+                        Warning: Permanently resets all operational records (Customers, Loans, Receipts, Fixed Deposits, Rental, and Day Book). The system will automatically create a verified full backup ZIP and download it to your computer before any data is deleted.
                       </p>
                       <button
                         type="button"
                         className="btn"
-                        style={{ backgroundColor: '#DC2626', color: '#FFF', fontWeight: 800, cursor: 'pointer' }}
+                        style={{ backgroundColor: '#DC2626', color: '#FFF', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                         onClick={() => {
                           setShowWipeModal(true);
                         }}
                       >
-                        Wipe All Data
+                        <Trash2 size={16} />
+                        <span>Wipe All Data</span>
                       </button>
                     </div>
 
-                    {/* HIDDEN SYSTEM RESTORE SECTION (Unlocked after 5 clicks on Danger Zone) */}
-                    {showHiddenRestoreSection && (
-                      <div style={{ padding: '20px', backgroundColor: 'rgba(37, 99, 235, 0.08)', border: '1px solid rgba(37, 99, 235, 0.35)', borderRadius: 'var(--radius-md)' }}>
-                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1E3A8A', margin: '0 0 6px' }}>SYSTEM RESTORE</h4>
-                        <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-                          Restore the complete KKV Gold Finance system from a previously verified Google Drive backup.
-                        </p>
-                        <div style={{ padding: '10px 14px', backgroundColor: 'rgba(245, 158, 11, 0.12)', color: '#92400E', borderRadius: '6px', fontSize: '12px', marginBottom: '14px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                          ⚠️ Warning: Restoring a backup will replace the current application business data with the selected backup.
-                        </div>
-                        <button
-                          type="button"
-                          className="btn"
-                          style={{ backgroundColor: '#2563EB', color: '#FFF', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                          onClick={() => setShowRestoreModal(true)}
-                        >
-                          <CloudDownload size={16} />
-                          <span>☁ Restore From Google Drive</span>
-                        </button>
+                    {/* RESTORE DATABASE ACTION */}
+                    <div style={{ padding: '20px', backgroundColor: 'rgba(37, 99, 235, 0.06)', border: '1px solid rgba(37, 99, 235, 0.3)', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <RotateCcw size={18} color="#1E3A8A" />
+                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1E3A8A', margin: 0 }}>RESTORE BACKUP (FROM COMPUTER)</h4>
                       </div>
-                    )}
+                      <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.5 }}>
+                        Restore the complete application database from a previously downloaded <code>.zip</code> (or <code>.json</code>) backup archive saved on your computer.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ backgroundColor: '#2563EB', color: '#FFF', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                        onClick={() => setShowRestoreModal(true)}
+                      >
+                        <Upload size={16} />
+                        <span>Restore Backup From ZIP</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 

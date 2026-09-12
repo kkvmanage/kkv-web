@@ -910,18 +910,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fetch initial authoritative data from Express Backend on mount only if session exists
   useEffect(() => {
+    let isMounted = true;
+    let fallbackTimeout: any = null;
+
     async function initAuthAndData() {
       const token = getStoredAuthToken();
       if (!token) {
-        setAuthLoading(false);
-        setCurrentUser(null);
-        setUserRole(null);
+        if (isMounted) {
+          setAuthLoading(false);
+          setCurrentUser(null);
+          setUserRole(null);
+        }
         return;
       }
 
-      setAuthLoading(true);
+      // Safety watchdog: ensure authLoading is NEVER stuck for more than 4 seconds
+      fallbackTimeout = setTimeout(() => {
+        if (isMounted) {
+          console.warn('[AppContext] Auth initialization watchdog triggered: forcing authLoading to false.');
+          setAuthLoading(false);
+        }
+      }, 4000);
+
       try {
         const me = await apiService.getMe();
+        if (!isMounted) return;
+
         if (me && me.role) {
           const userObj: UserProfile = {
             ...me,
@@ -934,23 +948,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setUserRole(userObj.role);
           safeSetStored('currentUser', userObj);
           safeSetStored('userRole', userObj.role);
-          await reloadAllData(userObj);
+
+          // Complete auth restoration immediately
+          setAuthLoading(false);
+
+          // Asynchronously reload permitted module data in background without blocking UI
+          reloadAllData(userObj).catch((err) => {
+            console.warn('[AppContext] Initial background data reload warning:', err);
+          });
         } else {
           setStoredAuthToken(null);
           setCurrentUser(null);
           setUserRole(null);
+          setAuthLoading(false);
         }
       } catch (err) {
         console.warn('[AppContext] Initial session restoration error:', err);
-        setStoredAuthToken(null);
-        setCurrentUser(null);
-        setUserRole(null);
+        if (isMounted) {
+          setStoredAuthToken(null);
+          setCurrentUser(null);
+          setUserRole(null);
+          setAuthLoading(false);
+        }
       } finally {
-        setAuthLoading(false);
+        if (fallbackTimeout) clearTimeout(fallbackTimeout);
+        if (isMounted) {
+          setAuthLoading(false);
+        }
       }
     }
 
     initAuthAndData();
+
+    return () => {
+      isMounted = false;
+      if (fallbackTimeout) clearTimeout(fallbackTimeout);
+    };
   }, []);
 
   // ── RBAC Permission Guard ──────────────────────────────────────────────────

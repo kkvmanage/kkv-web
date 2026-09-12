@@ -958,13 +958,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           safeSetStored('currentUser', userObj);
           safeSetStored('userRole', userObj.role);
 
-          // Complete auth restoration immediately
-          setAuthLoading(false);
-
-          // Asynchronously reload permitted module data in background without blocking UI
-          reloadAllData(userObj).catch((err) => {
+          try {
+            await reloadAllData(userObj);
+          } catch (err) {
             console.warn('[AppContext] Initial background data reload warning:', err);
-          });
+          }
+
+          // Complete auth restoration after data hydration
+          setAuthLoading(false);
         } else {
           setStoredAuthToken(null);
           setCurrentUser(null);
@@ -1186,7 +1187,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeSetStored('userRole', userObj.role);
 
         // Load permitted module data
-        reloadAllData(userObj).catch(err => console.warn('[AppContext] Post-login data load warning:', err));
+        try {
+          await reloadAllData(userObj);
+        } catch (err) {
+          console.warn('[AppContext] Post-login data load warning:', err);
+        }
 
         // Role-based dashboard redirection
         if (userObj.role === 'RENTAL_STAFF') {

@@ -358,13 +358,41 @@ CustomerSchema.virtual('idNumber').set(function (this: ICustomer, val: string) {
   this.idProofNumber = val;
 });
 
-// Compound search index
-CustomerSchema.index({
-  fullName: 'text',
-  phoneNumber: 'text',
-  customerId: 'text',
-  idProofNumber: 'text',
-  address: 'text'
+// Pre-validate hook for seamless alias normalization between formats
+CustomerSchema.pre('validate', function (this: any, next?: any) {
+  const doc = this;
+  if (!doc.customerId && doc.id) {
+    doc.customerId = doc.id;
+  }
+  if (!doc.fullName && doc.name) {
+    doc.fullName = doc.name;
+  }
+  if (!doc.name && doc.fullName) {
+    doc.name = doc.fullName;
+  }
+  if (!doc.phoneNumber && doc.phone) {
+    doc.phoneNumber = doc.phone;
+  }
+  if (!doc.phone && doc.phoneNumber) {
+    doc.phone = doc.phoneNumber;
+  }
+  if (!doc.phoneNormalized && (doc.phoneNumber || doc.phone)) {
+    doc.phoneNormalized = String(doc.phoneNumber || doc.phone).replace(/\D/g, '').slice(-10);
+  }
+  if (!doc.idProofType && doc.idProof) {
+    doc.idProofType = doc.idProof;
+  }
+  if (!doc.idProofNumber && doc.idNumber) {
+    doc.idProofNumber = doc.idNumber;
+  }
+  if (!doc.customerPhoto) {
+    doc.customerPhoto = { url: '', publicId: '' };
+  } else if (typeof doc.customerPhoto === 'string') {
+    doc.customerPhoto = { url: doc.customerPhoto, publicId: '' };
+  }
+  if (typeof next === 'function') {
+    next();
+  }
 });
 
 export const CustomerModel = mongoose.models.Customer || mongoose.model<ICustomer>('Customer', CustomerSchema);

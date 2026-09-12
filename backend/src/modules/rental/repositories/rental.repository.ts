@@ -13,6 +13,7 @@ import {
   getStorageSubdirectory,
   ensureDirectoryExists
 } from '../../../config/storage.js';
+import { getFinanceDb, isMongoConnected, ensureMongoConnected } from '../../../config/database.js';
 
 interface Counters {
   complex: number;
@@ -27,11 +28,15 @@ export class RentalRepository {
   private baseDir: string;
   private rentalDir: string;
   private memoryCache: Map<string, any> = new Map();
+  private hasSeededToMongo = false;
 
   constructor() {
     this.baseDir = getStorageBaseDir();
     this.rentalDir = getStorageSubdirectory('rental');
     this.initFolders();
+    this.ensureSeeded().catch((err) => {
+      console.warn('[RentalRepository] Background seed note:', err);
+    });
   }
 
   private initFolders(): void {
@@ -53,6 +58,118 @@ export class RentalRepository {
       }
     } catch (err) {
       console.warn('[RentalRepository] Safe folder initialization warning:', err);
+    }
+  }
+
+  private async ensureSeeded(): Promise<void> {
+    if (this.hasSeededToMongo) return;
+    try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
+      const db = await getFinanceDb();
+      if (db) {
+        // 1. Seed complexes
+        const cCol = db.collection('rental_complexes');
+        const cCount = await cCol.countDocuments();
+        if (cCount === 0) {
+          const fileComplexes = this.readJson<RentalComplex[]>('complexes.json', []);
+          if (Array.isArray(fileComplexes) && fileComplexes.length > 0) {
+            for (const c of fileComplexes) {
+              await cCol.updateOne(
+                { $or: [{ complexId: c.complexId }, { id: c.id }] },
+                { $set: c },
+                { upsert: true }
+              );
+            }
+            console.log(`[RentalRepository] Migrated ${fileComplexes.length} complexes to MongoDB.`);
+          }
+        } else {
+          // Hydrate cache from Mongo
+          const docs = await cCol.find({}).toArray();
+          const mapped = docs.map((d: any) => ({
+            ...d,
+            id: d.id || d.complexId || d._id?.toString()
+          }));
+          this.writeJson('complexes.json', mapped);
+        }
+
+        // 2. Seed shops
+        const sCol = db.collection('rental_shops');
+        const sCount = await sCol.countDocuments();
+        if (sCount === 0) {
+          const fileShops = this.readJson<RentalShop[]>('shops.json', []);
+          if (Array.isArray(fileShops) && fileShops.length > 0) {
+            for (const s of fileShops) {
+              await sCol.updateOne(
+                { $or: [{ shopId: s.shopId }, { id: s.id }] },
+                { $set: s },
+                { upsert: true }
+              );
+            }
+            console.log(`[RentalRepository] Migrated ${fileShops.length} shops to MongoDB.`);
+          }
+        } else {
+          const docs = await sCol.find({}).toArray();
+          const mapped = docs.map((d: any) => ({
+            ...d,
+            id: d.id || d.shopId || d._id?.toString()
+          }));
+          this.writeJson('shops.json', mapped);
+        }
+
+        // 3. Seed payments
+        const pCol = db.collection('rental_payments');
+        const pCount = await pCol.countDocuments();
+        if (pCount === 0) {
+          const filePayments = this.readJson<RentalPayment[]>('rent_payments.json', []);
+          if (Array.isArray(filePayments) && filePayments.length > 0) {
+            for (const p of filePayments) {
+              await pCol.updateOne(
+                { $or: [{ paymentId: p.paymentId }, { id: p.id }] },
+                { $set: p },
+                { upsert: true }
+              );
+            }
+            console.log(`[RentalRepository] Migrated ${filePayments.length} rental payments to MongoDB.`);
+          }
+        } else {
+          const docs = await pCol.find({}).toArray();
+          const mapped = docs.map((d: any) => ({
+            ...d,
+            id: d.id || d.paymentId || d._id?.toString()
+          }));
+          this.writeJson('rent_payments.json', mapped);
+        }
+
+        // 4. Seed expenses
+        const eCol = db.collection('rental_expenses');
+        const eCount = await eCol.countDocuments();
+        if (eCount === 0) {
+          const fileExpenses = this.readJson<RentalExpense[]>('expenses.json', []);
+          if (Array.isArray(fileExpenses) && fileExpenses.length > 0) {
+            for (const e of fileExpenses) {
+              await eCol.updateOne(
+                { $or: [{ expenseId: e.expenseId }, { id: e.id }] },
+                { $set: e },
+                { upsert: true }
+              );
+            }
+            console.log(`[RentalRepository] Migrated ${fileExpenses.length} rental expenses to MongoDB.`);
+          }
+        } else {
+          const docs = await eCol.find({}).toArray();
+          const mapped = docs.map((d: any) => ({
+            ...d,
+            id: d.id || d.expenseId || d._id?.toString()
+          }));
+          this.writeJson('expenses.json', mapped);
+        }
+
+        this.hasSeededToMongo = true;
+      }
+    } catch (err) {
+      console.warn('[RentalRepository] Seed to Mongo error:', err);
     }
   }
 
@@ -152,6 +269,18 @@ export class RentalRepository {
       list.push(complex);
     }
     this.writeJson('complexes.json', list);
+
+    // Asynchronously persist to MongoDB
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_complexes').updateOne(
+          { $or: [{ complexId: complex.complexId }, { id: complex.id }] },
+          { $set: complex },
+          { upsert: true }
+        ).catch((err) => console.warn('[RentalRepository] Mongo saveComplex error:', err));
+      }
+    }).catch(() => {});
+
     return complex;
   }
 
@@ -178,6 +307,18 @@ export class RentalRepository {
       list.push(shop);
     }
     this.writeJson('shops.json', list);
+
+    // Asynchronously persist to MongoDB
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_shops').updateOne(
+          { $or: [{ shopId: shop.shopId }, { id: shop.id }] },
+          { $set: shop },
+          { upsert: true }
+        ).catch((err) => console.warn('[RentalRepository] Mongo saveShop error:', err));
+      }
+    }).catch(() => {});
+
     return shop;
   }
 
@@ -208,6 +349,18 @@ export class RentalRepository {
       list.push(payment);
     }
     this.writeJson('rent_payments.json', list);
+
+    // Asynchronously persist to MongoDB
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_payments').updateOne(
+          { $or: [{ paymentId: payment.paymentId }, { id: payment.id }] },
+          { $set: payment },
+          { upsert: true }
+        ).catch((err) => console.warn('[RentalRepository] Mongo savePayment error:', err));
+      }
+    }).catch(() => {});
+
     return payment;
   }
 
@@ -230,6 +383,18 @@ export class RentalRepository {
       list.push(expense);
     }
     this.writeJson('expenses.json', list);
+
+    // Asynchronously persist to MongoDB
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_expenses').updateOne(
+          { $or: [{ expenseId: expense.expenseId }, { id: expense.id }] },
+          { $set: expense },
+          { upsert: true }
+        ).catch((err) => console.warn('[RentalRepository] Mongo saveExpense error:', err));
+      }
+    }).catch(() => {});
+
     return expense;
   }
 
@@ -238,6 +403,16 @@ export class RentalRepository {
     const filtered = list.filter((e) => e.expenseId !== expenseId && e.id !== expenseId);
     if (filtered.length !== list.length) {
       this.writeJson('expenses.json', filtered);
+
+      // Asynchronously delete in MongoDB
+      getFinanceDb().then((db) => {
+        if (db) {
+          db.collection('rental_expenses').deleteOne({
+            $or: [{ expenseId }, { id: expenseId }]
+          }).catch((err) => console.warn('[RentalRepository] Mongo deleteExpense error:', err));
+        }
+      }).catch(() => {});
+
       return true;
     }
     return false;
@@ -254,6 +429,16 @@ export class RentalRepository {
     // keep maximum 2000 logs
     if (list.length > 2000) list.length = 2000;
     this.writeJson('audit_logs.json', list);
+
+    // Asynchronously persist to MongoDB
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_audit_logs').insertOne(log).catch((err) =>
+          console.warn('[RentalRepository] Mongo saveAuditLog error:', err)
+        );
+      }
+    }).catch(() => {});
+
     return log;
   }
 
@@ -268,6 +453,17 @@ export class RentalRepository {
     const filtered = list.filter((q) => q.entityId !== item.entityId || q.status === 'SYNCED');
     filtered.push(item);
     this.writeJson('sync_queue.json', filtered);
+
+    getFinanceDb().then((db) => {
+      if (db) {
+        db.collection('rental_sync_queue').updateOne(
+          { id: item.id },
+          { $set: item },
+          { upsert: true }
+        ).catch((err) => console.warn('[RentalRepository] Mongo enqueueSync error:', err));
+      }
+    }).catch(() => {});
+
     return item;
   }
 
@@ -277,6 +473,15 @@ export class RentalRepository {
     if (index >= 0) {
       list[index] = item;
       this.writeJson('sync_queue.json', list);
+
+      getFinanceDb().then((db) => {
+        if (db) {
+          db.collection('rental_sync_queue').updateOne(
+            { id: item.id },
+            { $set: item }
+          ).catch((err) => console.warn('[RentalRepository] Mongo updateSyncItem error:', err));
+        }
+      }).catch(() => {});
     }
   }
 

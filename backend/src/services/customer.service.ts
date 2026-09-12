@@ -19,24 +19,60 @@ export function normalizePhone(phone: string): string {
 const initialCustomers: Customer[] = [];
 
 export class CustomerService {
-  public async getAllAsync(includeDeleted: boolean = false): Promise<Customer[]> {
+  private hasSeededToMongo = false;
+
+  private async ensureSeeded(): Promise<void> {
+    if (this.hasSeededToMongo) return;
     try {
       if (!isMongoConnected()) {
         await ensureMongoConnected();
       }
       if (isMongoConnected()) {
+        const count = await CustomerModel.countDocuments();
+        if (count === 0) {
+          const fileCusts = googleDriveRepository.readJson<Customer[]>(FILE_NAME, initialCustomers);
+          if (Array.isArray(fileCusts) && fileCusts.length > 0) {
+            for (const c of fileCusts) {
+              const mongoDoc = {
+                ...c,
+                customerId: c.id || (c as any).customerId,
+                fullName: c.name || (c as any).fullName || 'Customer',
+                phoneNumber: c.phone || (c as any).phoneNumber || '9999999999',
+                phoneNormalized: normalizePhone(c.phone || (c as any).phoneNumber || '')
+              };
+              await CustomerModel.findOneAndUpdate(
+                { $or: [{ customerId: mongoDoc.customerId }, { id: mongoDoc.customerId }] },
+                { $set: mongoDoc },
+                { upsert: true }
+              );
+            }
+            console.log(`[CustomerService] Migrated ${fileCusts.length} customers from JSON to MongoDB.`);
+          }
+        }
+        this.hasSeededToMongo = true;
+      }
+    } catch (err) {
+      console.warn('[CustomerService] Seed to Mongo note:', err);
+    }
+  }
+
+  public async getAllAsync(includeDeleted: boolean = false): Promise<Customer[]> {
+    await this.ensureSeeded();
+    try {
+      if (isMongoConnected()) {
         const query = includeDeleted ? {} : { isDeleted: { $ne: true } };
         const dbCusts = await CustomerModel.find(query).sort({ createdAt: -1 }).lean();
-        if (Array.isArray(dbCusts)) {
+        if (Array.isArray(dbCusts) && dbCusts.length > 0) {
           const mapped: Customer[] = dbCusts.map((c: any) => ({
             ...c,
-            id: c.customerId || c._id?.toString(),
+            id: c.customerId || c.id || c._id?.toString(),
             name: c.fullName || c.name,
             phone: c.phoneNumber || c.phone,
-            idProof: c.idProofType || c.idProof,
-            idNumber: c.idProofNumber || c.idNumber,
-            customerPhoto: c.customerPhoto?.url || c.customerPhoto || null
+            idProof: c.idProofType || c.idProof || 'Aadhaar',
+            idNumber: c.idProofNumber || c.idNumber || '',
+            customerPhoto: typeof c.customerPhoto === 'string' ? c.customerPhoto : (c.customerPhoto?.url || null)
           }));
+          googleDriveRepository.writeJson(FILE_NAME, mapped);
           return mapped;
         }
       }
@@ -53,6 +89,33 @@ export class CustomerService {
     }
     if (includeDeleted) return list;
     return list.filter((c) => !c.isDeleted);
+  }
+
+  public async getByIdAsync(id: string): Promise<Customer | null> {
+    await this.ensureSeeded();
+    try {
+      if (isMongoConnected()) {
+        const dbCust = await CustomerModel.findOne({
+          isDeleted: { $ne: true },
+          $or: [{ customerId: id }, { id }]
+        }).lean();
+        if (dbCust) {
+          const c: any = dbCust;
+          return {
+            ...c,
+            id: c.customerId || c.id || c._id?.toString(),
+            name: c.fullName || c.name,
+            phone: c.phoneNumber || c.phone,
+            idProof: c.idProofType || c.idProof || 'Aadhaar',
+            idNumber: c.idProofNumber || c.idNumber || '',
+            customerPhoto: typeof c.customerPhoto === 'string' ? c.customerPhoto : (c.customerPhoto?.url || null)
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[CustomerService] getByIdAsync error:', err);
+    }
+    return this.getById(id);
   }
 
   public getById(id: string): Customer | null {
@@ -162,10 +225,25 @@ export class CustomerService {
     googleDriveRepository.writeJson(FILE_NAME, customers);
 
     try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
       if (isMongoConnected()) {
+        const mongoDoc = {
+          ...newCustomer,
+          customerId: newCustomer.id,
+          fullName: newCustomer.name,
+          name: newCustomer.name,
+          phoneNumber: newCustomer.phone,
+          phone: newCustomer.phone,
+          phoneNormalized: normPhone,
+          idProofType: newCustomer.idProof || 'Aadhaar',
+          idProofNumber: newCustomer.idNumber || '',
+          customerPhoto: typeof newCustomer.customerPhoto === 'string' ? { url: newCustomer.customerPhoto, publicId: '' } : newCustomer.customerPhoto
+        };
         await CustomerModel.findOneAndUpdate(
           { $or: [{ customerId: newCustomer.id }, { id: newCustomer.id }] },
-          { $set: newCustomer },
+          { $set: mongoDoc },
           { upsert: true, new: true }
         );
       }
@@ -211,10 +289,25 @@ export class CustomerService {
     googleDriveRepository.writeJson(FILE_NAME, customers);
 
     try {
+      if (!isMongoConnected()) {
+        await ensureMongoConnected();
+      }
       if (isMongoConnected()) {
+        const mongoDoc = {
+          ...updatedCustomer,
+          customerId: currentCust.id,
+          fullName: updatedCustomer.name,
+          name: updatedCustomer.name,
+          phoneNumber: updatedCustomer.phone,
+          phone: updatedCustomer.phone,
+          phoneNormalized: updatedCustomer.phoneNormalized,
+          idProofType: updatedCustomer.idProof || 'Aadhaar',
+          idProofNumber: updatedCustomer.idNumber || '',
+          customerPhoto: typeof updatedCustomer.customerPhoto === 'string' ? { url: updatedCustomer.customerPhoto, publicId: '' } : updatedCustomer.customerPhoto
+        };
         await CustomerModel.findOneAndUpdate(
           { $or: [{ customerId: currentCust.id }, { id: currentCust.id }] },
-          { $set: updatedCustomer },
+          { $set: mongoDoc },
           { upsert: true, new: true }
         );
       }

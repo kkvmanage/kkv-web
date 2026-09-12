@@ -69,17 +69,51 @@ jobs:
             npm --version || true
 
             echo "======================================"
-            echo "Deploying Frontend"
+            echo "Git Repository Safety Check"
             echo "======================================"
             cd /home/ubuntu/kkv-web
+            echo "Repository: $(pwd)"
 
-            echo "Cleaning stale Git reference..."
-            git update-ref -d refs/remotes/origin/main 2>/dev/null || true
+            echo "Checking for active Git processes..."
+            ACTIVE_GIT_PIDS=$(pgrep -d ' ' -x git || true)
+            if [ -n "$ACTIVE_GIT_PIDS" ]; then
+              echo "Active Git process detected (PIDs: $ACTIVE_GIT_PIDS):"
+              ps -p $ACTIVE_GIT_PIDS -u -f || ps aux | grep '[g]it' || true
+              echo "Error: A Git process is currently running on the server. Aborting deployment to prevent corruption." >&2
+              exit 1
+            fi
+            echo "No active Git processes found."
 
-            echo "Fetching latest code..."
+            echo "Checking Git repository lock state..."
+            if [ -f .git/index.lock ]; then
+              echo "Stale .git/index.lock detected with no active Git process. Safely removing..."
+              rm -f .git/index.lock
+              echo "Removed stale Git index.lock"
+            fi
+
+            if [ -f .git/HEAD.lock ]; then
+              echo "Stale .git/HEAD.lock detected. Safely removing..."
+              rm -f .git/HEAD.lock
+            fi
+
+            if [ -f .git/config.lock ]; then
+              echo "Stale .git/config.lock detected. Safely removing..."
+              rm -f .git/config.lock
+            fi
+
+            # Clean any stale lock files under refs
+            find .git/refs -name "*.lock" -type f -delete 2>/dev/null || true
+
+            echo "Current Git status before sync:"
+            git status
+
+            echo "======================================"
+            echo "Syncing Repository with GitHub"
+            echo "======================================"
+            echo "Fetching latest code from origin main..."
             git fetch origin main
 
-            echo "Syncing with GitHub..."
+            echo "Syncing working tree with origin/main..."
             git reset --hard origin/main
 
             echo "Cleaning old build artifacts..."

@@ -400,17 +400,27 @@ export interface FDInterestPayout {
 export interface FDWithdrawal {
   id: string;
   withdrawalId?: string;
+  receiptNo?: string;
+  receiptId?: string;
+  withdrawalType?: string;
   fdId?: string;
   fdNo: string;
   customerId?: string;
   customerPhone?: string;
   depositorName: string;
+  originalPrincipal?: number;
+  balanceBefore?: number;
   principalAmount: number;
+  remainingBalance?: number;
   interestPaid: number;
   totalAmount: number;
   withdrawalDate: string;
   mode: 'Cash' | 'Bank' | 'UPI';
+  transactionReference?: string;
+  bankName?: string;
   notes?: string;
+  status?: string;
+  processedBy?: string;
   branchId?: string;
   complexId?: string;
 }

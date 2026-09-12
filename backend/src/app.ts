@@ -59,6 +59,12 @@ const corsOptions: cors.CorsOptions = {
     'Access-Control-Request-Method',
     'Access-Control-Request-Headers'
   ],
+  exposedHeaders: [
+    'Content-Disposition',
+    'Content-Length',
+    'Content-Type',
+    'x-backup-sha256'
+  ],
   maxAge: 86400
 };
 

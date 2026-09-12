@@ -175,26 +175,7 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
     );
   };
 
-  const triggerBrowserDownload = (backupId: string, fileName: string) => {
-    try {
-      const downloadUrl = apiService.getBackupDownloadUrl(backupId);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.setAttribute('download', fileName);
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-      }, 500);
-      return true;
-    } catch (err) {
-      console.error('Auto download trigger failed:', err);
-      return false;
-    }
-  };
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   // ══════════════════════════════════════════════════════════════════════════
   // COMPLETE AUTOMATED PIPELINE:
@@ -238,18 +219,26 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
       }
       updateStepStatus(3, 'completed', `Checksum verified: ${backupInfo.sha256.slice(0, 16)}...`);
 
-      // Step 4: Trigger Auto Download & Acknowledge
-      updateStepStatus(4, 'in_progress', `Triggering browser download: ${backupInfo.fileName}...`);
-      triggerBrowserDownload(backupInfo.backupId, backupInfo.fileName);
+      // Step 4: Trigger Authenticated Auto Download & Acknowledge
+      updateStepStatus(4, 'in_progress', `Downloading authenticated backup ZIP: ${backupInfo.fileName}...`);
+      const downloadRes = await apiService.downloadBackup(backupInfo.backupId, backupInfo.fileName);
+
+      if (!downloadRes.success) {
+        updateStepStatus(4, 'failed', downloadRes.message || 'Backup download authorization failed.');
+        setErrorStage('BACKUP');
+        throw new Error(
+          downloadRes.message || 'Backup download failed. Please sign in again or check your connection. No business data has been deleted.'
+        );
+      }
 
       try {
         await apiService.acknowledgeBackupDownload(backupInfo.backupId);
       } catch (ackErr) {
         console.warn('Download acknowledgement notice:', ackErr);
       }
-      updateStepStatus(4, 'completed', `Downloaded ${backupInfo.fileName}`);
+      updateStepStatus(4, 'completed', `Downloaded ${downloadRes.fileName || backupInfo.fileName} (${(backupInfo.fileSize / 1024).toFixed(1)} KB)`);
 
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 600));
 
       // Step 5: Execute Business Data Wipe
       updateStepStatus(5, 'in_progress', 'Executing atomic deletion of operational records...');
@@ -291,9 +280,17 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
     }
   };
 
-  const handleManualDownload = () => {
-    if (!verificationRecord) return;
-    triggerBrowserDownload(verificationRecord.backupId, verificationRecord.fileName);
+  const handleManualDownload = async () => {
+    if (!verificationRecord || downloadingZip) return;
+    setDownloadingZip(true);
+    try {
+      const res = await apiService.downloadBackup(verificationRecord.backupId, verificationRecord.fileName);
+      if (!res.success) {
+        setErrorMessage(res.message || 'Manual download failed.');
+      }
+    } finally {
+      setDownloadingZip(false);
+    }
   };
 
   const handleStartFresh = () => {

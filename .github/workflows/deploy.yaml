@@ -17,7 +17,7 @@ jobs:
           username: ubuntu
           port: 22
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
+          command_timeout: 10m
 
           script: |
             set -e
@@ -39,13 +39,23 @@ jobs:
             echo "🔄 Restarting backend..."
             pm2 restart kkv-backend --update-env
 
-            echo "⏳ Waiting for backend..."
-            sleep 3
+            echo "⏳ Waiting for backend startup..."
+
+            for i in {1..12}; do
+              if curl --silent --fail http://127.0.0.1:8080/api/health > /tmp/health.json; then
+                echo "✅ Backend is healthy!"
+                cat /tmp/health.json
+                break
+              fi
+
+              echo "Backend not ready yet... attempt $i/12"
+              sleep 2
+            done
 
             echo "📊 PM2 status..."
             pm2 status kkv-backend
 
-            echo "🩺 Checking backend health..."
+            echo "🩺 Final health check..."
             curl --fail --silent --show-error \
               http://127.0.0.1:8080/api/health
 

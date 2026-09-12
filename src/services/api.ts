@@ -653,6 +653,88 @@ export const apiService = {
     return `${getApiBaseUrl()}/admin/backup/${encodeURIComponent(backupId)}/download`;
   },
 
+  async downloadBackup(
+    backupId: string,
+    customFileName?: string
+  ): Promise<{ success: boolean; fileName?: string; message?: string }> {
+    try {
+      const token = getStoredAuthToken();
+      if (!token) {
+        return {
+          success: false,
+          message: 'Authentication token is required. Please sign in again.'
+        };
+      }
+
+      const url = `${getApiBaseUrl()}/admin/backup/${encodeURIComponent(backupId)}/download`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        let errMsg = `Backup download failed with status ${response.status}`;
+        try {
+          const errJson = await response.json();
+          if (errJson.message) errMsg = errJson.message;
+        } catch {
+          // ignore
+        }
+        if (response.status === 401) {
+          errMsg = 'Backup download authorization failed. Please sign in again.';
+        } else if (response.status === 403) {
+          errMsg = 'You do not have administrative permission to download system backups.';
+        } else if (response.status === 404) {
+          errMsg = 'Backup archive file not found on server.';
+        }
+        return { success: false, message: errMsg };
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const json = await response.json();
+        return {
+          success: false,
+          message: json.message || 'Server returned an error response instead of backup ZIP binary.'
+        };
+      }
+
+      let filename = customFileName || '';
+      const disposition = response.headers.get('content-disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match && match[1]) {
+          filename = match[1].replace(/['"]/g, '').trim();
+        }
+      }
+      if (!filename) {
+        filename = `KKV_GOLD_FINANCE_BACKUP_${backupId}.zip`;
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', filename);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+
+      return { success: true, fileName: filename };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Network error during backup download.' };
+    }
+  },
+
   async acknowledgeBackupDownload(backupId: string): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const res = await fetch(`${getApiBaseUrl()}/admin/backup/${encodeURIComponent(backupId)}/acknowledge-download`, {
@@ -1052,11 +1134,7 @@ export const apiService = {
     }
   },
 
-  downloadBackup(backupId: string) {
-    const token = getStoredAuthToken();
-    const url = `${getApiBaseUrl()}/backups/${backupId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    window.open(url, '_blank');
-  },
+
 
   async getNextLoanSequence(): Promise<{ nextSequence: number; loanNo: string; receiptNo: number } | null> {
     try {

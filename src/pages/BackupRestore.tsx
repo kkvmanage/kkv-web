@@ -105,9 +105,14 @@ export const BackupRestore: React.FC = () => {
     }
   };
 
-  const handleDownloadBackup = (backupId: string) => {
-    apiService.downloadBackup(backupId);
-    showToast('Backup download started.', 'info');
+  const handleDownloadBackup = async (backupId: string) => {
+    showToast('Downloading backup archive...', 'info');
+    const res = await apiService.downloadBackup(backupId);
+    if (res.success) {
+      showToast(`Backup archive downloaded successfully (${res.fileName})`, 'success');
+    } else {
+      showToast(res.message || 'Backup download failed.', 'error');
+    }
   };
 
   const handleSaveTelegram = () => {

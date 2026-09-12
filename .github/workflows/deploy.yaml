@@ -1,0 +1,39 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy backend to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            echo "🚀 Starting backend deployment..."
+
+            cd /home/ubuntu/kkv-web
+
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            echo "📦 Installing backend dependencies..."
+            cd /home/ubuntu/kkv-web/backend
+            npm install
+
+            echo "🔄 Restarting backend..."
+            pm2 restart kkv-backend --update-env
+
+            echo "✅ Checking PM2 status..."
+            pm2 status
+
+            echo "✅ Backend deployment completed!"

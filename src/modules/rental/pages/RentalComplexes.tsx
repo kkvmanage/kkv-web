@@ -43,6 +43,18 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
     fetchComplexes();
   }, []);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchComplexes();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, []);
+
   const handleManageShops = (complexId: string) => {
     (window as any).__selectedRentalComplexId = complexId;
     try {

@@ -7,9 +7,11 @@ import {
   RotateCcw,
   ArrowRight,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Check
 } from 'lucide-react';
 import { apiService } from '../../services/api';
+import { useApp } from '../../context/AppContext';
 
 export interface SystemRestoreModalProps {
   isOpen: boolean;
@@ -22,10 +24,17 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
   onClose,
   onSuccessReload
 }) => {
+  const { reloadAllData, showToast } = useApp();
+
   // Steps: 1 = Select & Upload, 2 = Validate & Preview, 3 = Confirm, 4 = Executing, 5 = Complete
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Post-restore UI synchronization state
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncErrorMessage, setSyncErrorMessage] = useState('');
+  const [restoredDetails, setRestoredDetails] = useState<any>(null);
 
   // Dragging state
   const [isDragging, setIsDragging] = useState(false);
@@ -80,6 +89,9 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       setPreviewResult(null);
       setAcknowledgedWarning(false);
       setInputConfirmation('');
+      setSyncStatus('idle');
+      setSyncErrorMessage('');
+      setRestoredDetails(null);
     }
   }, [isOpen]);
 
@@ -138,12 +150,43 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
         throw new Error(res.message || 'Database restoration failed.');
       }
 
-      setLoading(false);
+      setRestoredDetails(res.data || res);
       setStep(5);
+      setLoading(false);
+
+      // Trigger automatic immediate re-hydration of global application state from MongoDB
+      setSyncStatus('syncing');
+      try {
+        await reloadAllData();
+        window.dispatchEvent(new CustomEvent('SYSTEM_RESTORE_COMPLETED', { detail: res.data || res }));
+        window.dispatchEvent(new Event('kkv_rental_data_changed'));
+        setSyncStatus('success');
+        showToast('System operational database restored and synchronized!', 'success');
+      } catch (syncErr: any) {
+        console.warn('[SystemRestoreModal] Immediate reloadAllData note:', syncErr);
+        setSyncStatus('error');
+        setSyncErrorMessage(syncErr?.message || 'Failed to auto-refresh screens.');
+      }
     } catch (err: any) {
       console.error('[SystemRestoreModal] Restore execution error:', err);
       setErrorMessage(err?.message || 'Restore failed. The database has been protected.');
       setLoading(false);
+    }
+  };
+
+  const handleRetrySync = async () => {
+    setSyncStatus('syncing');
+    setSyncErrorMessage('');
+    try {
+      await reloadAllData();
+      window.dispatchEvent(new CustomEvent('SYSTEM_RESTORE_COMPLETED', { detail: restoredDetails }));
+      window.dispatchEvent(new Event('kkv_rental_data_changed'));
+      setSyncStatus('success');
+      showToast('Application state synchronized successfully!', 'success');
+    } catch (syncErr: any) {
+      console.warn('[SystemRestoreModal] Retry sync note:', syncErr);
+      setSyncStatus('error');
+      setSyncErrorMessage(syncErr?.message || 'Failed to auto-refresh screens.');
     }
   };
 
@@ -605,38 +648,153 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
 
           {/* STEP 5: RESTORE COMPLETE */}
           {step === 5 && previewResult && (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <div
                 style={{
-                  width: '64px',
-                  height: '64px',
+                  width: '56px',
+                  height: '56px',
                   borderRadius: '50%',
                   backgroundColor: '#DCFCE7',
                   color: '#16A34A',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  margin: '0 auto 16px auto'
+                  margin: '0 auto 12px auto'
                 }}
               >
-                <CheckCircle2 size={36} />
+                <CheckCircle2 size={32} />
               </div>
-              <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 700, color: '#0F172A' }}>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '19px', fontWeight: 700, color: '#0F172A' }}>
                 System Database Restored Successfully!
               </h3>
-              <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '440px', margin: '0 auto 20px auto', lineHeight: '1.5' }}>
-                Restored <strong>{previewResult.counts.totalRecords} records</strong> across Finance and Rental domains.
-                Original primary identifiers, sequence counters, and file references have been re-established.
+              <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '480px', margin: '0 auto 16px auto', lineHeight: '1.4' }}>
+                Authoritative records restored from <strong>{previewResult.fileName}</strong> into MongoDB and Local Storage.
               </p>
 
-              <button
-                type="button"
-                onClick={handleFinish}
-                className="btn btn-primary"
-                style={{ padding: '10px 24px', fontWeight: 600 }}
+              {/* RESTORED COUNTS SUMMARY PILLS */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: '8px',
+                  backgroundColor: '#F8FAFC',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #E2E8F0',
+                  marginBottom: '16px',
+                  textAlign: 'left'
+                }}
               >
-                Reload Application State
-              </button>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Customers</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>{previewResult.counts.customers ?? 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Loans</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>{previewResult.counts.loans ?? 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Receipts</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>{previewResult.counts.receipts ?? 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Fixed Deposits</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>{previewResult.counts.fixedDeposits ?? 0}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Day Book</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>{previewResult.counts.dayBookEntries ?? 0}</div>
+                </div>
+                {(previewResult.counts.rentalComplexes !== undefined || previewResult.counts.rentalShops !== undefined) && (
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#64748B', textTransform: 'uppercase', fontWeight: 600 }}>Rental Units</div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F766E' }}>
+                      {(previewResult.counts.rentalComplexes || 0) + (previewResult.counts.rentalShops || 0)}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SYNCHRONIZATION STATUS BADGE */}
+              {syncStatus === 'syncing' && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    borderRadius: '20px',
+                    backgroundColor: '#F0FDFA',
+                    border: '1px solid #99F6E4',
+                    color: '#0F766E',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    marginBottom: '16px'
+                  }}
+                >
+                  <RefreshCw size={14} className="animate-spin" />
+                  Synchronizing application state with restored database...
+                </div>
+              )}
+
+              {syncStatus === 'success' && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    borderRadius: '20px',
+                    backgroundColor: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    color: '#15803D',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    marginBottom: '16px'
+                  }}
+                >
+                  <Check size={14} strokeWidth={3} />
+                  Application state synchronized with restored database
+                </div>
+              )}
+
+              {syncStatus === 'error' && (
+                <div
+                  style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    color: '#B91C1C',
+                    fontSize: '12px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <span>{syncErrorMessage ? `Notice: ${syncErrorMessage}. Click Retry Refresh.` : 'Restore completed, but some screens could not refresh. Click Retry Refresh.'}</span>
+                  <button
+                    type="button"
+                    onClick={handleRetrySync}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '11px', padding: '4px 10px', marginLeft: '8px' }}
+                  >
+                    Retry Refresh
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={handleFinish}
+                  className="btn btn-primary"
+                  style={{ padding: '10px 28px', fontWeight: 600, fontSize: '14px' }}
+                >
+                  Close & View Restored Data
+                </button>
+              </div>
             </div>
           )}
         </div>

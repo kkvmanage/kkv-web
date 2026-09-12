@@ -47,6 +47,7 @@ export const AdminPanel: React.FC = () => {
     whatsAppTemplates,
     updateWhatsAppTemplates,
     resetAllData,
+    reloadAllData,
     bulkUpdateFixedDepositDates,
     deleteCustomer,
     restoreCustomer,
@@ -3271,7 +3272,7 @@ export const AdminPanel: React.FC = () => {
         isOpen={showRestoreModal}
         onClose={() => setShowRestoreModal(false)}
         onSuccessReload={() => {
-          resetAllData();
+          reloadAllData();
           setMasterControlOpen(false);
         }}
       />

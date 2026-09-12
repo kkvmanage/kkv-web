@@ -83,6 +83,18 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
     fetchDashboard();
   }, [selectedMonth]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchDashboard();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, [selectedMonth]);
+
   const handleSaveComplex = async (data: any) => {
     const res = await rentalApi.createComplex(data);
     if (res.success) {

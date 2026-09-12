@@ -96,6 +96,18 @@ export const RentalExpenses: React.FC = () => {
     fetchExpenses();
   }, [selectedComplex, selectedScope, selectedCategory, selectedPaymentMode, startDate, endDate]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchExpenses();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, [selectedComplex, selectedScope, selectedCategory, selectedPaymentMode, startDate, endDate]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     fetchExpenses();

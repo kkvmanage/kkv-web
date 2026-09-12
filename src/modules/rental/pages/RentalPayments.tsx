@@ -60,6 +60,18 @@ export const RentalPayments: React.FC = () => {
     fetchPayments();
   }, [selectedComplex, selectedMonth, selectedStatus, selectedMode, startDate, endDate]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchPayments();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, [selectedComplex, selectedMonth, selectedStatus, selectedMode, startDate, endDate]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     fetchPayments();

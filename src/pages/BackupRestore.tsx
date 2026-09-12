@@ -29,7 +29,8 @@ export const BackupRestore: React.FC = () => {
     telegramConfig,
     updateTelegramConfig,
     showToast,
-    resetAllData
+    resetAllData,
+    reloadAllData
   } = useApp();
 
   const [botToken, setBotToken] = useState(telegramConfig.botToken || '');
@@ -435,7 +436,7 @@ export const BackupRestore: React.FC = () => {
         isOpen={showRestoreModal}
         onClose={() => setShowRestoreModal(false)}
         onSuccessReload={() => {
-          resetAllData();
+          reloadAllData();
           loadHistory();
           loadRestoreHistory();
         }}

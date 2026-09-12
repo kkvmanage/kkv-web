@@ -80,6 +80,19 @@ export const RentalReports: React.FC = () => {
     fetchReportData();
   }, [activeTab, selectedMonth, selectedComplex, expenseScope, expenseCategory, startDate, endDate]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchComplexes();
+      fetchReportData();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, [activeTab, selectedMonth, selectedComplex, expenseScope, expenseCategory, startDate, endDate]);
+
   const handlePrint = () => {
     window.print();
   };

@@ -74,6 +74,18 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
     fetchShops();
   }, []);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchShops();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, []);
+
   // Update complex filter if prop changes or window context changes
   useEffect(() => {
     const ctxId = initialComplexId || (window as any).__selectedRentalComplexId || '';

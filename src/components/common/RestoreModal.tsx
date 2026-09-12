@@ -79,6 +79,8 @@ export const RestoreModal: React.FC<RestoreModalProps> = ({
 
       // Reload fresh operational data into application context
       await reloadAllData();
+      window.dispatchEvent(new CustomEvent('SYSTEM_RESTORE_COMPLETED', { detail: result }));
+      window.dispatchEvent(new Event('kkv_rental_data_changed'));
 
       showToast('Latest cloud backup restored & verified successfully!', 'success');
       if (onSuccess) onSuccess();

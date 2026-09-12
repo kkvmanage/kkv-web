@@ -163,6 +163,18 @@ export const RentalDayBook: React.FC = () => {
     fetchDayBook();
   }, [fromDate, toDate, selectedComplex, selectedType, selectedMode, page, limit]);
 
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchDayBook();
+    };
+    window.addEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+    window.addEventListener('kkv_rental_data_changed', handleRefresh);
+    return () => {
+      window.removeEventListener('SYSTEM_RESTORE_COMPLETED', handleRefresh);
+      window.removeEventListener('kkv_rental_data_changed', handleRefresh);
+    };
+  }, [fromDate, toDate, selectedComplex, selectedType, selectedMode, page, limit]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);

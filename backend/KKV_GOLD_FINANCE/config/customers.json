@@ -11,7 +11,15 @@
     "occupation": "Self Employed",
     "age": 30,
     "dateOfBirth": "",
-    "customerPhoto": null,
+    "customerPhoto": {
+      "fileId": "",
+      "fileName": "customer-photo.jpg",
+      "url": "",
+      "mimeType": "image/jpeg",
+      "fileSize": 0,
+      "uploadedAt": "2026-09-12T08:36:55.292Z",
+      "publicId": ""
+    },
     "photoSource": null,
     "address": "123 Main Street",
     "city": "Komarapalayam",
@@ -57,10 +65,6 @@
     "createdAt": "2026-09-12T08:36:55.417Z",
     "updatedAt": "2026-09-12T08:36:55.417Z",
     "__v": 0,
-    "id": "KKV-2026-000003",
-    "name": "Sanjay Kumar",
-    "phone": "9842112345",
-    "idProof": "Aadhaar",
-    "idNumber": "1234-5678-9012"
+    "id": "KKV-2026-000003"
   }
 ]

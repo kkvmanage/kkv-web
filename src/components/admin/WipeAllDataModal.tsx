@@ -90,6 +90,7 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
   // Final confirmation input & checkbox
   const [inputConfirmation, setInputConfirmation] = useState('');
   const [agreeCheckbox, setAgreeCheckbox] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   // Pipeline Execution Steps
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([
@@ -123,6 +124,7 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
       setInputConfirmation('');
       setAgreeCheckbox(false);
       setRateLimitNotice(false);
+      setDownloadingZip(false);
       setPipelineSteps([
         { id: 1, label: 'Safety Confirmation', status: 'completed', detail: '10 deliberate clicks & typed confirmation verified' },
         { id: 2, label: 'Create Full Backup ZIP', status: 'waiting', detail: 'Exporting Finance, Rental, Attachments & Sequences' },
@@ -174,8 +176,6 @@ export const WipeAllDataModal: React.FC<WipeAllDataModalProps> = ({
       prev.map((s) => (s.id === stepId ? { ...s, status, ...(detail ? { detail } : {}) } : s))
     );
   };
-
-  const [downloadingZip, setDownloadingZip] = useState(false);
 
   // ══════════════════════════════════════════════════════════════════════════
   // COMPLETE AUTOMATED PIPELINE:

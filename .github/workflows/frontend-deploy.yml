@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: frontend-production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Deploy Frontend to EC2
@@ -23,16 +27,54 @@ jobs:
           script_stop: true
 
           script: |
-            set -e
+            set -euo pipefail
+
+            echo "======================================"
+            echo "Acquiring Deployment Lock..."
+            echo "======================================"
+            exec 200>/tmp/kkv-frontend-deploy.lock
+            if ! flock -n 200; then
+              echo "Error: Another frontend deployment is currently in progress. Aborting." >&2
+              exit 1
+            fi
+
+            echo "======================================"
+            echo "Verifying Server Swap & Memory"
+            echo "======================================"
+            SWAP_TOTAL_MB=$(free -m | awk '/^Swap:/ {print $2}')
+            if [ -z "$SWAP_TOTAL_MB" ] || [ "$SWAP_TOTAL_MB" -lt 1024 ]; then
+              echo "Configuring 2GB persistent swap space to prevent OOM build failures..."
+              if [ ! -f /swapfile ]; then
+                sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+                sudo chmod 600 /swapfile
+                sudo mkswap /swapfile
+              fi
+              sudo swapon /swapfile 2>/dev/null || true
+              if ! grep -q '/swapfile' /etc/fstab; then
+                echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+              fi
+              echo "Swap configured successfully."
+            else
+              echo "Sufficient swap space detected: ${SWAP_TOTAL_MB}MB"
+            fi
+
+            echo "======================================"
+            echo "System Resources Before Build"
+            echo "======================================"
+            echo "CPU cores: $(nproc)"
+            free -h
+            swapon --show || true
+            df -h /
+            node --version || true
+            npm --version || true
 
             echo "======================================"
             echo "Deploying Frontend"
             echo "======================================"
-
             cd /home/ubuntu/kkv-web
 
             echo "Cleaning stale Git reference..."
-            git update-ref -d refs/remotes/origin/main || true
+            git update-ref -d refs/remotes/origin/main 2>/dev/null || true
 
             echo "Fetching latest code..."
             git fetch origin main
@@ -40,17 +82,26 @@ jobs:
             echo "Syncing with GitHub..."
             git reset --hard origin/main
 
+            echo "Cleaning old build artifacts..."
+            rm -rf dist
+
             echo "Creating frontend environment..."
             printf 'VITE_API_BASE_URL=%s\nVITE_API_URL=%s\n' '${{ secrets.VITE_API_BASE_URL }}' '${{ secrets.VITE_API_BASE_URL }}' > .env
 
-            echo "Installing dependencies..."
+            echo "Installing dependencies (lockfile-based)..."
             npm ci
 
-            echo "Building frontend..."
-            npm run build
+            echo "Building frontend with controlled memory allocation..."
+            NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
-            echo "Checking frontend build..."
+            echo "======================================"
+            echo "System Resources After Build"
+            echo "======================================"
+            free -h
+
+            echo "Verifying frontend build artifacts..."
             test -f dist/index.html
+            du -sh dist
 
             echo "Testing Nginx configuration..."
             sudo nginx -t

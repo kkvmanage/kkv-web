@@ -349,8 +349,36 @@ export const App: React.FC = () => {
         ))}
       </div>
 
-      {/* ── CUSTOM JWT AUTHENTICATION SCREEN ── */}
-      {(!userRole || !currentUser) && (
+      {/* ── SESSION RESTORATION SPLASH SCREEN ── */}
+      {authLoading ? (
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--bg-main, #0b1a13)',
+            color: 'var(--text-primary, #ffffff)',
+            gap: '16px'
+          }}
+        >
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              border: '3px solid rgba(212, 175, 55, 0.2)',
+              borderTopColor: '#d4af37',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }}
+          />
+          <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary, #a0aec0)' }}>
+            Restoring secure session...
+          </div>
+        </div>
+      ) : (!userRole || !currentUser) ? (
+        /* ── CUSTOM JWT AUTHENTICATION SCREEN ── */
         <LoginView
           loginEmail={loginEmail}
           setLoginEmail={setLoginEmail}
@@ -363,10 +391,8 @@ export const App: React.FC = () => {
           authLoading={authLoading}
           handleLogin={handleLogin}
         />
-      )}
-
-      {/* ── AUTHENTICATED APP WORKSPACE ── */}
-      {userRole !== null && currentUser !== null && (
+      ) : (
+        /* ── AUTHENTICATED APP WORKSPACE ── */
         <>
           {/* Main Sidebar */}
           <Sidebar />

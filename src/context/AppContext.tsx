@@ -416,8 +416,113 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const validNavPages: Set<NavPage> = new Set([
+  'dashboard',
+  'customers',
+  'customers-add',
+  'add-customer-form',
+  'edit-customer',
+  'search-customer',
+  'customer-profile',
+  'loan-issue',
+  'loan-display',
+  'loan-receipts',
+  'receipt-display',
+  'all-receipts',
+  'pending-loans',
+  'total-loans',
+  'rc-renewal-reminders',
+  'bill-balance',
+  'fd-customers',
+  'new-deposit',
+  'deposit-display',
+  'deposit-interest',
+  'interest-display',
+  'interest-pending',
+  'deposit-withdrawal',
+  'withdrawal-display',
+  'fd-customers-deposits',
+  'day-book',
+  'trial-balance',
+  'profit-loss',
+  'balance-sheet',
+  'accounts',
+  'daily-reminders',
+  'notifications',
+  'backup-restore',
+  'admin-panel',
+  'settings',
+  'rental',
+  'rental-dashboard',
+  'rental-complexes',
+  'rental-complex-detail',
+  'rental-shops',
+  'rental-shop-detail',
+  'rental-payments',
+  'rental-daybook',
+  'rental-expenses',
+  'rental-reports'
+]);
+
+function isValidNavPage(page: string | null | undefined): page is NavPage {
+  return page ? validNavPages.has(page as NavPage) : false;
+}
+
+function resolveInitialPage(): NavPage {
+  if (typeof window === 'undefined') return 'dashboard';
+
+  // 1. URL search params e.g. ?page=customers or ?view=loan-display
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('page') || params.get('view');
+    if (isValidNavPage(p)) return p;
+  } catch (e) {}
+
+  // 2. URL pathname e.g. /customers, /search-customer, /rental-shops, /rental/complexes
+  try {
+    const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    if (rawPath) {
+      const normalized = rawPath.replace(/\//g, '-');
+      if (isValidNavPage(normalized)) return normalized;
+      if (rawPath === 'rental' || rawPath === 'rental-dashboard') return 'rental-dashboard';
+      if (rawPath.startsWith('rental-complex') || rawPath.startsWith('rental/complex')) return 'rental-complexes';
+      if (rawPath.startsWith('rental-shop') || rawPath.startsWith('rental/shop')) return 'rental-shops';
+      if (rawPath.startsWith('rental-payment') || rawPath.startsWith('rental/payment')) return 'rental-payments';
+      if (rawPath.startsWith('rental-daybook') || rawPath.startsWith('rental/daybook')) return 'rental-daybook';
+      if (rawPath.startsWith('rental-expense') || rawPath.startsWith('rental/expense')) return 'rental-expenses';
+      if (rawPath.startsWith('rental-report') || rawPath.startsWith('rental/report')) return 'rental-reports';
+      if (rawPath === 'admin' || rawPath === 'staff') return 'admin-panel';
+      if (rawPath === 'customers/search' || rawPath === 'search') return 'search-customer';
+      if (rawPath === 'loans' || rawPath === 'loan') return 'loan-display';
+      if (rawPath === 'receipts' || rawPath === 'receipt') return 'all-receipts';
+    }
+  } catch (e) {}
+
+  // 3. URL hash e.g. #customers or #/search-customer
+  try {
+    const hash = window.location.hash.replace(/^#[/]?/, '').toLowerCase();
+    if (isValidNavPage(hash)) return hash;
+  } catch (e) {}
+
+  // 4. Session storage
+  try {
+    const saved = sessionStorage.getItem('kkv_current_page');
+    if (isValidNavPage(saved)) return saved;
+  } catch (e) {}
+
+  // 5. Default based on role
+  try {
+    const savedRole = localStorage.getItem('kkv_userRole') || sessionStorage.getItem('kkv_userRole');
+    if (savedRole && savedRole.includes('RENTAL_STAFF')) {
+      return 'rental-dashboard';
+    }
+  } catch (e) {}
+
+  return 'dashboard';
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentPage, setCurrentPageRaw] = useState<NavPage>('dashboard');
+  const [currentPage, setCurrentPageRaw] = useState<NavPage>(resolveInitialPage);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
@@ -427,7 +532,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCurrentPage = (page: NavPage) => {
     setCurrentPageRaw(page);
     setIsMobileMenuOpen(false);
+    try {
+      sessionStorage.setItem('kkv_current_page', page);
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', page);
+      window.history.replaceState({ page }, '', url.toString());
+    } catch (e) {}
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const page = resolveInitialPage();
+      setCurrentPageRaw(page);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Safe local storage helpers to prevent QuotaExceededError crashes
   const getStored = <T,>(key: string, fallback: T): T => {
@@ -493,7 +613,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>(() => getStored('selectedWorkspace', 'KKV GOLD FINANCE'));
   const [userRole, setUserRole] = useState<UserRole | null>(() => getStored('userRole', null));
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStored('currentUser', null));
-  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(() => Boolean(getStoredAuthToken()));
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
   const [staffAuditLogs, setStaffAuditLogs] = useState<StaffAuditLog[]>([]);
 
@@ -532,15 +652,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [whatsAppTemplates, setWhatsAppTemplates] = useState<WhatsAppTemplates>(() => getStored('waTemplates', defaultWhatsAppTemplates));
   const [telegramConfig, setTelegramConfig] = useState<TelegramConfig>(() => getStored('tgConfig', defaultTelegramConfig));
 
-  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [selectedProfileCustomerId, setSelectedProfileCustomerId] = useState<string | null>(null);
-  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [selectedLoan, setSelectedLoanRaw] = useState<Loan | null>(null);
+  const setSelectedLoan = (loan: Loan | null) => {
+    setSelectedLoanRaw(loan);
+    try {
+      if (loan?.loanNo) {
+        sessionStorage.setItem('kkv_selected_loan_no', loan.loanNo);
+        const url = new URL(window.location.href);
+        url.searchParams.set('loanNo', loan.loanNo);
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        sessionStorage.removeItem('kkv_selected_loan_no');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('loanNo');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {}
+  };
+
+  const [selectedReceipt, setSelectedReceiptRaw] = useState<Receipt | null>(null);
+  const setSelectedReceipt = (receipt: Receipt | null) => {
+    setSelectedReceiptRaw(receipt);
+    try {
+      if (receipt?.receiptNo) {
+        sessionStorage.setItem('kkv_selected_receipt_no', String(receipt.receiptNo));
+        const url = new URL(window.location.href);
+        url.searchParams.set('receiptNo', String(receipt.receiptNo));
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        sessionStorage.removeItem('kkv_selected_receipt_no');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('receiptNo');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {}
+  };
+
+  const [selectedProfileCustomerId, setSelectedProfileCustomerIdRaw] = useState<string | null>(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get('customerId');
+      if (param) return param;
+      return sessionStorage.getItem('kkv_selected_profile_customer_id');
+    } catch {
+      return null;
+    }
+  });
+
+  const setSelectedProfileCustomerId = (id: string | null) => {
+    setSelectedProfileCustomerIdRaw(id);
+    try {
+      if (id) {
+        sessionStorage.setItem('kkv_selected_profile_customer_id', id);
+        const url = new URL(window.location.href);
+        url.searchParams.set('customerId', id);
+        window.history.replaceState({}, '', url.toString());
+      } else {
+        sessionStorage.removeItem('kkv_selected_profile_customer_id');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('customerId');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (e) {}
+  };
+
+  const [editingCustomerId, setEditingCustomerIdRaw] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('kkv_editing_customer_id');
+    } catch {
+      return null;
+    }
+  });
+
+  const setEditingCustomerId = (id: string | null) => {
+    setEditingCustomerIdRaw(id);
+    try {
+      if (id) {
+        sessionStorage.setItem('kkv_editing_customer_id', id);
+      } else {
+        sessionStorage.removeItem('kkv_editing_customer_id');
+      }
+    } catch (e) {}
+  };
 
   const startEditCustomer = (id: string) => {
     setEditingCustomerId(id);
     setCurrentPage('edit-customer');
   };
+
+  // Restore selectedLoan from sessionStorage/URL once loans array is hydrated from backend
+  useEffect(() => {
+    if (!selectedLoan && loans.length > 0) {
+      try {
+        const savedLoanNo = new URLSearchParams(window.location.search).get('loanNo') || sessionStorage.getItem('kkv_selected_loan_no');
+        if (savedLoanNo) {
+          const match = loans.find(l => l.loanNo === savedLoanNo || l.id === savedLoanNo);
+          if (match) setSelectedLoanRaw(match);
+        }
+      } catch (e) {}
+    }
+  }, [loans, selectedLoan]);
+
+  // Restore selectedReceipt from sessionStorage/URL once receipts array is hydrated from backend
+  useEffect(() => {
+    if (!selectedReceipt && receipts.length > 0) {
+      try {
+        const savedReceiptNo = new URLSearchParams(window.location.search).get('receiptNo') || sessionStorage.getItem('kkv_selected_receipt_no');
+        if (savedReceiptNo) {
+          const match = receipts.find(r => String(r.receiptNo) === savedReceiptNo || r.id === savedReceiptNo);
+          if (match) setSelectedReceiptRaw(match);
+        }
+      } catch (e) {}
+    }
+  }, [receipts, selectedReceipt]);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
 

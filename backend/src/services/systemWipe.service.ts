@@ -10,6 +10,14 @@ import { backupPackageService } from './backupPackage.service.js';
 import { RentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { RentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { CustomerModel } from '../models/Customer.js';
+import { LoanModel } from '../models/Loan.js';
+import { ReceiptModel } from '../models/Receipt.js';
+import { FixedDepositModel } from '../models/FixedDeposit.js';
+import { FDCustomerModel } from '../models/FDCustomer.js';
+import { FDInterestPayoutModel } from '../models/FDInterestPayout.js';
+import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
+import { FDRenewalModel } from '../models/FDRenewal.js';
+import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { getFinanceDb } from '../config/database.js';
 import { env } from '../config/env.js';
@@ -89,53 +97,92 @@ class SystemWipeService {
    * Retrieves real-time counts of data that will be removed vs preserved across all domains.
    */
   public async getWipePreview(): Promise<WipePreviewData> {
-    let customers = customerService.getAll() || [];
-    try {
-      const mongoCustCount = await CustomerModel.countDocuments();
-      if (mongoCustCount > customers.length) {
-        customers = new Array(mongoCustCount).fill({});
-      }
-    } catch {
-      // fallback
-    }
-
-    const loans = loanService.getAll() || [];
-    const receipts = receiptService.getAll() || [];
-    const fixedDeposits = fdService.getDeposits() || [];
-    const fdCustomers = fdService.getCustomers() || [];
-    const fdInterestPayouts = fdService.getPayouts() || [];
-    const fdWithdrawals = fdService.getWithdrawals() || [];
-    const dayBookEntries = accountingService.getDayBook() || [];
-    const reminders = localFileRepository.readJson<any[]>('reminders.json', []) || [];
-    const notifications = localFileRepository.readJson<any[]>('notifications.json', []) || [];
-
-    const rentalComplexes = rentalRepo.getComplexes() || [];
-    const rentalShops = rentalRepo.getShops() || [];
-    const rentPayments = rentalRepo.getPayments() || [];
-    const rentalExpenses = rentalRepo.getExpenses() || [];
-    let rentalDayBook: any[] = [];
-    try {
-      rentalDayBook = await rentalDayBookRepo.getManualEntries();
-    } catch {
-      rentalDayBook = rentalDayBookRepo.readJson('rental_daybook.json', []) || [];
-    }
-
+    let customersCount = 0;
+    let loansCount = 0;
+    let receiptsCount = 0;
+    let fixedDepositsCount = 0;
+    let fdCustomersCount = 0;
+    let fdInterestPayoutsCount = 0;
+    let fdWithdrawalsCount = 0;
+    let dayBookEntriesCount = 0;
     let fileAttachmentsCount = 0;
+
     try {
-      fileAttachmentsCount = await FileAttachmentModel.countDocuments();
+      [
+        customersCount,
+        loansCount,
+        receiptsCount,
+        fixedDepositsCount,
+        fdCustomersCount,
+        fdInterestPayoutsCount,
+        fdWithdrawalsCount,
+        dayBookEntriesCount,
+        fileAttachmentsCount
+      ] = await Promise.all([
+        CustomerModel.countDocuments({ isDeleted: { $ne: true } }),
+        LoanModel.countDocuments({ isDeleted: { $ne: true } }),
+        ReceiptModel.countDocuments({ isDeleted: { $ne: true } }),
+        FixedDepositModel.countDocuments({ isDeleted: { $ne: true } }),
+        FDCustomerModel.countDocuments({ isDeleted: { $ne: true } }),
+        FDInterestPayoutModel.countDocuments({ isDeleted: { $ne: true } }),
+        FDWithdrawalModel.countDocuments({ isDeleted: { $ne: true } }),
+        DayBookModel.countDocuments(),
+        FileAttachmentModel.countDocuments()
+      ]);
     } catch {
+      customersCount = (customerService.getAll() || []).length;
+      loansCount = (loanService.getAll() || []).length;
+      receiptsCount = (receiptService.getAll() || []).length;
+      fixedDepositsCount = (fdService.getDeposits() || []).length;
+      fdCustomersCount = (fdService.getCustomers() || []).length;
+      fdInterestPayoutsCount = (fdService.getPayouts() || []).length;
+      fdWithdrawalsCount = (fdService.getWithdrawals() || []).length;
+      dayBookEntriesCount = (accountingService.getDayBook() || []).length;
       fileAttachmentsCount = (localFileRepository.readJson<any[]>('file_attachments.json', []) || []).length;
     }
 
+    const reminders = localFileRepository.readJson<any[]>('reminders.json', []) || [];
+    const notifications = localFileRepository.readJson<any[]>('notifications.json', []) || [];
+
+    let rentalComplexes: any[] = [];
+    let rentalShops: any[] = [];
+    let rentPayments: any[] = [];
+    let rentalExpenses: any[] = [];
+    let rentalDayBook: any[] = [];
+
+    try {
+      const db = await getFinanceDb();
+      if (db) {
+        const [cCount, sCount, pCount, eCount, dCount] = await Promise.all([
+          db.collection('rental_complexes').countDocuments(),
+          db.collection('rental_shops').countDocuments(),
+          db.collection('rental_payments').countDocuments(),
+          db.collection('rental_expenses').countDocuments(),
+          db.collection('rental_daybook').countDocuments()
+        ]);
+        rentalComplexes = new Array(cCount).fill({});
+        rentalShops = new Array(sCount).fill({});
+        rentPayments = new Array(pCount).fill({});
+        rentalExpenses = new Array(eCount).fill({});
+        rentalDayBook = new Array(dCount).fill({});
+      }
+    } catch {
+      rentalComplexes = rentalRepo.getComplexes() || [];
+      rentalShops = rentalRepo.getShops() || [];
+      rentPayments = rentalRepo.getPayments() || [];
+      rentalExpenses = rentalRepo.getExpenses() || [];
+      rentalDayBook = rentalDayBookRepo.readJson('rental_daybook.json', []) || [];
+    }
+
     const total =
-      customers.length +
-      loans.length +
-      receipts.length +
-      fixedDeposits.length +
-      fdCustomers.length +
-      fdInterestPayouts.length +
-      fdWithdrawals.length +
-      dayBookEntries.length +
+      customersCount +
+      loansCount +
+      receiptsCount +
+      fixedDepositsCount +
+      fdCustomersCount +
+      fdInterestPayoutsCount +
+      fdWithdrawalsCount +
+      dayBookEntriesCount +
       reminders.length +
       notifications.length +
       rentalComplexes.length +
@@ -149,14 +196,14 @@ class SystemWipeService {
       environment: env.NODE_ENV,
       databaseType: 'Hybrid (MongoDB + Local JSON)',
       counts: {
-        customers: customers.length,
-        loans: loans.length,
-        receipts: receipts.length,
-        fixedDeposits: fixedDeposits.length,
-        fdCustomers: fdCustomers.length,
-        fdInterestPayouts: fdInterestPayouts.length,
-        fdWithdrawals: fdWithdrawals.length,
-        dayBookEntries: dayBookEntries.length,
+        customers: customersCount,
+        loans: loansCount,
+        receipts: receiptsCount,
+        fixedDeposits: fixedDepositsCount,
+        fdCustomers: fdCustomersCount,
+        fdInterestPayouts: fdInterestPayoutsCount,
+        fdWithdrawals: fdWithdrawalsCount,
+        dayBookEntries: dayBookEntriesCount,
         reminders: reminders.length,
         notifications: notifications.length,
         rentalComplexes: rentalComplexes.length,

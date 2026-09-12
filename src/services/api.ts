@@ -664,6 +664,7 @@ export const apiService = {
     try {
       const token = getStoredAuthToken();
       if (!token) {
+        console.warn('[BACKUP DOWNLOAD] Aborted: No auth token found in storage.');
         return {
           success: false,
           message: 'Authentication token is required. Please sign in again.'
@@ -671,12 +672,17 @@ export const apiService = {
       }
 
       const url = `${getApiBaseUrl()}/admin/backup/${encodeURIComponent(backupId)}/download`;
+      console.log(`[BACKUP DOWNLOAD] Starting authenticated GET request: ${url}`);
+      console.log(`[BACKUP DOWNLOAD] Auth token attached: YES (Bearer)`);
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
+
+      console.log(`[BACKUP DOWNLOAD] Response status: ${response.status}`);
 
       if (!response.ok) {
         let errMsg = `Backup download failed with status ${response.status}`;
@@ -693,12 +699,14 @@ export const apiService = {
         } else if (response.status === 404) {
           errMsg = 'Backup archive file not found on server.';
         }
+        console.warn(`[BACKUP DOWNLOAD] Error response: ${errMsg}`);
         return { success: false, message: errMsg };
       }
 
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const json = await response.json();
+        console.warn('[BACKUP DOWNLOAD] Unexpected JSON response instead of binary:', json);
         return {
           success: false,
           message: json.message || 'Server returned an error response instead of backup ZIP binary.'
@@ -733,8 +741,10 @@ export const apiService = {
         window.URL.revokeObjectURL(blobUrl);
       }, 1000);
 
+      console.log(`[BACKUP DOWNLOAD] ✓ File download initiated successfully: ${filename} (${blob.size} bytes)`);
       return { success: true, fileName: filename };
     } catch (err: any) {
+      console.error('[BACKUP DOWNLOAD] Network error during backup download:', err);
       return { success: false, message: err?.message || 'Network error during backup download.' };
     }
   },

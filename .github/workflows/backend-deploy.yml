@@ -40,6 +40,9 @@ jobs:
             echo "Installing dependencies..."
             npm ci
 
+            echo "Building backend TypeScript..."
+            npm run build
+
             echo "Restarting backend..."
             pm2 restart kkv-backend --update-env
 

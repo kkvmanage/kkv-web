@@ -2985,14 +2985,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetAllData = () => {
-    // Preserve authentication session in localStorage
-    const savedRole = localStorage.getItem('kkv_user_role');
-    const savedUser = localStorage.getItem('kkv_user');
+    // Preserve authentication tokens and session preferences in localStorage
+    const authKeys = [
+      'kkv_auth_token',
+      'kkv_session_token',
+      'kkv_user_role',
+      'kkv_user',
+      'kkv_userRole',
+      'kkv_currentUser',
+      'kkv_darkMode',
+      'kkv_isWorkspaceSelected',
+      'kkv_selectedWorkspace'
+    ];
+    const preserved: Record<string, string> = {};
+    for (const key of authKeys) {
+      const val = localStorage.getItem(key);
+      if (val !== null) preserved[key] = val;
+    }
 
     localStorage.clear();
 
-    if (savedRole) localStorage.setItem('kkv_user_role', savedRole);
-    if (savedUser) localStorage.setItem('kkv_user', savedUser);
+    for (const [k, v] of Object.entries(preserved)) {
+      localStorage.setItem(k, v);
+    }
 
     setLoans([]);
     setCustomers([]);

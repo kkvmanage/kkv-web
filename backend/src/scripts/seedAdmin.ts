@@ -19,13 +19,15 @@ export async function seedUsers() {
 
   await ensureMongoConnected();
 
-  // 1. Seed/Update ADMIN User (admin@kkvgoldfinance.com)
+  // 1. Verify ADMIN User (admin@kkvgoldfinance.com)
   const adminEmail = (env.ADMIN_EMAIL || 'admin@kkvgoldfinance.com').trim().toLowerCase();
-  const adminPassword = env.ADMIN_PASSWORD || 'Admin@123456';
-  const adminHash = await bcrypt.hash(adminPassword, 10);
+  let adminUser = await UserModel.findOne({
+    $or: [{ email: adminEmail }, { role: 'ADMIN' }, { role: 'MASTER_ADMIN' }]
+  });
 
-  let adminUser = await UserModel.findOne({ email: adminEmail });
   if (!adminUser) {
+    const adminPassword = env.ADMIN_PASSWORD || 'Admin@123456';
+    const adminHash = await bcrypt.hash(adminPassword, 10);
     adminUser = await UserModel.create({
       staffId: 'KKV-ADMIN-000001',
       uid: 'uid_admin_001',
@@ -46,22 +48,15 @@ export async function seedUsers() {
     });
     console.log('[Seed] Admin user created successfully: ' + adminEmail);
   } else {
-    adminUser.passwordHash = adminHash;
-    adminUser.isActive = true;
-    adminUser.status = 'active';
-    adminUser.role = 'ADMIN';
-    adminUser.permissions = ADMIN_DEFAULT_PERMISSIONS;
-    await adminUser.save();
-    console.log('[Seed] Admin user synchronized: ' + adminEmail);
+    console.log('[Seed] Admin user already exists: ' + adminUser.email);
   }
 
-  // 2. Seed/Update STAFF User (staff@kkvgoldfinance.com)
+  // 2. Verify STAFF User (staff@kkvgoldfinance.com)
   const staffEmail = 'staff@kkvgoldfinance.com';
-  const staffPassword = 'Staff@123456';
-  const staffHash = await bcrypt.hash(staffPassword, 10);
-
   let staffUser = await UserModel.findOne({ email: staffEmail });
   if (!staffUser) {
+    const staffPassword = 'Staff@123456';
+    const staffHash = await bcrypt.hash(staffPassword, 10);
     staffUser = await UserModel.create({
       staffId: 'KKV-STAFF-000099',
       uid: 'uid_staff_001',
@@ -82,22 +77,15 @@ export async function seedUsers() {
     });
     console.log('[Seed] Staff user created successfully: ' + staffEmail);
   } else {
-    staffUser.passwordHash = staffHash;
-    staffUser.isActive = true;
-    staffUser.status = 'active';
-    staffUser.role = 'STAFF';
-    staffUser.permissions = STAFF_DEFAULT_PERMISSIONS;
-    await staffUser.save();
-    console.log('[Seed] Staff user synchronized: ' + staffEmail);
+    console.log('[Seed] Staff user already exists: ' + staffUser.email);
   }
 
-  // 3. Seed/Update RENTAL_STAFF User (rental@kkvgoldfinance.com)
+  // 3. Verify RENTAL_STAFF User (rental@kkvgoldfinance.com)
   const rentalEmail = 'rental@kkvgoldfinance.com';
-  const rentalPassword = 'Rental@123456';
-  const rentalHash = await bcrypt.hash(rentalPassword, 10);
-
   let rentalUser = await UserModel.findOne({ email: rentalEmail });
   if (!rentalUser) {
+    const rentalPassword = 'Rental@123456';
+    const rentalHash = await bcrypt.hash(rentalPassword, 10);
     rentalUser = await UserModel.create({
       staffId: 'KKV-RENTAL-000001',
       uid: 'uid_rental_001',
@@ -118,16 +106,10 @@ export async function seedUsers() {
     });
     console.log('[Seed] Rental Staff user created successfully: ' + rentalEmail);
   } else {
-    rentalUser.passwordHash = rentalHash;
-    rentalUser.isActive = true;
-    rentalUser.status = 'active';
-    rentalUser.role = 'RENTAL_STAFF';
-    rentalUser.permissions = RENTAL_STAFF_DEFAULT_PERMISSIONS;
-    await rentalUser.save();
-    console.log('[Seed] Rental Staff user synchronized: ' + rentalEmail);
+    console.log('[Seed] Rental Staff user already exists: ' + rentalUser.email);
   }
 
-  console.log('[Seed] All default users verified and ready.');
+  console.log('[Seed] All authentication accounts verified.');
 }
 
 if (process.argv[1] && process.argv[1].includes('seedAdmin')) {

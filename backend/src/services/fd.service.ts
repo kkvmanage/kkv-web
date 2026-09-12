@@ -29,70 +29,19 @@ const initialFDCustomers: FDCustomer[] = [];
 const initialDeposits: FixedDeposit[] = [];
 
 export class FDService {
-  private hasSeededToMongo = false;
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        // Seed FDs
-        const fdCount = await FixedDepositModel.countDocuments();
-        if (fdCount === 0) {
-          const fileDeposits = googleDriveRepository.readJson<FixedDeposit[]>(FD_DEPOSITS_FILE, initialDeposits);
-          if (Array.isArray(fileDeposits) && fileDeposits.length > 0) {
-            for (const f of fileDeposits) {
-              await FixedDepositModel.findOneAndUpdate(
-                { $or: [{ id: f.id }, { fdNo: f.fdNo }] },
-                { $set: f },
-                { upsert: true }
-              );
-            }
-            console.log(`[FDService] Migrated ${fileDeposits.length} FDs from JSON to MongoDB.`);
-          }
-        }
-
-        // Seed FD Customers
-        const fdcCount = await FDCustomerModel.countDocuments();
-        if (fdcCount === 0) {
-          const fileCusts = googleDriveRepository.readJson<FDCustomer[]>(FD_CUST_FILE, initialFDCustomers);
-          if (Array.isArray(fileCusts) && fileCusts.length > 0) {
-            for (const c of fileCusts) {
-              await FDCustomerModel.findOneAndUpdate(
-                { id: c.id },
-                { $set: c },
-                { upsert: true }
-              );
-            }
-            console.log(`[FDService] Migrated ${fileCusts.length} FD Customers from JSON to MongoDB.`);
-          }
-        }
-
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[FDService] Seed to Mongo note:', err);
-    }
-  }
-
   // ── CUSTOMERS ─────────────────────────────────────────────────────────────
   public async getCustomersAsync(): Promise<FDCustomer[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbCusts = await FDCustomerModel.find({ isDeleted: { $ne: true } })
           .sort({ createdAt: -1 })
           .lean();
-        if (Array.isArray(dbCusts)) {
-          const mapped: FDCustomer[] = dbCusts.map((c: any) => ({
-            ...c,
-            id: c.id || c._id?.toString()
-          }));
-          googleDriveRepository.writeJson(FD_CUST_FILE, mapped);
-          return mapped;
-        }
+        const mapped: FDCustomer[] = (dbCusts || []).map((c: any) => ({
+          ...c,
+          id: c.id || c._id?.toString()
+        }));
+        googleDriveRepository.writeJson(FD_CUST_FILE, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[FDService] getCustomersAsync Mongo error:', err);
@@ -140,20 +89,17 @@ export class FDService {
 
   // ── DEPOSITS ──────────────────────────────────────────────────────────────
   public async getDepositsAsync(): Promise<FixedDeposit[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbDeposits = await FixedDepositModel.find({ isDeleted: { $ne: true } })
           .sort({ createdAt: -1 })
           .lean();
-        if (Array.isArray(dbDeposits)) {
-          const mapped: FixedDeposit[] = dbDeposits.map((d: any) => ({
-            ...d,
-            id: d.id || d._id?.toString()
-          }));
-          googleDriveRepository.writeJson(FD_DEPOSITS_FILE, mapped);
-          return mapped;
-        }
+        const mapped: FixedDeposit[] = (dbDeposits || []).map((d: any) => ({
+          ...d,
+          id: d.id || d._id?.toString()
+        }));
+        googleDriveRepository.writeJson(FD_DEPOSITS_FILE, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[FDService] getDepositsAsync Mongo error:', err);

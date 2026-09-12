@@ -49,6 +49,14 @@ export class RentalDayBookRepository {
     return fallback;
   }
 
+  public clearCache(filename?: string): void {
+    if (filename) {
+      this.memoryCache.delete(filename);
+    } else {
+      this.memoryCache.clear();
+    }
+  }
+
   public writeJson<T>(filename: string, data: T): void {
     this.memoryCache.set(filename, data);
     try {
@@ -67,33 +75,31 @@ export class RentalDayBookRepository {
       if (db) {
         const col = db.collection('rental_daybook');
         const docs = await col.find({}).toArray();
-        if (docs && docs.length > 0) {
-          return docs.map(d => ({
-            id: d.id || d._id.toString(),
-            voucherNo: d.voucherNo,
-            date: d.date,
-            transactionType: d.transactionType,
-            category: d.category,
-            description: d.description,
-            complexId: d.complexId,
-            complexName: d.complexName,
-            shopId: d.shopId,
-            shopNumber: d.shopNumber,
-            shopName: d.shopName,
-            tenantName: d.tenantName,
-            paymentMode: d.paymentMode,
-            debit: d.debit || 0,
-            credit: d.credit || 0,
-            runningBalance: d.runningBalance,
-            referenceType: d.referenceType || 'MANUAL',
-            referenceId: d.referenceId || d.id,
-            entrySource: d.entrySource || 'MANUAL',
-            notes: d.notes,
-            createdBy: d.createdBy,
-            createdAt: d.createdAt || new Date().toISOString(),
-            updatedAt: d.updatedAt || new Date().toISOString()
-          })) as RentalDayBookEntry[];
-        }
+        return (docs || []).map(d => ({
+          id: d.id || d._id.toString(),
+          voucherNo: d.voucherNo,
+          date: d.date,
+          transactionType: d.transactionType,
+          category: d.category,
+          description: d.description,
+          complexId: d.complexId,
+          complexName: d.complexName,
+          shopId: d.shopId,
+          shopNumber: d.shopNumber,
+          shopName: d.shopName,
+          tenantName: d.tenantName,
+          paymentMode: d.paymentMode,
+          debit: d.debit || 0,
+          credit: d.credit || 0,
+          runningBalance: d.runningBalance,
+          referenceType: d.referenceType || 'MANUAL',
+          referenceId: d.referenceId || d.id,
+          entrySource: d.entrySource || 'MANUAL',
+          notes: d.notes,
+          createdBy: d.createdBy,
+          createdAt: d.createdAt || new Date().toISOString(),
+          updatedAt: d.updatedAt || new Date().toISOString()
+        })) as RentalDayBookEntry[];
       }
     } catch (dbErr) {
       console.warn('[RentalDayBookRepository] MongoDB query warning, reading local storage:', dbErr);

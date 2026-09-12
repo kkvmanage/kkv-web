@@ -72,9 +72,11 @@ export const WIPEABLE_ENTITIES = [
   'fixed_deposits.json',
   'fd_interest_payouts.json',
   'fd_withdrawals.json',
+  'fd_renewals.json',
   'daybook_entries.json',
   'notifications.json',
-  'file_attachments.json'
+  'file_attachments.json',
+  'sync_outbox.json'
 ];
 
 // PRESERVED SYSTEM CONFIGURATIONS - NEVER WIPED
@@ -331,12 +333,15 @@ class SystemWipeService {
     for (const entityFile of WIPEABLE_ENTITIES) {
       localFileRepository.writeJson(entityFile, []);
     }
+    localFileRepository.clearCache();
 
     // 2. Transactionally Clear Rental Operational Local Storage Collections
     rentalRepo.writeJson('complexes.json', []);
     rentalRepo.writeJson('shops.json', []);
     rentalRepo.writeJson('rent_payments.json', []);
     rentalRepo.writeJson('expenses.json', []);
+    rentalRepo.writeJson('audit_logs.json', []);
+    rentalRepo.writeJson('sync_queue.json', []);
     rentalDayBookRepo.writeJson('rental_daybook.json', []);
     rentalRepo.writeJson('counters.json', {
       complex: 0,
@@ -346,6 +351,8 @@ class SystemWipeService {
       audit: 0,
       sync: 0
     });
+    rentalRepo.clearCache();
+    rentalDayBookRepo.clearCache();
 
     // 3. Clear MongoDB Collections across all operational Finance and Rental domains
     // NOTE: Does NOT delete actual files in Google Drive! Only clears database attachment records.
@@ -366,11 +373,16 @@ class SystemWipeService {
       const db = await getFinanceDb();
       if (db) {
         await Promise.all([
+          db.collection('reminders').deleteMany({}),
+          db.collection('notifications').deleteMany({}),
+          db.collection('idempotency_keys').deleteMany({}),
           db.collection('rental_complexes').deleteMany({}),
           db.collection('rental_shops').deleteMany({}),
           db.collection('rental_payments').deleteMany({}),
           db.collection('rental_expenses').deleteMany({}),
-          db.collection('rental_daybook').deleteMany({})
+          db.collection('rental_daybook').deleteMany({}),
+          db.collection('rental_audit_logs').deleteMany({}),
+          db.collection('rental_sync_queue').deleteMany({})
         ]);
       }
       console.log('[SystemWipeService] All MongoDB Finance & Rental operational collections wiped successfully.');

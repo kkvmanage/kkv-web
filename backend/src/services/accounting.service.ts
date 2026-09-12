@@ -11,51 +11,18 @@ const FILE_NAME = 'daybook_entries.json';
 const initialDayBook: DayBookEntry[] = [];
 
 export class AccountingService {
-  private hasSeededToMongo = false;
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        const count = await DayBookModel.countDocuments();
-        if (count === 0) {
-          const fileEntries = googleDriveRepository.readJson<DayBookEntry[]>(FILE_NAME, initialDayBook);
-          if (Array.isArray(fileEntries) && fileEntries.length > 0) {
-            for (const e of fileEntries) {
-              await DayBookModel.findOneAndUpdate(
-                { id: e.id },
-                { $set: e },
-                { upsert: true }
-              );
-            }
-            console.log(`[AccountingService] Migrated ${fileEntries.length} daybook entries to MongoDB.`);
-          }
-        }
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[AccountingService] Seed to Mongo note:', err);
-    }
-  }
-
   public async getDayBookAsync(): Promise<DayBookEntry[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbEntries = await DayBookModel.find()
           .sort({ _id: -1 })
           .lean();
-        if (Array.isArray(dbEntries)) {
-          const mapped: DayBookEntry[] = dbEntries.map((e: any) => ({
-            ...e,
-            id: e.id || e._id?.toString()
-          }));
-          googleDriveRepository.writeJson(FILE_NAME, mapped);
-          return mapped;
-        }
+        const mapped: DayBookEntry[] = (dbEntries || []).map((e: any) => ({
+          ...e,
+          id: e.id || e._id?.toString()
+        }));
+        googleDriveRepository.writeJson(FILE_NAME, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[AccountingService] getDayBookAsync Mongo error:', err);

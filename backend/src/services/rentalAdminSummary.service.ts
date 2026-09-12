@@ -703,7 +703,7 @@ class RentalAdminSummaryService {
       syncQueue: syncQueue.length
     };
 
-    // 1. Reset rental repository JSON files safely
+    // 1. Reset rental repository JSON files safely & clear caches
     rentalRepository.writeJson('complexes.json', []);
     rentalRepository.writeJson('shops.json', []);
     rentalRepository.writeJson('rent_payments.json', []);
@@ -718,17 +718,28 @@ class RentalAdminSummaryService {
       audit: 0,
       sync: 0
     });
+    rentalRepository.clearCache();
 
     rentalDayBookRepository.writeJson('rental_daybook.json', []);
+    rentalDayBookRepository.clearCache();
 
-    // 2. Clear MongoDB rental_daybook collection if connected
+    // 2. Clear MongoDB rental operational collections if connected
     try {
       const db = await getFinanceDb();
       if (db) {
-        await db.collection('rental_daybook').deleteMany({});
+        await Promise.all([
+          db.collection('rental_complexes').deleteMany({}),
+          db.collection('rental_shops').deleteMany({}),
+          db.collection('rental_payments').deleteMany({}),
+          db.collection('rental_expenses').deleteMany({}),
+          db.collection('rental_daybook').deleteMany({}),
+          db.collection('rental_audit_logs').deleteMany({}),
+          db.collection('rental_sync_queue').deleteMany({})
+        ]);
+        console.log('[RentalAdminSummaryService] All MongoDB rental collections cleared successfully.');
       }
     } catch (err) {
-      console.warn('[RentalAdminSummaryService] Warning clearing MongoDB rental_daybook:', err);
+      console.warn('[RentalAdminSummaryService] Warning clearing MongoDB rental collections:', err);
     }
 
     return {

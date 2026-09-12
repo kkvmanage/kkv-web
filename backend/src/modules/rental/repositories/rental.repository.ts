@@ -28,15 +28,19 @@ export class RentalRepository {
   private baseDir: string;
   private rentalDir: string;
   private memoryCache: Map<string, any> = new Map();
-  private hasSeededToMongo = false;
 
   constructor() {
     this.baseDir = getStorageBaseDir();
     this.rentalDir = getStorageSubdirectory('rental');
     this.initFolders();
-    this.ensureSeeded().catch((err) => {
-      console.warn('[RentalRepository] Background seed note:', err);
-    });
+  }
+
+  public clearCache(filename?: string): void {
+    if (filename) {
+      this.memoryCache.delete(filename);
+    } else {
+      this.memoryCache.clear();
+    }
   }
 
   private initFolders(): void {
@@ -58,118 +62,6 @@ export class RentalRepository {
       }
     } catch (err) {
       console.warn('[RentalRepository] Safe folder initialization warning:', err);
-    }
-  }
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      const db = await getFinanceDb();
-      if (db) {
-        // 1. Seed complexes
-        const cCol = db.collection('rental_complexes');
-        const cCount = await cCol.countDocuments();
-        if (cCount === 0) {
-          const fileComplexes = this.readJson<RentalComplex[]>('complexes.json', []);
-          if (Array.isArray(fileComplexes) && fileComplexes.length > 0) {
-            for (const c of fileComplexes) {
-              await cCol.updateOne(
-                { $or: [{ complexId: c.complexId }, { id: c.id }] },
-                { $set: c },
-                { upsert: true }
-              );
-            }
-            console.log(`[RentalRepository] Migrated ${fileComplexes.length} complexes to MongoDB.`);
-          }
-        } else {
-          // Hydrate cache from Mongo
-          const docs = await cCol.find({}).toArray();
-          const mapped = docs.map((d: any) => ({
-            ...d,
-            id: d.id || d.complexId || d._id?.toString()
-          }));
-          this.writeJson('complexes.json', mapped);
-        }
-
-        // 2. Seed shops
-        const sCol = db.collection('rental_shops');
-        const sCount = await sCol.countDocuments();
-        if (sCount === 0) {
-          const fileShops = this.readJson<RentalShop[]>('shops.json', []);
-          if (Array.isArray(fileShops) && fileShops.length > 0) {
-            for (const s of fileShops) {
-              await sCol.updateOne(
-                { $or: [{ shopId: s.shopId }, { id: s.id }] },
-                { $set: s },
-                { upsert: true }
-              );
-            }
-            console.log(`[RentalRepository] Migrated ${fileShops.length} shops to MongoDB.`);
-          }
-        } else {
-          const docs = await sCol.find({}).toArray();
-          const mapped = docs.map((d: any) => ({
-            ...d,
-            id: d.id || d.shopId || d._id?.toString()
-          }));
-          this.writeJson('shops.json', mapped);
-        }
-
-        // 3. Seed payments
-        const pCol = db.collection('rental_payments');
-        const pCount = await pCol.countDocuments();
-        if (pCount === 0) {
-          const filePayments = this.readJson<RentalPayment[]>('rent_payments.json', []);
-          if (Array.isArray(filePayments) && filePayments.length > 0) {
-            for (const p of filePayments) {
-              await pCol.updateOne(
-                { $or: [{ paymentId: p.paymentId }, { id: p.id }] },
-                { $set: p },
-                { upsert: true }
-              );
-            }
-            console.log(`[RentalRepository] Migrated ${filePayments.length} rental payments to MongoDB.`);
-          }
-        } else {
-          const docs = await pCol.find({}).toArray();
-          const mapped = docs.map((d: any) => ({
-            ...d,
-            id: d.id || d.paymentId || d._id?.toString()
-          }));
-          this.writeJson('rent_payments.json', mapped);
-        }
-
-        // 4. Seed expenses
-        const eCol = db.collection('rental_expenses');
-        const eCount = await eCol.countDocuments();
-        if (eCount === 0) {
-          const fileExpenses = this.readJson<RentalExpense[]>('expenses.json', []);
-          if (Array.isArray(fileExpenses) && fileExpenses.length > 0) {
-            for (const e of fileExpenses) {
-              await eCol.updateOne(
-                { $or: [{ expenseId: e.expenseId }, { id: e.id }] },
-                { $set: e },
-                { upsert: true }
-              );
-            }
-            console.log(`[RentalRepository] Migrated ${fileExpenses.length} rental expenses to MongoDB.`);
-          }
-        } else {
-          const docs = await eCol.find({}).toArray();
-          const mapped = docs.map((d: any) => ({
-            ...d,
-            id: d.id || d.expenseId || d._id?.toString()
-          }));
-          this.writeJson('expenses.json', mapped);
-        }
-
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[RentalRepository] Seed to Mongo error:', err);
     }
   }
 

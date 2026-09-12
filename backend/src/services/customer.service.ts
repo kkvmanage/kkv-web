@@ -19,62 +19,22 @@ export function normalizePhone(phone: string): string {
 const initialCustomers: Customer[] = [];
 
 export class CustomerService {
-  private hasSeededToMongo = false;
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        const count = await CustomerModel.countDocuments();
-        if (count === 0) {
-          const fileCusts = googleDriveRepository.readJson<Customer[]>(FILE_NAME, initialCustomers);
-          if (Array.isArray(fileCusts) && fileCusts.length > 0) {
-            for (const c of fileCusts) {
-              const mongoDoc = {
-                ...c,
-                customerId: c.id || (c as any).customerId,
-                fullName: c.name || (c as any).fullName || 'Customer',
-                phoneNumber: c.phone || (c as any).phoneNumber || '9999999999',
-                phoneNormalized: normalizePhone(c.phone || (c as any).phoneNumber || '')
-              };
-              await CustomerModel.findOneAndUpdate(
-                { $or: [{ customerId: mongoDoc.customerId }, { id: mongoDoc.customerId }] },
-                { $set: mongoDoc },
-                { upsert: true }
-              );
-            }
-            console.log(`[CustomerService] Migrated ${fileCusts.length} customers from JSON to MongoDB.`);
-          }
-        }
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[CustomerService] Seed to Mongo note:', err);
-    }
-  }
-
   public async getAllAsync(includeDeleted: boolean = false): Promise<Customer[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const query = includeDeleted ? {} : { isDeleted: { $ne: true } };
         const dbCusts = await CustomerModel.find(query).sort({ createdAt: -1 }).lean();
-        if (Array.isArray(dbCusts) && dbCusts.length > 0) {
-          const mapped: Customer[] = dbCusts.map((c: any) => ({
-            ...c,
-            id: c.customerId || c.id || c._id?.toString(),
-            name: c.fullName || c.name,
-            phone: c.phoneNumber || c.phone,
-            idProof: c.idProofType || c.idProof || 'Aadhaar',
-            idNumber: c.idProofNumber || c.idNumber || '',
-            customerPhoto: typeof c.customerPhoto === 'string' ? c.customerPhoto : (c.customerPhoto?.url || null)
-          }));
-          googleDriveRepository.writeJson(FILE_NAME, mapped);
-          return mapped;
-        }
+        const mapped: Customer[] = (dbCusts || []).map((c: any) => ({
+          ...c,
+          id: c.customerId || c._id?.toString(),
+          name: c.fullName || c.name,
+          phone: c.phoneNumber || c.phone,
+          idProof: c.idProofType || c.idProof || 'Aadhaar',
+          idNumber: c.idProofNumber || c.idNumber || '',
+          customerPhoto: typeof c.customerPhoto === 'string' ? c.customerPhoto : (c.customerPhoto?.url || null)
+        }));
+        googleDriveRepository.writeJson(FILE_NAME, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[CustomerService] getAllAsync Mongo error:', err);
@@ -92,18 +52,17 @@ export class CustomerService {
   }
 
   public async getByIdAsync(id: string): Promise<Customer | null> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbCust = await CustomerModel.findOne({
           isDeleted: { $ne: true },
-          $or: [{ customerId: id }, { id }]
+          customerId: id
         }).lean();
         if (dbCust) {
           const c: any = dbCust;
           return {
             ...c,
-            id: c.customerId || c.id || c._id?.toString(),
+            id: c.customerId || c._id?.toString(),
             name: c.fullName || c.name,
             phone: c.phoneNumber || c.phone,
             idProof: c.idProofType || c.idProof || 'Aadhaar',
@@ -111,6 +70,7 @@ export class CustomerService {
             customerPhoto: typeof c.customerPhoto === 'string' ? c.customerPhoto : (c.customerPhoto?.url || null)
           };
         }
+        return null;
       }
     } catch (err) {
       console.warn('[CustomerService] getByIdAsync error:', err);
@@ -432,7 +392,7 @@ export class CustomerService {
     googleDriveRepository.writeJson(FILE_NAME, updatedCustomers);
 
     if (isMongoConnected()) {
-      CustomerModel.deleteMany({ $or: [{ customerId: custId }, { id: custId }] }).catch((err: any) =>
+      CustomerModel.deleteMany({ customerId: custId }).catch((err: any) =>
         console.warn('[CustomerService] Mongo permanent delete error:', err)
       );
     }

@@ -17,51 +17,18 @@ const FILE_NAME = 'loans.json';
 const initialLoans: Loan[] = [];
 
 export class LoanService {
-  private hasSeededToMongo = false;
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        const count = await LoanModel.countDocuments();
-        if (count === 0) {
-          const fileLoans = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
-          if (Array.isArray(fileLoans) && fileLoans.length > 0) {
-            for (const l of fileLoans) {
-              await LoanModel.findOneAndUpdate(
-                { $or: [{ id: l.id }, { loanNo: l.loanNo }] },
-                { $set: l },
-                { upsert: true }
-              );
-            }
-            console.log(`[LoanService] Migrated ${fileLoans.length} loans from JSON to MongoDB.`);
-          }
-        }
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[LoanService] Seed to Mongo note:', err);
-    }
-  }
-
   public async getAllAsync(): Promise<Loan[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbLoans = await LoanModel.find({ isDeleted: { $ne: true } })
           .sort({ createdAt: -1 })
           .lean();
-        if (Array.isArray(dbLoans)) {
-          const mapped: Loan[] = dbLoans.map((l: any) => ({
-            ...l,
-            id: l.id || l._id?.toString()
-          }));
-          localFileRepository.writeJson(FILE_NAME, mapped);
-          return mapped;
-        }
+        const mapped: Loan[] = (dbLoans || []).map((l: any) => ({
+          ...l,
+          id: l.id || l._id?.toString()
+        }));
+        localFileRepository.writeJson(FILE_NAME, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[LoanService] MongoDB read failed, falling back to local file:', err);
@@ -83,7 +50,6 @@ export class LoanService {
   }
 
   public async getByIdAsync(id: string): Promise<Loan | null> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbLoan = await LoanModel.findOne({
@@ -96,6 +62,7 @@ export class LoanService {
             id: (dbLoan as any).id || (dbLoan as any)._id?.toString()
           };
         }
+        return null;
       }
     } catch (err) {
       console.warn('[LoanService] getByIdAsync Mongo error:', err);

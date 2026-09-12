@@ -3,21 +3,7 @@ import { Reminder } from '../types/index.js';
 
 const FILE_NAME = 'reminders.json';
 
-const initialReminders: Reminder[] = [
-  {
-    id: 'rem-1',
-    title: 'Pledge Interest Due - Thayba Begum',
-    date: '25/09/2026',
-    customerName: 'Thayba Begum',
-    loanNo: 'GL-01',
-    phone: '9876543210',
-    amount: 1500,
-    type: 'PLEDGE_DUE',
-    status: 'PENDING',
-    notes: 'Monthly interest due date reminder',
-    createdAt: '25/08/2026'
-  }
-];
+const initialReminders: Reminder[] = [];
 
 export class ReminderService {
   public getAll(): Reminder[] {

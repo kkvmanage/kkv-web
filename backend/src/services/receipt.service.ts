@@ -9,51 +9,18 @@ const FILE_NAME = 'receipts.json';
 const initialReceipts: Receipt[] = [];
 
 export class ReceiptService {
-  private hasSeededToMongo = false;
-
-  private async ensureSeeded(): Promise<void> {
-    if (this.hasSeededToMongo) return;
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        const count = await ReceiptModel.countDocuments();
-        if (count === 0) {
-          const fileReceipts = googleDriveRepository.readJson<Receipt[]>(FILE_NAME, initialReceipts);
-          if (Array.isArray(fileReceipts) && fileReceipts.length > 0) {
-            for (const r of fileReceipts) {
-              await ReceiptModel.findOneAndUpdate(
-                { $or: [{ id: r.id }, { receiptNo: r.receiptNo }] },
-                { $set: r },
-                { upsert: true }
-              );
-            }
-            console.log(`[ReceiptService] Migrated ${fileReceipts.length} receipts from JSON to MongoDB.`);
-          }
-        }
-        this.hasSeededToMongo = true;
-      }
-    } catch (err) {
-      console.warn('[ReceiptService] Seed to Mongo note:', err);
-    }
-  }
-
   public async getAllAsync(): Promise<Receipt[]> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbReceipts = await ReceiptModel.find()
           .sort({ receiptNo: -1 })
           .lean();
-        if (Array.isArray(dbReceipts)) {
-          const mapped: Receipt[] = dbReceipts.map((r: any) => ({
-            ...r,
-            id: r.id || r._id?.toString()
-          }));
-          googleDriveRepository.writeJson(FILE_NAME, mapped);
-          return mapped;
-        }
+        const mapped: Receipt[] = (dbReceipts || []).map((r: any) => ({
+          ...r,
+          id: r.id || r._id?.toString()
+        }));
+        googleDriveRepository.writeJson(FILE_NAME, mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[ReceiptService] MongoDB read failed, falling back to local file:', err);
@@ -69,13 +36,13 @@ export class ReceiptService {
   }
 
   public async getByIdAsync(id: string): Promise<Receipt | null> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbReceipt = await ReceiptModel.findOne({ id }).lean();
         if (dbReceipt) {
           return { ...(dbReceipt as any), id: (dbReceipt as any).id || (dbReceipt as any)._id?.toString() };
         }
+        return null;
       }
     } catch (err) {
       console.warn('[ReceiptService] getByIdAsync error:', err);
@@ -89,13 +56,13 @@ export class ReceiptService {
   }
 
   public async getByReceiptNoAsync(receiptNo: number): Promise<Receipt | null> {
-    await this.ensureSeeded();
     try {
       if (isMongoConnected()) {
         const dbReceipt = await ReceiptModel.findOne({ receiptNo }).lean();
         if (dbReceipt) {
           return { ...(dbReceipt as any), id: (dbReceipt as any).id || (dbReceipt as any)._id?.toString() };
         }
+        return null;
       }
     } catch (err) {
       console.warn('[ReceiptService] getByReceiptNoAsync error:', err);

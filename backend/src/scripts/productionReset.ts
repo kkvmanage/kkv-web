@@ -143,6 +143,10 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   rentalRepository.writeJson('counters.json', resetRentalCounters);
 
   // 7. Clear MongoDB Operational Collections (if connected)
+  localFileRepository.clearCache();
+  rentalRepository.clearCache();
+  rentalDayBookRepository.clearCache();
+
   const db = await getFinanceDb();
   if (db) {
     console.log('[6/6] Clearing MongoDB Atlas operational collections...');
@@ -154,7 +158,9 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
       'fd_customers',
       'fd_interest_payouts',
       'fd_withdrawals',
+      'fd_renewals',
       'daybook_entries',
+      'file_attachments',
       'reminders',
       'notifications',
       'idempotency_keys',
@@ -162,7 +168,9 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
       'rental_complexes',
       'rental_shops',
       'rental_payments',
-      'rental_expenses'
+      'rental_expenses',
+      'rental_audit_logs',
+      'rental_sync_queue'
     ];
 
     for (const colName of mongoCollectionsToClear) {

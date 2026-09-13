@@ -17,14 +17,6 @@ for (const envPath of envPaths) {
   dotenv.config({ path: envPath, override: true });
 }
 
-// Canonical MongoDB URI resolution
-const resolvedMongoUri = (
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URI ||
-  process.env.DATABASE_URL ||
-  (process.env.NODE_ENV === 'production' ? '' : 'mongodb://127.0.0.1:27017/kkv_gold_finance')
-).trim();
-
 function normalizePrivateKey(rawKey: string | undefined): string {
   if (!rawKey) return '';
   let key = rawKey.trim();
@@ -39,23 +31,27 @@ export const env = {
   PORT: parseInt(process.env.PORT || '8080', 10),
   CORS_ORIGIN: process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || '',
   JWT_SECRET: process.env.JWT_SECRET || 'kkv_gold_finance_rbac_secure_jwt_secret_2026_super_key_512',
-  JWT_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '15m',
+  JWT_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '24h',
   ADMIN_NAME: (process.env.ADMIN_NAME || 'KKV Master Admin').trim(),
   ADMIN_EMAIL: (process.env.ADMIN_EMAIL || 'admin@kkvgoldfinance.com').trim().toLowerCase(),
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'Admin@123456',
   LOCAL_STORAGE_PATH: process.env.LOCAL_STORAGE_PATH || path.resolve(process.cwd(), 'data'),
-  MONGODB_URI: resolvedMongoUri,
-  MONGODB_DB_NAME: (process.env.MONGODB_DB_NAME || 'kkv_gold_finance').trim(),
-  RENTAL_MONGODB_DB_NAME: (process.env.RENTAL_MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'kkv_gold_finance').trim(),
+  
+  // Telegram Bot API Persistent Storage Configuration
+  TELEGRAM_BOT_TOKEN: (process.env.TELEGRAM_BOT_TOKEN || '').trim(),
+  TELEGRAM_CHAT_ID: (process.env.TELEGRAM_CHAT_ID || '').trim(),
+
+  // Google Service / Drive optional attachments
   GOOGLE_CLOUD_PROJECT_ID: (process.env.GOOGLE_CLOUD_PROJECT_ID || process.env.GOOGLE_PROJECT_ID || 'kkv-gold-507605').trim(),
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL || 'kkv-finance@kkv-gold-507605.iam.gserviceaccount.com').trim(),
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL || '').trim(),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: normalizePrivateKey(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY),
-  GOOGLE_DRIVE_ROOT_FOLDER_ID: (process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID || '1VfN7XIIeC63bfvkmz4lh8yR_V_b6wViK').trim(),
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: (process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim(),
 };
 
 export function validateStartupConfig(): { isValid: boolean; missingVars: string[] } {
   const missingVars: string[] = [];
-  if (!env.MONGODB_URI) missingVars.push('MONGODB_URI');
+  if (!env.TELEGRAM_BOT_TOKEN) missingVars.push('TELEGRAM_BOT_TOKEN');
+  if (!env.TELEGRAM_CHAT_ID) missingVars.push('TELEGRAM_CHAT_ID');
 
   return {
     isValid: missingVars.length === 0,

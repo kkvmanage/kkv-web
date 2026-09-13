@@ -35,6 +35,7 @@ export interface NomineeDetails {
   photo?: string | null;
   idProofType?: string;
   idProofNumber?: string;
+  idProof?: string;
   aadhaarNumber?: string;
   panNumber?: string;
   otherIdName?: string;
@@ -321,6 +322,8 @@ export interface Receipt {
   driveFileId?: string;
   branchId?: string;
   complexId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DayBookEntry {
@@ -387,6 +390,7 @@ export interface FixedDeposit {
 export interface FDInterestPayout {
   id: string;
   payoutId?: string;
+  fdId?: string;
   fdNo: string;
   customerId?: string;
   depositorName: string;
@@ -414,10 +418,12 @@ export interface FDWithdrawal {
   originalPrincipal?: number;
   balanceBefore?: number;
   principalAmount: number;
+  principalWithdrawn?: number;
   remainingBalance?: number;
   interestPaid: number;
   totalAmount: number;
   withdrawalDate: string;
+  date?: string;
   mode: 'Cash' | 'Bank' | 'UPI';
   transactionReference?: string;
   bankName?: string;
@@ -432,19 +438,27 @@ export interface FDRenewal {
   id: string;
   renewalId?: string;
   fdId?: string;
+  oldFdId?: string;
+  oldFdNo?: string;
+  newFdId?: string;
+  newFdNo?: string;
   fdNo: string;
   customerId?: string;
   depositorName?: string;
+  principal?: number;
   previousMaturityDate?: string;
   oldMaturityDate?: string;
   newMaturityDate: string;
   renewalPeriodMonths?: number;
   periodMonths?: number;
+  newTenureMonths?: number;
   oldInterestRate?: number;
   newInterestRate?: number;
+  newInterestRatePA?: number;
   interestRateAtRenewal?: number;
   payoutFrequency?: string;
   renewalDate: string;
+  renewedDate?: string;
   notes?: string;
   status?: string;
   branchId?: string;

@@ -1,82 +1,70 @@
-import mongoose, { Schema, Document } from 'mongoose';
 import { FixedDeposit } from '../types/index.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IFixedDepositDocument extends Document, Omit<FixedDeposit, 'id'> {
+export interface IFixedDepositDocument extends Omit<FixedDeposit, 'id'> {
   id: string;
 }
 
-const FixedDepositSchema = new Schema(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    fdNo: { type: String, required: true, unique: true, index: true },
-    customerId: { type: String, required: true, index: true },
-    depositorName: { type: String, required: true },
-    phone: { type: String, required: true },
-    idProofType: { type: String, default: 'Aadhaar' },
-    idProofNumber: { type: String, default: '' },
-    idNumber: { type: String },
-    address: { type: String, default: '' },
-    depositDate: { type: String, required: true, index: true },
-    maturityDate: {
-      type: String,
-      default: function(this: any) {
-        if (this.depositDate) {
-          const parts = this.depositDate.split(/[-/]/);
-          if (parts.length === 3) {
-            const d = parseInt(parts[0], 10);
-            const m = parseInt(parts[1], 10) - 1;
-            const y = parseInt(parts[2], 10);
-            const tenure = this.tenureMonths || 12;
-            const dt = new Date(y, m + tenure, d);
-            return dt.toLocaleDateString('en-GB').replace(/\//g, '-');
-          }
-        }
-        return new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB').replace(/\//g, '-');
-      }
-    },
-    principal: { type: Number, required: true, default: 0 },
-    remainingPrincipal: { type: Number },
-    totalWithdrawnPrincipal: { type: Number, default: 0 },
-    tenureMonths: { type: Number, default: 12 },
-    interestRatePA: { type: Number, required: true, default: 12 },
-    receivingMethod: {
-      type: String,
-      enum: ['Cash', 'Bank', 'UPI'],
-      default: 'Cash'
-    },
-    monthlyPayout: { type: Number, required: true, default: 0 },
-    status: {
-      type: String,
-      enum: ['ACTIVE', 'MATURED', 'WITHDRAWN'],
-      default: 'ACTIVE',
-      index: true
-    },
-    parentCustomerName: { type: String },
-    nomineeName: { type: String },
-    nomineeRelation: { type: String },
-    remarks: { type: String, default: '' },
+export class FixedDepositModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT', { includeDeleted });
 
-    fdInterestRateSnapshot: { type: Number },
-    fdTenureSnapshot: { type: Number },
-    calculationMethodSnapshot: { type: String },
-    minimumAmountSnapshot: { type: Number },
-    configurationVersion: { type: Number, default: 1 },
+    if (query.customerId) {
+      records = records.filter((f) => f.customerId === query.customerId);
+    }
+    if (query.status) {
+      records = records.filter((f) => f.status === query.status);
+    }
+    if (query.fdNo) {
+      records = records.filter((f) => f.fdNo === query.fdNo);
+    }
 
-    branchId: { type: String, index: true },
-    isDeleted: { type: Boolean, default: false, index: true },
-    deletedAt: { type: String },
-    deletedBy: { type: String },
-    createdAt: { type: String, default: () => new Date().toISOString() },
-    updatedAt: { type: String, default: () => new Date().toISOString() }
-  },
-  {
-    timestamps: true,
-    collection: 'fixed_deposits'
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
   }
-);
 
-FixedDepositSchema.index({ fdNo: 1, isDeleted: 1 });
-FixedDepositSchema.index({ customerId: 1, isDeleted: 1 });
-FixedDepositSchema.index({ status: 1, isDeleted: 1 });
+  public static findOne(query: any = {}): any {
+    const records = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
+    let match: FixedDeposit | null = null;
+    if (query.fdNo) {
+      match = records.find((f) => f.fdNo === query.fdNo || f.id === query.fdNo) || null;
+    } else if (query.id) {
+      match = records.find((f) => f.id === query.id || f.fdNo === query.id) || null;
+    }
 
-export const FixedDepositModel = mongoose.models.FixedDeposit || mongoose.model<IFixedDepositDocument>('FixedDeposit', FixedDepositSchema);
+    const chain = {
+      select: () => chain,
+      lean: async () => match,
+      then: (resolve: any, reject?: any) => Promise.resolve(match).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('FIXED_DEPOSIT', undefined, includeDeleted);
+  }
+
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['FIXED_DEPOSIT']);
+    return { deletedCount: cleared };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.id || d.fdNo;
+      const res = await telegramRepository.createRecord('FIXED_DEPOSIT', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
+
+export default FixedDepositModel;

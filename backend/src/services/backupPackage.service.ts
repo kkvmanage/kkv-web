@@ -126,21 +126,21 @@ class BackupPackageService {
 
     console.log(`[BackupPackageService] 📦 Starting complete backup ZIP generation: ${backupId} (${fileName})...`);
 
-    // 1. Fetch Finance Entities (Combining Local Storage + MongoDB Customers)
+    // 1. Fetch Finance Entities
     let customers = customerService.getAll() || [];
     try {
-      const mongoCustomers = await CustomerModel.find({}).lean();
-      if (mongoCustomers && mongoCustomers.length > 0) {
+      const records = await CustomerModel.find({});
+      if (records && records.length > 0) {
         const custMap = new Map<string, any>();
         customers.forEach(c => custMap.set(c.id || (c as any).customerId, c));
-        mongoCustomers.forEach((mc: any) => {
+        records.forEach((mc: any) => {
           const id = mc.customerId || mc.id || mc._id?.toString();
           custMap.set(id, { ...mc, id });
         });
         customers = Array.from(custMap.values());
       }
     } catch (mErr) {
-      console.warn('[BackupPackageService] MongoDB Customer fetch notice:', (mErr as any)?.message || mErr);
+      console.warn('[BackupPackageService] Customer fetch notice:', (mErr as any)?.message || mErr);
     }
 
     const loans = loanService.getAll() || [];
@@ -199,9 +199,9 @@ class BackupPackageService {
     // 3. Fetch File Attachments Metadata (with Drive references)
     let fileAttachments: any[] = [];
     try {
-      fileAttachments = await FileAttachmentModel.find({}).lean();
+      fileAttachments = await FileAttachmentModel.find({});
     } catch (attErr) {
-      console.warn('[BackupPackageService] MongoDB FileAttachment fetch notice:', (attErr as any)?.message || attErr);
+      console.warn('[BackupPackageService] FileAttachment fetch notice:', (attErr as any)?.message || attErr);
       fileAttachments = localFileRepository.readJson<any[]>('file_attachments.json', []) || [];
     }
 
@@ -291,7 +291,7 @@ class BackupPackageService {
           role: user?.role || 'Admin'
         },
         environment: env.NODE_ENV,
-        databaseType: 'Hybrid (MongoDB + Local JSON)'
+        databaseType: 'Telegram Bot API Storage'
       },
       recordCounts,
       sequences,

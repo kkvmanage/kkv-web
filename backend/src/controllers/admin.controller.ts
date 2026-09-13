@@ -554,18 +554,26 @@ export const resetRentalData = async (_req: Request, res: Response) => {
 
 export const getDatabaseStatus = async (_req: Request, res: Response) => {
   try {
-    const { checkMongoHealth } = await import('../config/database.js');
-    const health = await checkMongoHealth();
+    const { checkStorageHealth } = await import('../config/database.js');
+    const health = await checkStorageHealth();
     return res.json({
-      success: true,
+      status: health.status,
+      success: health.success,
+      storage: 'telegram',
+      telegram: health.telegram,
+      ready: health.ready,
       data: {
-        databaseEngine: health.connected ? 'MONGODB_ATLAS' : 'LOCAL_STORAGE_STANDBY',
+        storageEngine: 'TELEGRAM_BOT_API',
         ...health
       }
     });
   } catch (err: any) {
     return res.status(500).json({
+      status: 'error',
       success: false,
+      storage: 'telegram',
+      telegram: 'disconnected',
+      ready: false,
       message: err?.message || 'Failed to check database status'
     });
   }

@@ -4,7 +4,7 @@
 
 KKV Gold Finance & Rental Management utilizes a secure, centralized, standalone authentication system:
 - **Authentication**: Custom backend authentication with bcrypt password hashing (10 salt rounds) and signed JSON Web Tokens (JWT).
-- **Database**: MongoDB (Atlas / Local) as the single authoritative persistence layer.
+- **Security & User Store**: Local encrypted user store (`data/auth/users.json`) managed via `localAuthService`. Passwords and auth secrets are never stored in or transmitted over Telegram.
 - **RBAC Matrix**: Role-based access control with granular permissions (`ADMIN`, `STAFF`, `RENTAL_STAFF`).
 - **Zero Third-Party Auth Dependencies**: No Firebase Auth, no external OAuth requirements.
 
@@ -33,8 +33,8 @@ KKV Gold Finance & Rental Management utilizes a secure, centralized, standalone 
 
 ## 2. Identity & Credential Specification
 
-- **User Collection**: All user profiles are stored in MongoDB under `'staffs'`.
-- **Bcrypt Security**: Passwords are saved as bcrypt hashes (`passwordHash`) with minimum 6 characters. Hashes and raw passwords are never returned in API responses.
+- **User Store**: User profiles and bcrypt hashes are persisted securely in local backend storage (`data/auth/users.json`).
+- **Bcrypt Security**: Passwords are saved as bcrypt hashes (`passwordHash`) with minimum 6 characters. Hashes and raw passwords are never returned in API responses or stored in Telegram envelopes.
 - **Login Identifiers**: Users can log in using either their registered **Email** or **Staff ID** (e.g., `KKV-STAFF-000001`, `KKV-RS-000001`, `KKV-ADMIN-000001`).
 - **Sequential IDs**:
   - `STAFF` $\rightarrow$ `KKV-STAFF-XXXXXX`
@@ -54,15 +54,14 @@ KKV Gold Finance & Rental Management utilizes a secure, centralized, standalone 
 | `POST` | `/api/auth/logout` | Authenticated | Terminates session context. |
 | `GET` | `/api/staff` | **ADMIN Only** | Retrieves full staff directory with roles, departments, and statuses. |
 | `POST` | `/api/staff` | **ADMIN Only** | Creates new staff account with auto-generated ID (STAFF / RENTAL_STAFF only). |
-| `PUT` / `POST` | `/api/staff/:uid/password` | **ADMIN Only** | Resets staff password with immediate bcrypt database persistence. |
+| `PUT` / `POST` | `/api/staff/:uid/password` | **ADMIN Only** | Resets staff password with immediate bcrypt persistence. |
 | `PATCH` | `/api/staff/:uid/status` | **ADMIN Only** | Toggles staff active/inactive status. |
 
 ---
 
-## 4. Default Seeded Credentials
+## 4. Default Seed Accounts
 
-| Role | Email / Staff ID | Default Password | Portal |
-| :--- | :--- | :--- | :--- |
-| **Master Admin** | `admin@kkvgoldfinance.com` / `KKV-ADMIN-000001` | `Admin@123456` | Admin Portal |
-| **Finance Staff** | `staff@kkvgoldfinance.com` / `KKV-STAFF-000001` | `Staff@123456` | Staff Finance Portal |
-| **Rental Staff** | `rental@kkvgoldfinance.com` / `KKV-RS-000001` | `Rental@123456` | Rental Management Portal |
+On initial startup, the backend automatically initializes the standard administrative and operational accounts if not already present:
+- **Master Admin**: `admin@kkvgoldfinance.com` (Role: `ADMIN`)
+- **Finance Staff**: `staff@kkvgoldfinance.com` (Role: `STAFF`)
+- **Rental Staff**: `rental@kkvgoldfinance.com` (Role: `RENTAL_STAFF`)

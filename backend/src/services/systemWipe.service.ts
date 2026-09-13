@@ -19,8 +19,8 @@ import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
 import { FDRenewalModel } from '../models/FDRenewal.js';
 import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
-import { getFinanceDb } from '../config/database.js';
 import { env } from '../config/env.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
 export interface WipePreviewData {
   environment: string;
@@ -146,35 +146,11 @@ class SystemWipeService {
     const reminders = localFileRepository.readJson<any[]>('reminders.json', []) || [];
     const notifications = localFileRepository.readJson<any[]>('notifications.json', []) || [];
 
-    let rentalComplexes: any[] = [];
-    let rentalShops: any[] = [];
-    let rentPayments: any[] = [];
-    let rentalExpenses: any[] = [];
-    let rentalDayBook: any[] = [];
-
-    try {
-      const db = await getFinanceDb();
-      if (db) {
-        const [cCount, sCount, pCount, eCount, dCount] = await Promise.all([
-          db.collection('rental_complexes').countDocuments(),
-          db.collection('rental_shops').countDocuments(),
-          db.collection('rental_payments').countDocuments(),
-          db.collection('rental_expenses').countDocuments(),
-          db.collection('rental_daybook').countDocuments()
-        ]);
-        rentalComplexes = new Array(cCount).fill({});
-        rentalShops = new Array(sCount).fill({});
-        rentPayments = new Array(pCount).fill({});
-        rentalExpenses = new Array(eCount).fill({});
-        rentalDayBook = new Array(dCount).fill({});
-      }
-    } catch {
-      rentalComplexes = rentalRepo.getComplexes() || [];
-      rentalShops = rentalRepo.getShops() || [];
-      rentPayments = rentalRepo.getPayments() || [];
-      rentalExpenses = rentalRepo.getExpenses() || [];
-      rentalDayBook = rentalDayBookRepo.readJson('rental_daybook.json', []) || [];
-    }
+    const rentalComplexes = rentalRepo.getComplexes() || [];
+    const rentalShops = rentalRepo.getShops() || [];
+    const rentPayments = rentalRepo.getPayments() || [];
+    const rentalExpenses = rentalRepo.getExpenses() || [];
+    const rentalDayBook = await rentalDayBookRepo.getManualEntries();
 
     const total =
       customersCount +
@@ -196,7 +172,7 @@ class SystemWipeService {
 
     return {
       environment: env.NODE_ENV,
-      databaseType: 'Hybrid (MongoDB + Local JSON)',
+      databaseType: 'Telegram Bot API Storage',
       counts: {
         customers: customersCount,
         loans: loansCount,
@@ -217,7 +193,7 @@ class SystemWipeService {
         totalOperationalRecords: total
       },
       wipeableEntities: [
-        'Customers & KYC Records (MongoDB & Local Storage)',
+        'Customers & KYC Records (Telegram Storage & Local Cache)',
         'Active & Closed Loans and Item Records',
         'Gold Pledge Item Details & Ornaments',
         'Receipts & Repayment Vouchers',
@@ -336,27 +312,12 @@ class SystemWipeService {
     localFileRepository.clearCache();
 
     // 2. Transactionally Clear Rental Operational Local Storage Collections
-    rentalRepo.writeJson('complexes.json', []);
-    rentalRepo.writeJson('shops.json', []);
-    rentalRepo.writeJson('rent_payments.json', []);
-    rentalRepo.writeJson('expenses.json', []);
-    rentalRepo.writeJson('audit_logs.json', []);
-    rentalRepo.writeJson('sync_queue.json', []);
-    rentalDayBookRepo.writeJson('rental_daybook.json', []);
-    rentalRepo.writeJson('counters.json', {
-      complex: 0,
-      shop: 0,
-      payment: 0,
-      expense: 0,
-      audit: 0,
-      sync: 0
-    });
     rentalRepo.clearCache();
     rentalDayBookRepo.clearCache();
 
-    // 3. Clear MongoDB Collections across all operational Finance and Rental domains
-    // NOTE: Does NOT delete actual files in Google Drive! Only clears database attachment records.
+    // 3. Clear Operational Records in Telegram storage and models
     try {
+      await telegramRepository.resetApplicationData();
       await Promise.all([
         CustomerModel.deleteMany({}),
         LoanModel.deleteMany({}),
@@ -369,25 +330,9 @@ class SystemWipeService {
         DayBookModel.deleteMany({}),
         FileAttachmentModel.deleteMany({})
       ]);
-
-      const db = await getFinanceDb();
-      if (db) {
-        await Promise.all([
-          db.collection('reminders').deleteMany({}),
-          db.collection('notifications').deleteMany({}),
-          db.collection('idempotency_keys').deleteMany({}),
-          db.collection('rental_complexes').deleteMany({}),
-          db.collection('rental_shops').deleteMany({}),
-          db.collection('rental_payments').deleteMany({}),
-          db.collection('rental_expenses').deleteMany({}),
-          db.collection('rental_daybook').deleteMany({}),
-          db.collection('rental_audit_logs').deleteMany({}),
-          db.collection('rental_sync_queue').deleteMany({})
-        ]);
-      }
-      console.log('[SystemWipeService] All MongoDB Finance & Rental operational collections wiped successfully.');
+      console.log('[SystemWipeService] All Telegram Finance & Rental operational records wiped successfully.');
     } catch (mErr) {
-      console.warn('[SystemWipeService] Notice clearing MongoDB collections:', (mErr as any)?.message || mErr);
+      console.warn('[SystemWipeService] Notice clearing Telegram records:', (mErr as any)?.message || mErr);
     }
 
     // 4. Reset sequence counters in memory and storage to 0
@@ -412,14 +357,14 @@ class SystemWipeService {
     };
     localFileRepository.writeJson('audit_logs.json', [wipeAuditRecord]);
 
-    // 6. Post-Wipe Verification Assertion Check (Local storage + MongoDB)
+    // 6. Post-Wipe Verification Assertion Check (Local storage + Telegram cache)
     const customersAfter = localFileRepository.readJson<any[]>('customers.json', []);
     const loansAfter = localFileRepository.readJson<any[]>('loans.json', []);
     const receiptsAfter = localFileRepository.readJson<any[]>('receipts.json', []);
     const complexesAfter = rentalRepo.getComplexes();
     const shopsAfter = rentalRepo.getShops();
 
-    const [mongoCusts, mongoLoans, mongoRcpts] = await Promise.all([
+    const [storageCusts, storageLoans, storageRcpts] = await Promise.all([
       CustomerModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0),
       LoanModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0),
       ReceiptModel.countDocuments({ isDeleted: { $ne: true } }).catch(() => 0)
@@ -431,9 +376,9 @@ class SystemWipeService {
       receiptsAfter.length !== 0 ||
       complexesAfter.length !== 0 ||
       shopsAfter.length !== 0 ||
-      mongoCusts !== 0 ||
-      mongoLoans !== 0 ||
-      mongoRcpts !== 0
+      storageCusts !== 0 ||
+      storageLoans !== 0 ||
+      storageRcpts !== 0
     ) {
       throw new Error('Database wipe assertion failed: Operational collections were not completely cleared.');
     }

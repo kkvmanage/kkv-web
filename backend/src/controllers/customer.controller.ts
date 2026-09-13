@@ -176,9 +176,9 @@ export const updateCustomer = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteCustomer = (req: Request, res: Response) => {
+export const deleteCustomer = async (req: Request, res: Response) => {
   const userRole = (req.headers['user-role'] as string) || req.body?.userRole || 'OPERATOR';
-  const result = customerService.delete(req.params.id, userRole);
+  const result = await customerService.delete(req.params.id, userRole);
   if (!result.success) {
     return res.status(result.statusCode || 400).json({
       success: false,
@@ -191,9 +191,9 @@ export const deleteCustomer = (req: Request, res: Response) => {
   });
 };
 
-export const restoreCustomer = (req: Request, res: Response) => {
+export const restoreCustomer = async (req: Request, res: Response) => {
   const userRole = (req.headers['user-role'] as string) || req.body?.userRole || 'OPERATOR';
-  const result = customerService.restore(req.params.id, userRole);
+  const result = await customerService.restore(req.params.id, userRole);
   if (!result.success) {
     return res.status(result.statusCode || 400).json({
       success: false,
@@ -206,9 +206,9 @@ export const restoreCustomer = (req: Request, res: Response) => {
   });
 };
 
-export const deletePermanentlyCustomer = (req: Request, res: Response) => {
+export const deletePermanentlyCustomer = async (req: Request, res: Response) => {
   const userRole = (req.headers['user-role'] as string) || req.body?.userRole || 'OPERATOR';
-  const result = customerService.deletePermanently(req.params.id, userRole);
+  const result = await customerService.deletePermanently(req.params.id, userRole);
   if (!result.success) {
     return res.status(result.statusCode || 400).json({
       success: false,

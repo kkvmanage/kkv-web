@@ -412,6 +412,35 @@ export class AdminService {
     const settings = this.getMasterSettings();
     return this.verifyPassword(password, settings.adminPassword);
   }
+
+  public getSettings(): MasterControlSettings {
+    return this.getMasterSettings();
+  }
+
+  public getLoanTypeConfigs(): any[] {
+    return this.getMasterSettings().loanTypes || [];
+  }
+
+  public resolveEffectiveRateForAmount(loanTypeId: string, amount: number): { rate: number; profileName: string; bandId?: string } {
+    const settings = this.getMasterSettings();
+    const type = (settings.loanTypes || []).find((t: any) => t.id === loanTypeId);
+    if (!type) {
+      return { rate: settings.goldLoanMonthlyRate ?? 1.5, profileName: 'Gold Loan Profile' };
+    }
+
+    if (type.amountBands && type.amountBands.length > 0) {
+      for (const band of type.amountBands) {
+        if (band.condition === 'Below' && amount < band.amount) {
+          return { rate: band.baseRateMonthly, profileName: type.name, bandId: band.id };
+        }
+        if (band.condition === 'Above' && amount >= band.amount) {
+          return { rate: band.baseRateMonthly, profileName: type.name, bandId: band.id };
+        }
+      }
+    }
+
+    return { rate: type.defaultMonthlyRate || 2.0, profileName: type.name };
+  }
 }
 
 export const adminService = new AdminService();

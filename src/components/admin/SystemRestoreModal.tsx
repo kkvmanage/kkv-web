@@ -154,7 +154,7 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
       setStep(5);
       setLoading(false);
 
-      // Trigger automatic immediate re-hydration of global application state from MongoDB
+      // Trigger automatic immediate re-hydration of global application state from storage
       setSyncStatus('syncing');
       try {
         await reloadAllData();
@@ -641,7 +641,7 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
                 Restoring Database Records...
               </h3>
               <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '420px', margin: '0 auto' }}>
-                Writing Finance and Rental datasets to MongoDB and Local Storage, syncing sequence counters, and validating relationships.
+                Writing Finance and Rental datasets to Telegram Persistent Storage and Local Cache, syncing sequence counters, and validating relationships.
               </p>
             </div>
           )}
@@ -668,7 +668,7 @@ export const SystemRestoreModal: React.FC<SystemRestoreModalProps> = ({
                 System Database Restored Successfully!
               </h3>
               <p style={{ color: '#64748B', fontSize: '13px', maxWidth: '480px', margin: '0 auto 16px auto', lineHeight: '1.4' }}>
-                Authoritative records restored from <strong>{previewResult.fileName}</strong> into MongoDB and Local Storage.
+                Authoritative records restored from <strong>{previewResult.fileName}</strong> into Telegram Storage and Local Cache.
               </p>
 
               {/* RESTORED COUNTS SUMMARY PILLS */}

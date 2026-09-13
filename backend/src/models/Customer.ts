@@ -1,399 +1,230 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { CustomerLocation, NomineeDetails, GuarantorDetails } from '../types/index.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface ICustomerPhoto {
-  fileId: string;
-  fileName?: string;
-  url: string;
-  mimeType?: string;
-  fileSize?: number;
-  uploadedAt?: Date;
-  publicId?: string; // alias for legacy/backward compatibility
+export interface IAddressDetails {
+  houseNo?: string;
+  street?: string;
+  landmark?: string;
+  pincode: string;
+  district: string;
+  state: string;
+  city?: string;
 }
 
-export interface IKYCDocument {
-  documentType: string;
-  documentNumber?: string;
-  documentName?: string;
-  fileId: string;
+export interface ICustomerPhoto {
+  url?: string;
+  fileId?: string;
   fileName?: string;
-  url: string;
-  mimeType?: string;
+  originalFileName?: string;
+  size?: number;
   fileSize?: number;
-  uploadedAt?: Date;
-  publicId?: string; // alias for legacy/backward compatibility
+  mimeType?: string;
+  uploadedAt?: string;
+  publicId?: string;
   resourceType?: string;
 }
 
-export interface IStructuredAddress {
-  houseNumber?: string;
-  street?: string;
-  locality?: string;
-  city?: string;
-  district?: string;
-  state?: string;
-  country?: string;
-  pincode?: string;
+export interface IKYCDocument {
+  docType?: string;
+  docNumber?: string;
+  documentType?: string;
+  documentNumber?: string;
+  documentName?: string;
+  fileId?: string;
+  fileName?: string;
+  url?: string;
+  mimeType?: string;
+  fileSize?: number;
+  publicId?: string;
+  resourceType?: string;
+  frontPhotoUrl?: string;
+  backPhotoUrl?: string;
+  verified?: boolean;
+  uploadedAt?: string;
 }
 
-export interface ICustomer extends Document {
+export interface ICustomer {
+  id: string;
   customerId: string;
-  numericId?: number;
-  fullName: string;
-  name?: string; // alias/legacy compatibility
-  gender: 'Male' | 'Female' | 'Other';
-  phoneNumber: string;
-  phone?: string; // alias/legacy compatibility
-  phoneNormalized?: string;
+  customerNo?: string;
+  name: string;
+  fullName?: string;
+  mobile: string;
+  phoneNumber?: string;
+  phone?: string;
+  alternateNumber?: string;
+  alternatePhone?: string;
   email?: string;
-  occupation?: string;
-  age?: number;
   dateOfBirth?: string;
-  customerPhoto?: ICustomerPhoto;
-  photoSource?: 'upload' | 'webcam' | null;
-  
-  // Address info
-  address?: string;
-  city?: string;
-  district?: string;
-  state?: string;
-  pincode?: string;
+  dob?: string;
+  age?: number;
+  gender: 'Male' | 'Female' | 'Other';
+  occupation?: string;
+  photoUrl?: string;
+  photoBase64?: string;
+  branchId?: string;
+  complexId?: string;
+
+  // Primary Address
+  address: string;
   currentAddress?: string;
   permanentAddress?: string;
-  currentAddressDetails?: IStructuredAddress;
-  permanentAddressDetails?: IStructuredAddress;
-  currentLocation?: any;
-  permanentLocation?: any;
+  isSameAddress?: boolean;
+  sameAsCurrentAddress?: boolean;
+  location?: CustomerLocation;
+  currentAddressDetails?: IAddressDetails;
+  permanentAddressDetails?: IAddressDetails;
 
-  // KYC Info
+  // Relations
+  fatherHusbandName?: string;
+  relationship?: 'Father' | 'Husband' | 'Guardian';
+  nominee?: NomineeDetails;
+  guarantor?: GuarantorDetails;
+
+  // Legacy nominee fields
+  nomineeName?: string;
+  nomineeRelation?: string;
+  nomineePhone?: string;
+  nomineeAadhaar?: string;
+  nomineePan?: string;
+
+  // Legacy guarantor fields
+  guarantorName?: string;
+  guarantorRelation?: string;
+  guarantorPhone?: string;
+  guarantorAadhaar?: string;
+  guarantorPan?: string;
+
+  // KYC
   idProofType?: string;
-  idProof?: string; // alias/legacy compatibility
+  idProof?: string;
   idProofNumber?: string;
-  idNumber?: string; // alias/legacy compatibility
+  idNumber?: string;
   extraPan?: string;
   docName?: string;
-  kycDocuments: IKYCDocument[];
+  kycDocuments?: IKYCDocument[];
 
-  // Operational metadata
+  // Metadata
   status: 'VERIFIED' | 'PENDING' | 'BLOCKED';
   joinedDate?: string;
   activeLoansCount: number;
   totalBorrowed: number;
   isDeleted: boolean;
-  deletedAt?: Date | null;
+  deletedAt?: Date | string | null;
   deletedBy?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 
-const CustomerPhotoSchema = new Schema<ICustomerPhoto>(
-  {
-    fileId: { type: String, default: '' },
-    fileName: { type: String, default: 'customer-photo.jpg' },
-    url: { type: String, default: '' },
-    mimeType: { type: String, default: 'image/jpeg' },
-    fileSize: { type: Number, default: 0 },
-    uploadedAt: { type: Date, default: Date.now },
-    publicId: { type: String, default: '' }
-  },
-  { _id: false }
-);
+export class CustomerModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<ICustomer>('CUSTOMER', { includeDeleted });
 
-const KYCDocumentSchema = new Schema<IKYCDocument>(
-  {
-    documentType: { type: String, required: true },
-    documentNumber: { type: String, default: '' },
-    documentName: { type: String, default: '' },
-    fileId: { type: String, required: true },
-    fileName: { type: String, default: '' },
-    url: { type: String, required: true },
-    mimeType: { type: String, default: 'image/jpeg' },
-    fileSize: { type: Number, default: 0 },
-    uploadedAt: { type: Date, default: Date.now },
-    publicId: { type: String, default: '' },
-    resourceType: { type: String, default: 'image' }
-  },
-  { _id: true, timestamps: true }
-);
-
-const StructuredAddressSchema = new Schema<IStructuredAddress>(
-  {
-    houseNumber: { type: String, default: '' },
-
-    street: { type: String, default: '' },
-    locality: { type: String, default: '' },
-    city: { type: String, default: '' },
-    district: { type: String, default: '' },
-    state: { type: String, default: '' },
-    country: { type: String, default: 'India' },
-    pincode: { type: String, default: '' }
-  },
-  { _id: false }
-);
-
-const CustomerSchema = new Schema<ICustomer>(
-  {
-    customerId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-      trim: true
-    },
-    numericId: {
-      type: Number,
-      index: true
-    },
-    fullName: {
-      type: String,
-      required: [true, 'Full name is required'],
-      trim: true,
-      index: true
-    },
-    gender: {
-      type: String,
-      enum: ['Male', 'Female', 'Other'],
-      required: [true, 'Gender is required'],
-      default: 'Male'
-    },
-    phoneNumber: {
-      type: String,
-      required: [true, 'Phone number is required'],
-      trim: true,
-      index: true
-    },
-    phoneNormalized: {
-      type: String,
-      trim: true,
-      index: true
-    },
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true,
-      default: ''
-    },
-    occupation: {
-      type: String,
-      trim: true,
-      default: 'Self Employed'
-    },
-    age: {
-      type: Number,
-      min: 0,
-      max: 120
-    },
-    dateOfBirth: {
-      type: String,
-      trim: true
-    },
-    customerPhoto: {
-      type: CustomerPhotoSchema,
-      default: () => ({ url: '', publicId: '' })
-    },
-    photoSource: {
-      type: String,
-      enum: ['upload', 'webcam', null],
-      default: null
-    },
-
-    // Address
-    address: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    city: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    district: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    state: {
-      type: String,
-      trim: true,
-      default: 'Tamil Nadu'
-    },
-    pincode: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    currentAddress: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    permanentAddress: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    currentAddressDetails: {
-      type: StructuredAddressSchema,
-      default: () => ({})
-    },
-    permanentAddressDetails: {
-      type: StructuredAddressSchema,
-      default: () => ({})
-    },
-    currentLocation: {
-      type: Schema.Types.Mixed,
-      default: null
-    },
-    permanentLocation: {
-      type: Schema.Types.Mixed,
-      default: null
-    },
-
-    // KYC info
-    idProofType: {
-      type: String,
-      enum: ['Aadhaar', 'PAN', 'Aadhaar + PAN', 'Voter ID', 'Driving License', 'Driving Licence', 'Passport', 'Other'],
-      default: 'Aadhaar'
-    },
-    idProofNumber: {
-      type: String,
-      trim: true,
-      index: true,
-      default: ''
-    },
-    extraPan: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    docName: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    kycDocuments: {
-      type: [KYCDocumentSchema],
-      default: []
-    },
-
-    // Status and financials
-    status: {
-      type: String,
-      enum: ['VERIFIED', 'PENDING', 'BLOCKED'],
-      default: 'VERIFIED'
-    },
-    joinedDate: {
-      type: String,
-      default: () => new Date().toLocaleDateString('en-GB')
-    },
-    activeLoansCount: {
-      type: Number,
-      default: 0
-    },
-    totalBorrowed: {
-      type: Number,
-      default: 0
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true
-    },
-    deletedAt: {
-      type: Date,
-      default: null
-    },
-    deletedBy: {
-      type: String,
-      default: null
+    if (query.customerId) {
+      records = records.filter((c) => c.customerId === query.customerId);
     }
-  },
-  {
-    timestamps: true,
-    toJSON: {
-      virtuals: true,
-      transform: function (doc, ret: any) {
-        // Alias legacy fields so frontend continues seamlessly
-        ret.id = ret.customerId || ret._id;
-        ret.name = ret.fullName;
-        ret.phone = ret.phoneNumber;
-        ret.idProof = ret.idProofType;
-        ret.idNumber = ret.idProofNumber;
-        if (ret.customerPhoto?.url) {
-          ret.photoUrl = ret.customerPhoto.url;
-        }
-        return ret;
-      }
-    },
-    toObject: { virtuals: true }
-  }
-);
+    if (query.phoneNumber || query.phone) {
+      const p = query.phoneNumber || query.phone;
+      records = records.filter((c) => c.phoneNumber === p || c.phone === p);
+    }
 
-// Virtual aliases for seamless compatibility
-CustomerSchema.virtual('name').get(function (this: ICustomer) {
-  return this.fullName;
-});
-CustomerSchema.virtual('name').set(function (this: ICustomer, val: string) {
-  this.fullName = val;
-});
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
+  }
 
-CustomerSchema.virtual('phone').get(function (this: ICustomer) {
-  return this.phoneNumber;
-});
-CustomerSchema.virtual('phone').set(function (this: ICustomer, val: string) {
-  this.phoneNumber = val;
-});
+  public static findOne(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    const records = telegramRepository.getRecords<ICustomer>('CUSTOMER', { includeDeleted });
 
-CustomerSchema.virtual('idProof').get(function (this: ICustomer) {
-  return this.idProofType;
-});
-CustomerSchema.virtual('idProof').set(function (this: ICustomer, val: string) {
-  this.idProofType = val;
-});
+    let match: ICustomer | null = null;
+    if (query.customerId) {
+      match = records.find((c) => c.customerId === query.customerId || c.id === query.customerId) || null;
+    } else if (query.id) {
+      match = records.find((c) => c.id === query.id || c.customerId === query.id) || null;
+    } else if (query.phoneNumber || query.phone) {
+      const p = query.phoneNumber || query.phone;
+      match = records.find((c) => c.phoneNumber === p || c.phone === p) || null;
+    } else if (query.$or && Array.isArray(query.$or)) {
+      match = records.find((c) =>
+        query.$or.some((clause: any) =>
+          (clause.customerId && (c.customerId === clause.customerId || c.id === clause.customerId)) ||
+          (clause.id && (c.id === clause.id || c.customerId === clause.id)) ||
+          (clause.phoneNumber && (c.phoneNumber === clause.phoneNumber || c.phone === clause.phoneNumber))
+        )
+      ) || null;
+    }
 
-CustomerSchema.virtual('idNumber').get(function (this: ICustomer) {
-  return this.idProofNumber;
-});
-CustomerSchema.virtual('idNumber').set(function (this: ICustomer, val: string) {
-  this.idProofNumber = val;
-});
+    const chain = {
+      select: () => chain,
+      lean: async () => match,
+      then: (resolve: any, reject?: any) => Promise.resolve(match).then(resolve, reject)
+    };
+    return chain;
+  }
 
-// Pre-validate hook for seamless alias normalization between formats
-CustomerSchema.pre('validate', function (this: any, next?: any) {
-  const doc = this;
-  if (!doc.customerId && doc.id) {
-    doc.customerId = doc.id;
+  public static async create(doc: any): Promise<any> {
+    const id = doc.customerId || doc.id || `KKV-${Date.now()}`;
+    const res = await telegramRepository.createRecord('CUSTOMER', id, { ...doc, id, customerId: id });
+    return res.data;
   }
-  if (!doc.fullName && doc.name) {
-    doc.fullName = doc.name;
-  }
-  if (!doc.name && doc.fullName) {
-    doc.name = doc.fullName;
-  }
-  if (!doc.phoneNumber && doc.phone) {
-    doc.phoneNumber = doc.phone;
-  }
-  if (!doc.phone && doc.phoneNumber) {
-    doc.phone = doc.phoneNumber;
-  }
-  if (!doc.phoneNormalized && (doc.phoneNumber || doc.phone)) {
-    doc.phoneNormalized = String(doc.phoneNumber || doc.phone).replace(/\D/g, '').slice(-10);
-  }
-  if (!doc.idProofType && doc.idProof) {
-    doc.idProofType = doc.idProof;
-  }
-  if (!doc.idProofNumber && doc.idNumber) {
-    doc.idProofNumber = doc.idNumber;
-  }
-  if (!doc.customerPhoto) {
-    doc.customerPhoto = { url: '', publicId: '' };
-  } else if (typeof doc.customerPhoto === 'string') {
-    doc.customerPhoto = { url: doc.customerPhoto, publicId: '' };
-  }
-  if (typeof next === 'function') {
-    next();
-  }
-});
 
-export const CustomerModel = mongoose.models.Customer || mongoose.model<ICustomer>('Customer', CustomerSchema);
+  public static async deleteOne(query: any): Promise<any> {
+    const id = query.customerId || query.id;
+    if (id) {
+      await telegramRepository.deleteRecord('CUSTOMER', id);
+      return { deletedCount: 1 };
+    }
+    return { deletedCount: 0 };
+  }
+
+  public static async findOneAndUpdate(query: any, update: any, _options: any = {}): Promise<any> {
+    const doc = update.$set || update;
+    const id = doc.customerId || doc.id || (query.customerId || query.id);
+    if (!id) return null;
+
+    const existing = telegramRepository.getRecordById<ICustomer>('CUSTOMER', id, true);
+    if (existing) {
+      const updated = await telegramRepository.updateRecord<ICustomer>('CUSTOMER', id, doc);
+      return updated.data;
+    } else {
+      const created = await telegramRepository.createRecord<ICustomer>('CUSTOMER', id, doc);
+      return created.data;
+    }
+  }
+
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('CUSTOMER', undefined, includeDeleted);
+  }
+
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['CUSTOMER']);
+    return { deletedCount: cleared };
+  }
+
+  public static async updateOne(query: any, update: any): Promise<any> {
+    const id = query.customerId || query.id || (query.$or && query.$or[0]?.customerId);
+    if (!id) return { modifiedCount: 0 };
+    const doc = update.$set || update;
+    await telegramRepository.updateRecord('CUSTOMER', id, doc);
+    return { modifiedCount: 1 };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.customerId || d.id;
+      const res = await telegramRepository.createRecord('CUSTOMER', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
+
 export default CustomerModel;

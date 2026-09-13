@@ -1,6 +1,7 @@
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
-import { getFinanceDb } from '../config/database.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
+
 
 export interface AdminRentalSummary {
   month: string;
@@ -794,44 +795,18 @@ class RentalAdminSummaryService {
       syncQueue: syncQueue.length
     };
 
-    // 1. Reset rental repository JSON files safely & clear caches
-    rentalRepository.writeJson('complexes.json', []);
-    rentalRepository.writeJson('shops.json', []);
-    rentalRepository.writeJson('rent_payments.json', []);
-    rentalRepository.writeJson('expenses.json', []);
-    rentalRepository.writeJson('audit_logs.json', []);
-    rentalRepository.writeJson('sync_queue.json', []);
-    rentalRepository.writeJson('counters.json', {
-      complex: 0,
-      shop: 0,
-      payment: 0,
-      expense: 0,
-      audit: 0,
-      sync: 0
-    });
+    // 1. Reset rental repository records safely
+    await telegramRepository.resetApplicationData([
+      'RENTAL_COMPLEX',
+      'RENTAL_SHOP',
+      'RENTAL_PAYMENT',
+      'RENTAL_EXPENSE',
+      'RENTAL_AUDIT',
+      'RENTAL_DAYBOOK'
+    ]);
+
     rentalRepository.clearCache();
-
-    rentalDayBookRepository.writeJson('rental_daybook.json', []);
     rentalDayBookRepository.clearCache();
-
-    // 2. Clear MongoDB rental operational collections if connected
-    try {
-      const db = await getFinanceDb();
-      if (db) {
-        await Promise.all([
-          db.collection('rental_complexes').deleteMany({}),
-          db.collection('rental_shops').deleteMany({}),
-          db.collection('rental_payments').deleteMany({}),
-          db.collection('rental_expenses').deleteMany({}),
-          db.collection('rental_daybook').deleteMany({}),
-          db.collection('rental_audit_logs').deleteMany({}),
-          db.collection('rental_sync_queue').deleteMany({})
-        ]);
-        console.log('[RentalAdminSummaryService] All MongoDB rental collections cleared successfully.');
-      }
-    } catch (err) {
-      console.warn('[RentalAdminSummaryService] Warning clearing MongoDB rental collections:', err);
-    }
 
     return {
       resetCounts: counts,

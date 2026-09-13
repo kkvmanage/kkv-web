@@ -1,47 +1,50 @@
-import mongoose, { Schema, Document } from 'mongoose';
 import { FDWithdrawal } from '../types/index.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IFDWithdrawalDocument extends Document, Omit<FDWithdrawal, 'id'> {
+export interface IFDWithdrawalDocument extends Omit<FDWithdrawal, 'id'> {
   id: string;
 }
 
-const FDWithdrawalSchema = new Schema(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    withdrawalId: { type: String, index: true },
-    receiptNo: { type: String },
-    receiptId: { type: String },
-    withdrawalType: { type: String, default: 'FULL' },
-    fdId: { type: String, index: true },
-    fdNo: { type: String, required: true, index: true },
-    customerId: { type: String, index: true },
-    customerPhone: { type: String },
-    depositorName: { type: String, required: true },
-    originalPrincipal: { type: Number, default: 0 },
-    balanceBefore: { type: Number, default: 0 },
-    principalAmount: { type: Number, required: true, default: 0 },
-    remainingBalance: { type: Number, default: 0 },
-    interestPaid: { type: Number, default: 0 },
-    totalAmount: { type: Number, required: true, default: 0 },
-    withdrawalDate: { type: String, required: true, index: true },
-    mode: {
-      type: String,
-      enum: ['Cash', 'Bank', 'UPI'],
-      default: 'Cash'
-    },
-    transactionReference: { type: String },
-    bankName: { type: String },
-    notes: { type: String, default: '' },
-    status: { type: String, default: 'COMPLETED' },
-    processedBy: { type: String, default: 'Admin' },
-    branchId: { type: String, index: true },
-    createdAt: { type: String, default: () => new Date().toISOString() }
-  },
-  {
-    timestamps: true,
-    collection: 'fd_withdrawals'
-  }
-);
+export class FDWithdrawalModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<FDWithdrawal>('FD_WITHDRAWAL', { includeDeleted });
 
-export const FDWithdrawalModel =
-  mongoose.models.FDWithdrawal || mongoose.model<IFDWithdrawalDocument>('FDWithdrawal', FDWithdrawalSchema);
+    if (query.fdId) {
+      records = records.filter((w) => w.fdId === query.fdId);
+    }
+    if (query.fdNo) {
+      records = records.filter((w) => w.fdNo === query.fdNo);
+    }
+
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('FD_WITHDRAWAL', undefined, includeDeleted);
+  }
+
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['FD_WITHDRAWAL']);
+    return { deletedCount: cleared };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.id || `FDWD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const res = await telegramRepository.createRecord('FD_WITHDRAWAL', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
+
+export default FDWithdrawalModel;

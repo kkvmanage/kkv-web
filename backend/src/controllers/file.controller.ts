@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { googleDriveService } from '../services/googleDrive.service.js';
 import { storageService } from '../services/storage.service.js';
-import { isMongoConnected, ensureMongoConnected } from '../config/database.js';
 
 const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const ALLOWED_DOC_MIMES = ['application/pdf'];
@@ -48,7 +47,7 @@ function getExtensionFromMimeOrName(originalName: string, mimeType: string): str
 
 /**
  * POST /api/files/upload
- * Handles multipart file upload, validates payload, stores in Google Drive, and saves metadata in MongoDB.
+ * Handles multipart file upload, validates payload, stores in Google Drive, and saves metadata in Telegram persistent storage.
  */
 export const uploadFileHandler = async (req: Request, res: Response) => {
   try {
@@ -141,42 +140,34 @@ export const uploadFileHandler = async (req: Request, res: Response) => {
       driveUrl = `/api/files/${fileId}/view`;
     }
 
-    // Persist FileAttachment metadata in MongoDB
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-    }
-
-    let savedAttachment: any = null;
-    if (isMongoConnected()) {
-      try {
-        savedAttachment = await FileAttachmentModel.create({
-          fileId,
-          entityType,
-          entityId,
-          documentType,
-          originalFileName: originalName,
-          storedFileName,
-          mimeType,
-          fileSize: file.size,
-          driveFileId,
-          driveFolderId,
-          driveUrl,
-          webViewLink,
-          webContentLink,
-          uploadedBy,
-          isDeleted: false
-        });
-      } catch (dbErr: any) {
-        console.error('[FileController] Failed to save metadata to MongoDB:', dbErr?.message || dbErr);
-        // Clean up uploaded drive file to prevent orphaned storage
-        if (driveFileId && !driveFileId.startsWith('local_')) {
-          googleDriveService.deleteFile(driveFileId, true).catch(() => {});
-        }
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to save file metadata to database.'
-        });
+    // Persist FileAttachment metadata
+    try {
+      await FileAttachmentModel.create({
+        fileId,
+        entityType,
+        entityId,
+        documentType,
+        originalFileName: originalName,
+        storedFileName,
+        mimeType,
+        fileSize: file.size,
+        driveFileId,
+        driveFolderId,
+        driveUrl,
+        webViewLink,
+        webContentLink,
+        uploadedBy,
+        isDeleted: false
+      });
+    } catch (dbErr: any) {
+      console.error('[FileController] Failed to save metadata to storage:', dbErr?.message || dbErr);
+      if (driveFileId && !driveFileId.startsWith('local_')) {
+        googleDriveService.deleteFile(driveFileId, true).catch(() => {});
       }
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save file metadata to database.'
+      });
     }
 
     const viewUrl = `/api/files/${fileId}/view`;
@@ -220,18 +211,10 @@ export const viewFileHandler = async (req: Request, res: Response) => {
   try {
     const targetId = req.params.id;
 
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-    }
-
     // Look up attachment metadata
-    let attachment: any = null;
-    if (isMongoConnected()) {
-      attachment = await FileAttachmentModel.findOne({
-        $or: [{ fileId: targetId }, { driveFileId: targetId }],
-        isDeleted: { $ne: true }
-      }).lean();
-    }
+    const attachment = await FileAttachmentModel.findOne({
+      fileId: targetId
+    });
 
     const driveFileId = attachment ? attachment.driveFileId : targetId;
 
@@ -287,17 +270,9 @@ export const downloadFileHandler = async (req: Request, res: Response) => {
   try {
     const targetId = req.params.id;
 
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-    }
-
-    let attachment: any = null;
-    if (isMongoConnected()) {
-      attachment = await FileAttachmentModel.findOne({
-        $or: [{ fileId: targetId }, { driveFileId: targetId }],
-        isDeleted: { $ne: true }
-      }).lean();
-    }
+    const attachment = await FileAttachmentModel.findOne({
+      fileId: targetId
+    });
 
     const driveFileId = attachment ? attachment.driveFileId : targetId;
     const downloadName = attachment?.originalFileName || 'downloaded_file';
@@ -333,21 +308,11 @@ export const getEntityAttachmentsHandler = async (req: Request, res: Response) =
   try {
     const { entityType, entityId } = req.params;
 
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-    }
-
-    if (!isMongoConnected()) {
-      return res.json({ success: true, data: [] });
-    }
-
     const attachments = await FileAttachmentModel.find({
       entityType: entityType.toLowerCase().trim(),
       entityId: sanitizeIdentifier(entityId),
       isDeleted: { $ne: true }
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    });
 
     const mapped = attachments.map((att: any) => ({
       ...att,
@@ -379,10 +344,6 @@ export const deleteAttachmentHandler = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const isAdmin = user?.role === 'ADMIN';
 
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-    }
-
     const attachment = await FileAttachmentModel.findOne({
       $or: [{ fileId: targetId }, { driveFileId: targetId }]
     });
@@ -394,7 +355,7 @@ export const deleteAttachmentHandler = async (req: Request, res: Response) => {
       });
     }
 
-    // Mark deleted in MongoDB
+    // Mark deleted in storage
     attachment.isDeleted = true;
     attachment.deletedAt = new Date();
     attachment.deletedBy = user?.email || user?.id || 'USER';
@@ -402,27 +363,47 @@ export const deleteAttachmentHandler = async (req: Request, res: Response) => {
 
     // Trash in Google Drive if configured
     if (attachment.driveFileId && !attachment.driveFileId.startsWith('local_')) {
-      googleDriveService.deleteFile(attachment.driveFileId, isAdmin).catch(() => {});
+      if (googleDriveService.isReady()) {
+        try {
+          if (isAdmin) {
+            await googleDriveService.deleteFile(attachment.driveFileId, false);
+          } else {
+            await googleDriveService.deleteFile(attachment.driveFileId, false);
+          }
+        } catch (driveErr: any) {
+          console.warn('[FileController] Google Drive file trash notice:', driveErr?.message || driveErr);
+        }
+      }
     }
 
     return res.json({
       success: true,
-      message: 'Attachment deleted successfully.'
+      message: 'File attachment deleted successfully.',
+      fileId: attachment.fileId
     });
   } catch (err: any) {
     console.error('[FileController] deleteAttachmentHandler error:', err);
     return res.status(500).json({
       success: false,
-      message: err.message || 'Failed to delete attachment.'
+      message: err.message || 'Failed to delete file attachment.'
     });
   }
 };
 
 /**
  * GET /api/files/health
- * Checks Google Drive connection status
  */
 export const checkDriveHealthHandler = async (_req: Request, res: Response) => {
-  const result = await googleDriveService.checkConnection();
-  return res.status(result.success ? 200 : 503).json(result);
+  try {
+    const health = await googleDriveService.checkConnection();
+    return res.json({
+      success: health.success,
+      data: health
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Drive health check failed'
+    });
+  }
 };

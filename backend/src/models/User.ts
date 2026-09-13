@@ -1,387 +1,272 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { localAuthService } from '../services/localAuth.service.js';
 
-export type UserRole = 'ADMIN' | 'STAFF' | 'RENTAL_STAFF';
-
-export interface IModuleActionPermissions {
-  view?: boolean;
-  create?: boolean;
-  update?: boolean;
-  delete?: boolean;
-  approve?: boolean;
-  export?: boolean;
-  restore?: boolean;
-  [key: string]: boolean | undefined;
-}
+export type UserRole = 'ADMIN' | 'MASTER_ADMIN' | 'STAFF' | 'RENTAL_STAFF';
 
 export interface IUserPermissions {
-  dashboard: { view: boolean };
-  customers: { view: boolean; create: boolean; update: boolean; delete: boolean };
-  loans: { view: boolean; create: boolean; update: boolean; delete: boolean; approve: boolean };
-  receipts: { view: boolean; create: boolean; update: boolean; delete: boolean };
-  fd: { view: boolean; create: boolean; update: boolean; delete: boolean };
-  accounting: { view: boolean; create: boolean; update: boolean; delete: boolean };
-  rental: { view: boolean; create: boolean; update: boolean; delete: boolean; approve: boolean };
-  reports: { view: boolean; export: boolean };
-  staffManagement: { view: boolean; create: boolean; update: boolean; delete: boolean };
-  settings: { view: boolean; update: boolean };
-  backupRestore: { view: boolean; create: boolean; restore: boolean; delete: boolean };
-  [key: string]: any;
+  customers: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+  };
+  loans: {
+    view: boolean;
+    issue: boolean;
+    edit: boolean;
+    close: boolean;
+    reopen: boolean;
+  };
+  fixedDeposits: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    withdraw: boolean;
+    renew: boolean;
+  };
+  rental: {
+    view: boolean;
+    manageComplexes: boolean;
+    collectRent: boolean;
+    manageExpenses: boolean;
+    reports: boolean;
+  };
+  dayBook: {
+    view: boolean;
+    addEntry: boolean;
+    editEntry: boolean;
+    deleteEntry: boolean;
+  };
+  staffManagement: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+    toggleStatus: boolean;
+  };
+  reports: {
+    view: boolean;
+    export: boolean;
+  };
+  settings: {
+    view: boolean;
+    editRates: boolean;
+    editCompany: boolean;
+  };
+  backupRestore: {
+    createBackup: boolean;
+    restoreBackup: boolean;
+  };
 }
 
 export const ADMIN_DEFAULT_PERMISSIONS: IUserPermissions = {
-  dashboard: { view: true },
-  customers: { view: true, create: true, update: true, delete: true },
-  loans: { view: true, create: true, update: true, delete: true, approve: true },
-  receipts: { view: true, create: true, update: true, delete: true },
-  fd: { view: true, create: true, update: true, delete: true },
-  accounting: { view: true, create: true, update: true, delete: true },
-  rental: { view: true, create: true, update: true, delete: true, approve: true },
+  customers: { view: true, create: true, edit: true, delete: true },
+  loans: { view: true, issue: true, edit: true, close: true, reopen: true },
+  fixedDeposits: { view: true, create: true, edit: true, withdraw: true, renew: true },
+  rental: { view: true, manageComplexes: true, collectRent: true, manageExpenses: true, reports: true },
+  dayBook: { view: true, addEntry: true, editEntry: true, deleteEntry: true },
+  staffManagement: { view: true, create: true, edit: true, delete: true, toggleStatus: true },
   reports: { view: true, export: true },
-  staffManagement: { view: true, create: true, update: true, delete: true },
-  settings: { view: true, update: true },
-  backupRestore: { view: true, create: true, restore: true, delete: true }
+  settings: { view: true, editRates: true, editCompany: true },
+  backupRestore: { createBackup: true, restoreBackup: true }
 };
 
 export const STAFF_DEFAULT_PERMISSIONS: IUserPermissions = {
-  dashboard: { view: true },
-  customers: { view: true, create: true, update: true, delete: false },
-  loans: { view: true, create: true, update: true, delete: false, approve: true },
-  receipts: { view: true, create: true, update: false, delete: false },
-  fd: { view: true, create: true, update: true, delete: false },
-  accounting: { view: true, create: true, update: true, delete: false },
-  rental: { view: false, create: false, update: false, delete: false, approve: false },
-  reports: { view: true, export: true },
-  staffManagement: { view: false, create: false, update: false, delete: false },
-  settings: { view: false, update: false },
-  backupRestore: { view: false, create: false, restore: false, delete: false }
+  customers: { view: true, create: true, edit: true, delete: false },
+  loans: { view: true, issue: true, edit: false, close: true, reopen: false },
+  fixedDeposits: { view: true, create: true, edit: false, withdraw: true, renew: true },
+  rental: { view: false, manageComplexes: false, collectRent: false, manageExpenses: false, reports: false },
+  dayBook: { view: true, addEntry: true, editEntry: false, deleteEntry: false },
+  staffManagement: { view: false, create: false, edit: false, delete: false, toggleStatus: false },
+  reports: { view: true, export: false },
+  settings: { view: false, editRates: false, editCompany: false },
+  backupRestore: { createBackup: false, restoreBackup: false }
 };
 
 export const RENTAL_STAFF_DEFAULT_PERMISSIONS: IUserPermissions = {
-  dashboard: { view: true },
-  customers: { view: false, create: false, update: false, delete: false },
-  loans: { view: false, create: false, update: false, delete: false, approve: false },
-  receipts: { view: false, create: false, update: false, delete: false },
-  fd: { view: false, create: false, update: false, delete: false },
-  accounting: { view: false, create: false, update: false, delete: false },
-  rental: { view: true, create: true, update: true, delete: false, approve: true },
+  customers: { view: false, create: false, edit: false, delete: false },
+  loans: { view: false, issue: false, edit: false, close: false, reopen: false },
+  fixedDeposits: { view: false, create: false, edit: false, withdraw: false, renew: false },
+  rental: { view: true, manageComplexes: true, collectRent: true, manageExpenses: true, reports: true },
+  dayBook: { view: true, addEntry: true, editEntry: false, deleteEntry: false },
+  staffManagement: { view: false, create: false, edit: false, delete: false, toggleStatus: false },
   reports: { view: true, export: true },
-  staffManagement: { view: false, create: false, update: false, delete: false },
-  settings: { view: false, update: false },
-  backupRestore: { view: false, create: false, restore: false, delete: false }
+  settings: { view: false, editRates: false, editCompany: false },
+  backupRestore: { createBackup: false, restoreBackup: false }
 };
 
-export const getDefaultPermissionsForRole = (role?: string | null): IUserPermissions => {
-  const norm = (role || '').toUpperCase();
-  if (norm === 'ADMIN' || norm === 'MASTER_ADMIN') {
-    return JSON.parse(JSON.stringify(ADMIN_DEFAULT_PERMISSIONS));
-  }
-  if (norm === 'RENTAL_STAFF') {
-    return JSON.parse(JSON.stringify(RENTAL_STAFF_DEFAULT_PERMISSIONS));
-  }
-  return JSON.parse(JSON.stringify(STAFF_DEFAULT_PERMISSIONS));
+export const getDefaultPermissionsForRole = (role?: string): IUserPermissions => {
+  if (!role) return STAFF_DEFAULT_PERMISSIONS;
+  const upper = role.toUpperCase();
+  if (upper === 'ADMIN' || upper === 'MASTER_ADMIN') return ADMIN_DEFAULT_PERMISSIONS;
+  if (upper === 'RENTAL_STAFF') return RENTAL_STAFF_DEFAULT_PERMISSIONS;
+  return STAFF_DEFAULT_PERMISSIONS;
 };
 
-/**
- * Helper to normalize legacy flat permissions into structured module-action permissions
- */
-export const normalizeUserPermissions = (rawPermissions: any, role: string): IUserPermissions => {
+export const normalizePermissions = (rawPermissions: any = {}, role: string = 'STAFF'): IUserPermissions => {
   const baseDefaults = getDefaultPermissionsForRole(role);
-  if (!rawPermissions || typeof rawPermissions !== 'object') {
-    return baseDefaults;
-  }
-
-  // If already structured with module objects
-  if (rawPermissions.customers && typeof rawPermissions.customers === 'object') {
-    return {
-      dashboard: { ...baseDefaults.dashboard, ...(rawPermissions.dashboard || {}) },
-      customers: { ...baseDefaults.customers, ...(rawPermissions.customers || {}) },
-      loans: { ...baseDefaults.loans, ...(rawPermissions.loans || {}) },
-      receipts: { ...baseDefaults.receipts, ...(rawPermissions.receipts || {}) },
-      fd: { ...baseDefaults.fd, ...(rawPermissions.fd || {}) },
-      accounting: { ...baseDefaults.accounting, ...(rawPermissions.accounting || {}) },
-      rental: { ...baseDefaults.rental, ...(rawPermissions.rental || {}) },
-      reports: { ...baseDefaults.reports, ...(rawPermissions.reports || {}) },
-      staffManagement: { ...baseDefaults.staffManagement, ...(rawPermissions.staffManagement || {}) },
-      settings: { ...baseDefaults.settings, ...(rawPermissions.settings || {}) },
-      backupRestore: { ...baseDefaults.backupRestore, ...(rawPermissions.backupRestore || {}) }
-    };
-  }
-
-  // Handle legacy flat boolean permissions migration
-  const merged: IUserPermissions = JSON.parse(JSON.stringify(baseDefaults));
-  if (typeof rawPermissions.customers === 'boolean') {
-    merged.customers.view = rawPermissions.customers;
-    merged.customers.create = rawPermissions.customers;
-    merged.customers.update = rawPermissions.customers;
-  }
-  if (typeof rawPermissions.loans === 'boolean') {
-    merged.loans.view = rawPermissions.loans;
-    merged.loans.create = rawPermissions.loans;
-    merged.loans.update = rawPermissions.loans;
-  }
-  if (typeof rawPermissions.loanReceipts === 'boolean') {
-    merged.receipts.view = rawPermissions.loanReceipts;
-    merged.receipts.create = rawPermissions.loanReceipts;
-  }
-  if (typeof rawPermissions.fixedDeposits === 'boolean') {
-    merged.fd.view = rawPermissions.fixedDeposits;
-    merged.fd.create = rawPermissions.fixedDeposits;
-    merged.fd.update = rawPermissions.fixedDeposits;
-  }
-  if (typeof rawPermissions.rental === 'boolean' || typeof rawPermissions.rentalManagement === 'boolean') {
-    const rVal = rawPermissions.rental ?? rawPermissions.rentalManagement;
-    merged.rental.view = rVal;
-    merged.rental.create = rVal;
-    merged.rental.update = rVal;
-  }
-  if (typeof rawPermissions.staffManagement === 'boolean') {
-    merged.staffManagement.view = rawPermissions.staffManagement;
-    merged.staffManagement.create = rawPermissions.staffManagement;
-  }
-  if (typeof rawPermissions.settings === 'boolean' || typeof rawPermissions.adminPanel === 'boolean') {
-    const sVal = rawPermissions.settings ?? rawPermissions.adminPanel;
-    merged.settings.view = sVal;
-    merged.settings.update = sVal;
-  }
-  if (typeof rawPermissions.permanentDelete === 'boolean') {
-    merged.customers.delete = rawPermissions.permanentDelete;
-    merged.loans.delete = rawPermissions.permanentDelete;
-    merged.fd.delete = rawPermissions.permanentDelete;
-  }
-  return merged;
+  return {
+    customers: { ...baseDefaults.customers, ...(rawPermissions.customers || {}) },
+    loans: { ...baseDefaults.loans, ...(rawPermissions.loans || {}) },
+    fixedDeposits: { ...baseDefaults.fixedDeposits, ...(rawPermissions.fixedDeposits || {}) },
+    rental: { ...baseDefaults.rental, ...(rawPermissions.rental || {}) },
+    dayBook: { ...baseDefaults.dayBook, ...(rawPermissions.dayBook || {}) },
+    staffManagement: { ...baseDefaults.staffManagement, ...(rawPermissions.staffManagement || {}) },
+    reports: { ...baseDefaults.reports, ...(rawPermissions.reports || {}) },
+    settings: { ...baseDefaults.settings, ...(rawPermissions.settings || {}) },
+    backupRestore: { ...baseDefaults.backupRestore, ...(rawPermissions.backupRestore || {}) }
+  };
 };
 
-export interface IUser extends Document {
+export const normalizeUserPermissions = normalizePermissions;
+
+export interface IUser {
+  _id?: string;
+  id?: string;
   staffId: string;
   uid: string;
-  name: string;
   fullName: string;
-  displayName: string;
+  displayName?: string;
+  name?: string;
   email: string;
-  phone: string;
-  phoneNumber: string;
-  role: UserRole;
+  phoneNumber?: string;
+  phone?: string;
+  role: UserRole | string;
   passwordHash: string;
-  status: 'active' | 'inactive' | 'ACTIVE' | 'DISABLED';
+  status: 'active' | 'inactive';
   isActive: boolean;
-  mustChangePassword: boolean;
+  mustChangePassword?: boolean;
   permissions: IUserPermissions;
-  department: string;
-  profilePhoto?: string;
+  department?: string;
+  lastLoginAt?: Date | string;
   createdByUid?: string;
   createdByEmail?: string;
-  lastLoginAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+  save?: () => Promise<IUser>;
+  toJSON?: () => any;
 }
 
-export const UserPermissionsSchema = new Schema(
-  {
-    dashboard: {
-      view: { type: Boolean, default: true }
-    },
-    customers: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: true },
-      delete: { type: Boolean, default: false }
-    },
-    loans: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: true },
-      delete: { type: Boolean, default: false },
-      approve: { type: Boolean, default: true }
-    },
-    receipts: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: false },
-      delete: { type: Boolean, default: false }
-    },
-    fd: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: true },
-      delete: { type: Boolean, default: false }
-    },
-    accounting: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: true },
-      delete: { type: Boolean, default: false }
-    },
-    rental: {
-      view: { type: Boolean, default: false },
-      create: { type: Boolean, default: false },
-      update: { type: Boolean, default: false },
-      delete: { type: Boolean, default: false },
-      approve: { type: Boolean, default: false }
-    },
-    reports: {
-      view: { type: Boolean, default: true },
-      export: { type: Boolean, default: true }
-    },
-    staffManagement: {
-      view: { type: Boolean, default: false },
-      create: { type: Boolean, default: false },
-      update: { type: Boolean, default: false },
-      delete: { type: Boolean, default: false }
-    },
-    settings: {
-      view: { type: Boolean, default: false },
-      update: { type: Boolean, default: false }
-    },
-    backupRestore: {
-      view: { type: Boolean, default: false },
-      create: { type: Boolean, default: false },
-      restore: { type: Boolean, default: false },
-      delete: { type: Boolean, default: false }
-    }
-  },
-  { _id: false, strict: false }
-);
+export class UserModel {
+  public static findOne(query: any): any {
+    const users = localAuthService.getAllUsers();
+    const match = users.find((u) => {
+      if (query.$or && Array.isArray(query.$or)) {
+        return query.$or.some((clause: any) => UserModel.matchesClause(u, clause));
+      }
+      return UserModel.matchesClause(u, query);
+    });
 
-export const UserSchema = new Schema<IUser>(
-  {
-    staffId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-      trim: true
-    },
-    uid: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-      trim: true
-    },
-    fullName: {
-      type: String,
-      required: [true, 'Full name is required'],
-      trim: true,
-      index: true
-    },
-    displayName: {
-      type: String,
-      trim: true
-    },
-    email: {
-      type: String,
-      required: [true, 'Email address is required'],
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true
-    },
-    phoneNumber: {
-      type: String,
-      default: '',
-      trim: true
-    },
-    phone: {
-      type: String,
-      default: '',
-      trim: true
-    },
-    role: {
-      type: String,
-      enum: ['ADMIN', 'STAFF', 'MASTER_ADMIN', 'RENTAL_STAFF'],
-      required: true,
-      default: 'STAFF',
-      set: (v: string) => {
-        if (v === 'MASTER_ADMIN') return 'ADMIN';
-        return v;
-      },
-      index: true
-    },
-    passwordHash: {
-      type: String,
-      required: [true, 'Password hash is required']
-    },
-    status: {
-      type: String,
-      enum: ['active', 'inactive', 'ACTIVE', 'DISABLED'],
-      default: 'active',
-      index: true
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-      index: true
-    },
-    mustChangePassword: {
-      type: Boolean,
-      default: false
-    },
-    permissions: {
-      type: Schema.Types.Mixed,
-      default: function (this: any) {
-        return getDefaultPermissionsForRole(this?.role || 'STAFF');
-      }
-    },
-    department: {
-      type: String,
-      default: 'Operations',
-      trim: true
-    },
-    profilePhoto: {
-      type: String,
-      default: ''
-    },
-    createdByUid: {
-      type: String,
-      default: 'SYSTEM'
-    },
-    createdByEmail: {
-      type: String,
-      default: 'admin@kkvgoldfinance.com'
-    },
-    lastLoginAt: {
-      type: Date,
-      default: null
-    }
-  },
-  {
-    timestamps: true,
-    toJSON: {
-      virtuals: true,
-      transform: function (_doc, ret: any) {
-        delete ret.passwordHash;
-        ret.id = ret.staffId || ret.uid || ret._id?.toString();
-        ret.name = ret.fullName || ret.displayName;
-        ret.displayName = ret.fullName || ret.displayName;
-        ret.phone = ret.phoneNumber || ret.phone;
-        ret.isActive = ret.status === 'active' || ret.status === 'ACTIVE' || ret.isActive === true;
-        if (ret.role === 'MASTER_ADMIN') ret.role = 'ADMIN';
-        ret.permissions = normalizeUserPermissions(ret.permissions, ret.role);
-        return ret;
-      }
-    },
-    toObject: {
-      virtuals: true,
-      transform: function (_doc, ret: any) {
-        if (ret.role === 'MASTER_ADMIN') ret.role = 'ADMIN';
-        ret.permissions = normalizeUserPermissions(ret.permissions, ret.role);
-        return ret;
-      }
-    }
+    const wrapped = match ? UserModel.wrapUser(match) : null;
+    const chain = {
+      select: () => chain,
+      lean: async () => match,
+      then: (resolve: any, reject?: any) => Promise.resolve(wrapped).then(resolve, reject)
+    };
+    return chain;
   }
-);
 
-UserSchema.virtual('name').get(function (this: IUser) {
-  return this.fullName;
-});
+  public static find(query: any = {}): any {
+    let users = localAuthService.getAllUsers();
+    if (Object.keys(query).length > 0) {
+      users = users.filter((u) => {
+        if (query.$or && Array.isArray(query.$or)) {
+          return query.$or.some((clause: any) => UserModel.matchesClause(u, clause));
+        }
+        return UserModel.matchesClause(u, query);
+      });
+    }
 
-UserSchema.index({
-  fullName: 'text',
-  email: 'text',
-  phoneNumber: 'text',
-  staffId: 'text',
-  role: 'text'
-});
+    const wrapped = users.map((u) => UserModel.wrapUser(u));
 
-export const UserModel = mongoose.models.User || mongoose.models.Staff || mongoose.model<IUser>('User', UserSchema, 'staffs');
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => users,
+      then: (resolve: any, reject?: any) => Promise.resolve(wrapped).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async create(data: Partial<IUser>): Promise<any> {
+    const user: IUser = {
+      _id: data._id || `usr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      staffId: data.staffId || `STAFF-${Date.now()}`,
+      uid: data.uid || `uid_${Date.now()}`,
+      fullName: data.fullName || data.name || data.displayName || 'User',
+      displayName: data.displayName || data.fullName || 'User',
+      email: (data.email || '').toLowerCase().trim(),
+      phoneNumber: data.phoneNumber || data.phone || '',
+      phone: data.phoneNumber || data.phone || '',
+      role: data.role || 'STAFF',
+      passwordHash: data.passwordHash || '',
+      status: data.status || 'active',
+      isActive: data.isActive ?? true,
+      mustChangePassword: data.mustChangePassword ?? false,
+      permissions: data.permissions || getDefaultPermissionsForRole(data.role),
+      department: data.department || 'Finance Operations',
+      createdByUid: data.createdByUid || 'SYSTEM',
+      createdByEmail: data.createdByEmail || 'system@kkvgoldfinance.com',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const saved = await localAuthService.saveUser(user);
+    return UserModel.wrapUser(saved);
+  }
+
+  public static async deleteOne(query: any): Promise<any> {
+    const user = await UserModel.findOne(query);
+    if (user) {
+      await localAuthService.deleteUser(user.staffId || user.email);
+      return { deletedCount: 1 };
+    }
+    return { deletedCount: 0 };
+  }
+
+  public static async deleteMany(_query: any): Promise<any> {
+    return { deletedCount: 0 };
+  }
+
+  private static matchesClause(user: IUser, clause: any): boolean {
+    if (!clause || typeof clause !== 'object') return false;
+    for (const key of Object.keys(clause)) {
+      const val = clause[key];
+      if (key === 'email') {
+        if ((user.email || '').toLowerCase() !== String(val).toLowerCase()) return false;
+      } else if (key === 'staffId') {
+        if ((user.staffId || '').toUpperCase() !== String(val).toUpperCase()) return false;
+      } else if (key === 'uid') {
+        if ((user.uid || '').toLowerCase() !== String(val).toLowerCase()) return false;
+      } else if (key === '_id' || key === 'id') {
+        if (String(user._id || user.uid || '').toLowerCase() !== String(val).toLowerCase()) return false;
+      } else if (key === 'role') {
+        if (String(user.role).toUpperCase() !== String(val).toUpperCase()) return false;
+      } else if (key === 'isActive') {
+        if (Boolean(user.isActive) !== Boolean(val)) return false;
+      } else if ((user as any)[key] !== val) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static wrapUser(user: IUser): any {
+    return {
+      ...user,
+      id: user.uid || user._id,
+      _id: user._id || user.uid,
+      save: async function () {
+        return localAuthService.saveUser(this);
+      },
+      toJSON: function () {
+        const copy = { ...this };
+        delete copy.passwordHash;
+        delete copy.save;
+        delete copy.toJSON;
+        return copy;
+      }
+    };
+  }
+}
+
 export default UserModel;

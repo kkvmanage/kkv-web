@@ -2,9 +2,9 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { ensureMongoConnected } from '../config/database.js';
 import { UserModel, IUser, UserRole, normalizeUserPermissions } from '../models/User.js';
 import { sessionService } from '../services/session.service.js';
+import { localAuthService } from '../services/localAuth.service.js';
 
 export const login = async (req: Request, res: Response) => {
   try {
@@ -19,21 +19,16 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    const isConnected = await ensureMongoConnected();
-    if (!isConnected) {
-      return res.status(503).json({
-        success: false,
-        error: 'DATABASE_UNAVAILABLE',
-        message: 'Unable to connect to database service. Please try again shortly.'
-      });
-    }
+    // Ensure default seeded accounts exist with valid bcrypt hashes
+    await localAuthService.seedDefaultUsers();
 
-    // Find user by email or staffId or uid
+    // Find user by email or staffId or uid or id
     const user = await UserModel.findOne({
       $or: [
         { email: identifier },
         { staffId: identifier.toUpperCase() },
-        { uid: identifier }
+        { uid: identifier },
+        { _id: identifier }
       ]
     });
 
@@ -54,8 +49,29 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Verify password hash
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    // Defensive check: verify password hash exists and is a valid bcrypt format
+    if (!user.passwordHash || typeof user.passwordHash !== 'string' || !user.passwordHash.trim()) {
+      console.error(`[AuthController] Security Alert: User "${user.email || user.staffId}" has no passwordHash configured.`);
+      return res.status(401).json({
+        success: false,
+        error: 'INVALID_CREDENTIALS',
+        message: 'Invalid email or password.'
+      });
+    }
+
+    // Verify password against stored bcrypt hash safely
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(password, user.passwordHash);
+    } catch (bcryptErr) {
+      console.error('[AuthController] bcrypt.compare error:', bcryptErr);
+      return res.status(401).json({
+        success: false,
+        error: 'INVALID_CREDENTIALS',
+        message: 'Invalid email or password.'
+      });
+    }
+
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -77,7 +93,7 @@ export const login = async (req: Request, res: Response) => {
 
     // Generate JWT access token
     const payload = {
-      sub: user._id.toString(),
+      sub: (user._id || user.staffId).toString(),
       id: user.staffId || user.uid,
       staffId: user.staffId,
       email: user.email,
@@ -88,15 +104,15 @@ export const login = async (req: Request, res: Response) => {
       expiresIn: (env.JWT_EXPIRES_IN || '24h') as any
     });
 
-    // Update lastLoginAt
-    user.lastLoginAt = new Date();
+    // Update lastLoginAt while preserving passwordHash
+    user.lastLoginAt = new Date().toISOString();
     await user.save();
 
     // Register active device session
-    const sessionId = `sess_${user.staffId.toLowerCase()}_${Date.now()}`;
+    const sessionId = `sess_${(user.staffId || 'usr').toLowerCase()}_${Date.now()}`;
     sessionService.registerSession({
       sessionId,
-      userId: user.staffId,
+      userId: user.staffId || user.uid,
       userRole: normalizedRole,
       userEmail: user.email,
       ipAddress: req.ip || req.socket?.remoteAddress || '',
@@ -104,7 +120,11 @@ export const login = async (req: Request, res: Response) => {
       status: 'ACTIVE'
     });
 
-    const userJson = user.toJSON();
+    // Safe user payload for frontend (never exposes passwordHash)
+    const userJson = user.toJSON ? user.toJSON() : { ...user };
+    delete (userJson as any).passwordHash;
+    delete (userJson as any).save;
+
     const normalizedPermissions = normalizeUserPermissions(user.permissions, normalizedRole);
 
     return res.status(200).json({
@@ -138,10 +158,12 @@ export const getMe = async (req: Request, res: Response) => {
       });
     }
 
-    await ensureMongoConnected();
-
     const user = await UserModel.findOne({
-      $or: [{ staffId: req.user.id }, { email: req.user.email }]
+      $or: [
+        { staffId: req.user.id },
+        { uid: req.user.id },
+        { email: req.user.email }
+      ]
     });
 
     if (!user) {
@@ -162,7 +184,10 @@ export const getMe = async (req: Request, res: Response) => {
       normalizedRole = 'STAFF';
     }
 
-    const userJson = user.toJSON();
+    const userJson = user.toJSON ? user.toJSON() : { ...user };
+    delete (userJson as any).passwordHash;
+    delete (userJson as any).save;
+
     const normalizedPermissions = normalizeUserPermissions(user.permissions, normalizedRole);
 
     return res.status(200).json({
@@ -211,10 +236,12 @@ export const changePassword = async (req: Request, res: Response) => {
       });
     }
 
-    await ensureMongoConnected();
-
     const user = await UserModel.findOne({
-      $or: [{ staffId: req.user.id }, { email: req.user.email }]
+      $or: [
+        { staffId: req.user.id },
+        { uid: req.user.id },
+        { email: req.user.email }
+      ]
     });
 
     if (!user) {
@@ -225,7 +252,21 @@ export const changePassword = async (req: Request, res: Response) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!user.passwordHash || typeof user.passwordHash !== 'string' || !user.passwordHash.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'INCORRECT_PASSWORD',
+        message: 'Incorrect current password.'
+      });
+    }
+
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    } catch {
+      isMatch = false;
+    }
+
     if (!isMatch) {
       return res.status(400).json({
         success: false,

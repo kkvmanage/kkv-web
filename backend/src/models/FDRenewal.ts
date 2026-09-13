@@ -1,33 +1,50 @@
-import mongoose, { Schema, Document } from 'mongoose';
 import { FDRenewal } from '../types/index.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IFDRenewalDocument extends Document, Omit<FDRenewal, 'id'> {
+export interface IFDRenewalDocument extends Omit<FDRenewal, 'id'> {
   id: string;
 }
 
-const FDRenewalSchema = new Schema(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    renewalId: { type: String, index: true },
-    fdId: { type: String, index: true },
-    fdNo: { type: String, required: true, index: true },
-    customerId: { type: String, index: true },
-    depositorName: { type: String, required: true },
-    previousMaturityDate: { type: String, required: true },
-    newMaturityDate: { type: String, required: true },
-    renewalPeriodMonths: { type: Number, required: true },
-    renewalDate: { type: String, required: true },
-    interestRateAtRenewal: { type: Number, required: true },
-    notes: { type: String, default: '' },
-    status: { type: String, default: 'COMPLETED' },
-    branchId: { type: String, index: true },
-    createdAt: { type: String, default: () => new Date().toISOString() }
-  },
-  {
-    timestamps: true,
-    collection: 'fd_renewals'
-  }
-);
+export class FDRenewalModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<FDRenewal>('FD_RENEWAL', { includeDeleted });
 
-export const FDRenewalModel =
-  mongoose.models.FDRenewal || mongoose.model<IFDRenewalDocument>('FDRenewal', FDRenewalSchema);
+    if (query.oldFdId) {
+      records = records.filter((r) => (r as any).oldFdId === query.oldFdId);
+    }
+    if (query.newFdId) {
+      records = records.filter((r) => (r as any).newFdId === query.newFdId);
+    }
+
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('FD_RENEWAL', undefined, includeDeleted);
+  }
+
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['FD_RENEWAL']);
+    return { deletedCount: cleared };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.id || `FDRN-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const res = await telegramRepository.createRecord('FD_RENEWAL', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
+
+export default FDRenewalModel;

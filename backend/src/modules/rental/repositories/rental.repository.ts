@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import {
   RentalComplex,
   RentalShop,
@@ -8,143 +6,79 @@ import {
   RentalAuditLog,
   SyncQueueItem
 } from '../types/rental.types.js';
-import {
-  getStorageBaseDir,
-  getStorageSubdirectory,
-  ensureDirectoryExists
-} from '../../../config/storage.js';
-import { getFinanceDb, isMongoConnected, ensureMongoConnected } from '../../../config/database.js';
-
-interface Counters {
-  complex: number;
-  shop: number;
-  payment: number;
-  expense: number;
-  audit: number;
-  sync: number;
-}
+import { telegramRepository } from '../../../telegram/telegram.repository.js';
 
 export class RentalRepository {
-  private baseDir: string;
-  private rentalDir: string;
-  private memoryCache: Map<string, any> = new Map();
-
-  constructor() {
-    this.baseDir = getStorageBaseDir();
-    this.rentalDir = getStorageSubdirectory('rental');
-    this.initFolders();
+  public clearCache(): void {
+    // telegramCache handles caching
   }
 
-  public clearCache(filename?: string): void {
-    if (filename) {
-      this.memoryCache.delete(filename);
-    } else {
-      this.memoryCache.clear();
-    }
+  public writeJson(_fileName: string, _data: any): void {
+    // Compatibility method for reset/seed scripts
   }
 
-  private initFolders(): void {
-    try {
-      ensureDirectoryExists(this.baseDir);
-      ensureDirectoryExists(this.rentalDir);
-
-      // Initialize counter file if not exists
-      const counterFile = path.join(this.rentalDir, 'counters.json');
-      if (!fs.existsSync(counterFile) && !this.memoryCache.has('counters.json')) {
-        this.writeJson('counters.json', {
-          complex: 0,
-          shop: 0,
-          payment: 0,
-          expense: 0,
-          audit: 0,
-          sync: 0
-        });
-      }
-    } catch (err) {
-      console.warn('[RentalRepository] Safe folder initialization warning:', err);
-    }
-  }
-
-  public readJson<T>(filename: string, fallback: T): T {
-    try {
-      const filePath = path.join(this.rentalDir, filename);
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(raw) as T;
-        this.memoryCache.set(filename, parsed);
-        return parsed;
-      }
-    } catch (err) {
-      console.warn(`[RentalRepository] Error reading ${filename} from disk:`, err);
-    }
-
-    if (this.memoryCache.has(filename)) {
-      return this.memoryCache.get(filename) as T;
-    }
-
-    this.writeJson(filename, fallback);
+  public readJson<T = any>(_fileName: string, fallback: T): T {
     return fallback;
   }
 
-  public writeJson<T>(filename: string, data: T): boolean {
-    this.memoryCache.set(filename, data);
-    try {
-      ensureDirectoryExists(this.rentalDir);
-      const filePath = path.join(this.rentalDir, filename);
-      const tempPath = `${filePath}.tmp_${Date.now()}`;
-      const content = JSON.stringify(data, null, 2);
-
-      fs.writeFileSync(tempPath, content, 'utf-8');
-      fs.renameSync(tempPath, filePath);
-      return true;
-    } catch (err) {
-      console.warn(`[RentalRepository] Filesystem write warning for ${filename} (cached in-memory):`, err);
-      return true;
-    }
-  }
-
-  // ── ID Generators ────────────────────────────────────────────────────────
-  private getNextSeq(type: keyof Counters, prefix: string, padLen = 4): string {
-    const counters = this.readJson<Counters>('counters.json', {
-      complex: 0,
-      shop: 0,
-      payment: 0,
-      expense: 0,
-      audit: 0,
-      sync: 0
-    });
-    counters[type] = (counters[type] || 0) + 1;
-    this.writeJson('counters.json', counters);
-    return `${prefix}-${String(counters[type]).padStart(padLen, '0')}`;
-  }
-
+  // ── Synchronous ID Generators ─────────────────────────────────────────────
   public nextComplexId(): string {
-    return this.getNextSeq('complex', 'CMP');
+    const list = this.getComplexes();
+    let max = 0;
+    for (const c of list) {
+      const num = parseInt((c.complexId || c.id || '').replace(/[^0-9]/g, '') || '0', 10);
+      if (num > max) max = num;
+    }
+    return `CMP-${String(max + 1).padStart(4, '0')}`;
   }
 
   public nextShopId(): string {
-    return this.getNextSeq('shop', 'SHOP');
+    const list = this.getShops();
+    let max = 0;
+    for (const s of list) {
+      const num = parseInt((s.shopId || s.id || '').replace(/[^0-9]/g, '') || '0', 10);
+      if (num > max) max = num;
+    }
+    return `SHOP-${String(max + 1).padStart(4, '0')}`;
   }
 
   public nextPaymentId(): string {
-    return this.getNextSeq('payment', 'PAY');
+    const list = this.getPayments();
+    let max = 0;
+    for (const p of list) {
+      const num = parseInt((p.paymentId || p.id || '').replace(/[^0-9]/g, '') || '0', 10);
+      if (num > max) max = num;
+    }
+    return `PAY-${String(max + 1).padStart(4, '0')}`;
   }
 
   public nextExpenseId(): string {
-    return this.getNextSeq('expense', 'EXP');
+    const list = this.getExpenses();
+    let max = 0;
+    for (const e of list) {
+      const num = parseInt((e.expenseId || e.id || '').replace(/[^0-9]/g, '') || '0', 10);
+      if (num > max) max = num;
+    }
+    return `EXP-${String(max + 1).padStart(4, '0')}`;
   }
 
   public nextAuditId(): string {
-    return this.getNextSeq('audit', 'AUD');
+    const list = this.getAuditLogs();
+    let max = 0;
+    for (const a of list) {
+      const num = parseInt((a.auditId || a.id || '').replace(/[^0-9]/g, '') || '0', 10);
+      if (num > max) max = num;
+    }
+    return `AUD-${String(max + 1).padStart(4, '0')}`;
   }
 
   public nextSyncId(): string {
-    return this.getNextSeq('sync', 'SYNC');
+    return `SYNC-${String(Date.now()).slice(-6)}`;
   }
 
   // ── Complexes CRUD ───────────────────────────────────────────────────────
   public getComplexes(): RentalComplex[] {
-    return this.readJson<RentalComplex[]>('complexes.json', []);
+    return telegramRepository.getRecords<RentalComplex>('RENTAL_COMPLEX');
   }
 
   public getComplexById(idOrComplexId: string): RentalComplex | null {
@@ -153,41 +87,23 @@ export class RentalRepository {
   }
 
   public saveComplex(complex: RentalComplex): RentalComplex {
-    const list = this.getComplexes();
-    const existingIndex = list.findIndex((c) => c.complexId === complex.complexId || c.id === complex.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...complex, updatedAt: new Date().toISOString() };
+    const id = complex.complexId || complex.id;
+    const existing = this.getComplexById(id);
+    const updated = { ...complex, id, complexId: id, updatedAt: new Date().toISOString() };
+
+    if (existing) {
+      telegramRepository.updateRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
     } else {
-      list.push(complex);
+      telegramRepository.createRecord('RENTAL_COMPLEX', id, updated).catch(() => {});
     }
-    this.writeJson('complexes.json', list);
 
-    // Asynchronously persist to MongoDB
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_complexes').updateOne(
-          { $or: [{ complexId: complex.complexId }, { id: complex.id }] },
-          { $set: complex },
-          { upsert: true }
-        ).catch((err) => console.warn('[RentalRepository] Mongo saveComplex error:', err));
-      }
-    }).catch(() => {});
-
-    return complex;
+    return updated;
   }
 
   public deleteComplex(complexId: string): boolean {
-    const list = this.getComplexes();
-    const filtered = list.filter((c) => c.complexId !== complexId && c.id !== complexId);
-    if (filtered.length !== list.length) {
-      this.writeJson('complexes.json', filtered);
-      getFinanceDb().then((db) => {
-        if (db) {
-          db.collection('rental_complexes').deleteOne({
-            $or: [{ complexId }, { id: complexId }]
-          }).catch((err) => console.warn('[RentalRepository] Mongo deleteComplex error:', err));
-        }
-      }).catch(() => {});
+    const existing = this.getComplexById(complexId);
+    if (existing) {
+      telegramRepository.deleteRecord('RENTAL_COMPLEX', existing.complexId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -195,7 +111,7 @@ export class RentalRepository {
 
   // ── Shops CRUD ───────────────────────────────────────────────────────────
   public getShops(): RentalShop[] {
-    return this.readJson<RentalShop[]>('shops.json', []);
+    return telegramRepository.getRecords<RentalShop>('RENTAL_SHOP');
   }
 
   public getShopById(idOrShopId: string): RentalShop | null {
@@ -208,41 +124,23 @@ export class RentalRepository {
   }
 
   public saveShop(shop: RentalShop): RentalShop {
-    const list = this.getShops();
-    const existingIndex = list.findIndex((s) => s.shopId === shop.shopId || s.id === shop.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...shop, updatedAt: new Date().toISOString() };
+    const id = shop.shopId || shop.id;
+    const existing = this.getShopById(id);
+    const updated = { ...shop, id, shopId: id, updatedAt: new Date().toISOString() };
+
+    if (existing) {
+      telegramRepository.updateRecord('RENTAL_SHOP', id, updated).catch(() => {});
     } else {
-      list.push(shop);
+      telegramRepository.createRecord('RENTAL_SHOP', id, updated).catch(() => {});
     }
-    this.writeJson('shops.json', list);
 
-    // Asynchronously persist to MongoDB
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_shops').updateOne(
-          { $or: [{ shopId: shop.shopId }, { id: shop.id }] },
-          { $set: shop },
-          { upsert: true }
-        ).catch((err) => console.warn('[RentalRepository] Mongo saveShop error:', err));
-      }
-    }).catch(() => {});
-
-    return shop;
+    return updated;
   }
 
   public deleteShop(shopId: string): boolean {
-    const list = this.getShops();
-    const filtered = list.filter((s) => s.shopId !== shopId && s.id !== shopId);
-    if (filtered.length !== list.length) {
-      this.writeJson('shops.json', filtered);
-      getFinanceDb().then((db) => {
-        if (db) {
-          db.collection('rental_shops').deleteOne({
-            $or: [{ shopId }, { id: shopId }]
-          }).catch((err) => console.warn('[RentalRepository] Mongo deleteShop error:', err));
-        }
-      }).catch(() => {});
+    const existing = this.getShopById(shopId);
+    if (existing) {
+      telegramRepository.deleteRecord('RENTAL_SHOP', existing.shopId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -250,7 +148,7 @@ export class RentalRepository {
 
   // ── Rent Payments CRUD ───────────────────────────────────────────────────
   public getPayments(): RentalPayment[] {
-    return this.readJson<RentalPayment[]>('rent_payments.json', []);
+    return telegramRepository.getRecords<RentalPayment>('RENTAL_PAYMENT');
   }
 
   public getPaymentById(idOrPaymentId: string): RentalPayment | null {
@@ -267,32 +165,22 @@ export class RentalRepository {
   }
 
   public savePayment(payment: RentalPayment): RentalPayment {
-    const list = this.getPayments();
-    const existingIndex = list.findIndex((p) => p.paymentId === payment.paymentId || p.id === payment.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...payment, updatedAt: new Date().toISOString() };
+    const id = payment.paymentId || payment.id;
+    const existing = this.getPaymentById(id);
+    const updated = { ...payment, id, paymentId: id, updatedAt: new Date().toISOString() };
+
+    if (existing) {
+      telegramRepository.updateRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
     } else {
-      list.push(payment);
+      telegramRepository.createRecord('RENTAL_PAYMENT', id, updated).catch(() => {});
     }
-    this.writeJson('rent_payments.json', list);
 
-    // Asynchronously persist to MongoDB
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_payments').updateOne(
-          { $or: [{ paymentId: payment.paymentId }, { id: payment.id }] },
-          { $set: payment },
-          { upsert: true }
-        ).catch((err) => console.warn('[RentalRepository] Mongo savePayment error:', err));
-      }
-    }).catch(() => {});
-
-    return payment;
+    return updated;
   }
 
   // ── Expenses CRUD ────────────────────────────────────────────────────────
   public getExpenses(): RentalExpense[] {
-    return this.readJson<RentalExpense[]>('expenses.json', []);
+    return telegramRepository.getRecords<RentalExpense>('RENTAL_EXPENSE');
   }
 
   public getExpenseById(idOrExpenseId: string): RentalExpense | null {
@@ -301,44 +189,23 @@ export class RentalRepository {
   }
 
   public saveExpense(expense: RentalExpense): RentalExpense {
-    const list = this.getExpenses();
-    const existingIndex = list.findIndex((e) => e.expenseId === expense.expenseId || e.id === expense.id);
-    if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...expense, updatedAt: new Date().toISOString() };
+    const id = expense.expenseId || expense.id;
+    const existing = this.getExpenseById(id);
+    const updated = { ...expense, id, expenseId: id, updatedAt: new Date().toISOString() };
+
+    if (existing) {
+      telegramRepository.updateRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
     } else {
-      list.push(expense);
+      telegramRepository.createRecord('RENTAL_EXPENSE', id, updated).catch(() => {});
     }
-    this.writeJson('expenses.json', list);
 
-    // Asynchronously persist to MongoDB
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_expenses').updateOne(
-          { $or: [{ expenseId: expense.expenseId }, { id: expense.id }] },
-          { $set: expense },
-          { upsert: true }
-        ).catch((err) => console.warn('[RentalRepository] Mongo saveExpense error:', err));
-      }
-    }).catch(() => {});
-
-    return expense;
+    return updated;
   }
 
   public deleteExpense(expenseId: string): boolean {
-    const list = this.getExpenses();
-    const filtered = list.filter((e) => e.expenseId !== expenseId && e.id !== expenseId);
-    if (filtered.length !== list.length) {
-      this.writeJson('expenses.json', filtered);
-
-      // Asynchronously delete in MongoDB
-      getFinanceDb().then((db) => {
-        if (db) {
-          db.collection('rental_expenses').deleteOne({
-            $or: [{ expenseId }, { id: expenseId }]
-          }).catch((err) => console.warn('[RentalRepository] Mongo deleteExpense error:', err));
-        }
-      }).catch(() => {});
-
+    const existing = this.getExpenseById(expenseId);
+    if (existing) {
+      telegramRepository.deleteRecord('RENTAL_EXPENSE', existing.expenseId || existing.id, false).catch(() => {});
       return true;
     }
     return false;
@@ -346,74 +213,56 @@ export class RentalRepository {
 
   // ── Audit Logs ───────────────────────────────────────────────────────────
   public getAuditLogs(): RentalAuditLog[] {
-    return this.readJson<RentalAuditLog[]>('audit_logs.json', []);
+    const logs = telegramRepository.getRecords<RentalAuditLog>('RENTAL_AUDIT');
+    return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   public saveAuditLog(log: RentalAuditLog): RentalAuditLog {
-    const list = this.getAuditLogs();
-    list.unshift(log); // newest first
-    // keep maximum 2000 logs
-    if (list.length > 2000) list.length = 2000;
-    this.writeJson('audit_logs.json', list);
+    const id = log.id || `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const record = { ...log, id };
+    telegramRepository.createRecord('RENTAL_AUDIT', id, record).catch(() => {});
+    return record;
+  }
 
-    // Asynchronously persist to MongoDB
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_audit_logs').insertOne(log).catch((err) =>
-          console.warn('[RentalRepository] Mongo saveAuditLog error:', err)
-        );
-      }
-    }).catch(() => {});
+  public setComplexes(complexes: RentalComplex[]): void {
+    for (const c of complexes) {
+      this.saveComplex(c);
+    }
+  }
 
-    return log;
+  public setShops(shops: RentalShop[]): void {
+    for (const s of shops) {
+      this.saveShop(s);
+    }
+  }
+
+  public setPayments(payments: RentalPayment[]): void {
+    for (const p of payments) {
+      this.savePayment(p);
+    }
+  }
+
+  public setExpenses(expenses: RentalExpense[]): void {
+    for (const e of expenses) {
+      this.saveExpense(e);
+    }
   }
 
   // ── Sync Queue CRUD ──────────────────────────────────────────────────────
   public getSyncQueue(): SyncQueueItem[] {
-    return this.readJson<SyncQueueItem[]>('sync_queue.json', []);
+    return [];
   }
 
   public enqueueSync(item: SyncQueueItem): SyncQueueItem {
-    const list = this.getSyncQueue();
-    // remove any existing pending item for same entityId
-    const filtered = list.filter((q) => q.entityId !== item.entityId || q.status === 'SYNCED');
-    filtered.push(item);
-    this.writeJson('sync_queue.json', filtered);
-
-    getFinanceDb().then((db) => {
-      if (db) {
-        db.collection('rental_sync_queue').updateOne(
-          { id: item.id },
-          { $set: item },
-          { upsert: true }
-        ).catch((err) => console.warn('[RentalRepository] Mongo enqueueSync error:', err));
-      }
-    }).catch(() => {});
-
     return item;
   }
 
-  public updateSyncItem(item: SyncQueueItem): void {
-    const list = this.getSyncQueue();
-    const index = list.findIndex((q) => q.id === item.id);
-    if (index >= 0) {
-      list[index] = item;
-      this.writeJson('sync_queue.json', list);
-
-      getFinanceDb().then((db) => {
-        if (db) {
-          db.collection('rental_sync_queue').updateOne(
-            { id: item.id },
-            { $set: item }
-          ).catch((err) => console.warn('[RentalRepository] Mongo updateSyncItem error:', err));
-        }
-      }).catch(() => {});
-    }
-  }
+  public updateSyncItem(_item: SyncQueueItem): void {}
 
   public getPendingSyncItems(): SyncQueueItem[] {
-    return this.getSyncQueue().filter((q) => q.status === 'PENDING' || q.status === 'FAILED');
+    return [];
   }
 }
 
 export const rentalRepository = new RentalRepository();
+export default rentalRepository;

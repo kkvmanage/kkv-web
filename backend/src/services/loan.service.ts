@@ -1,7 +1,6 @@
 import Decimal from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
-import { localFileRepository } from '../repositories/localFile.repository.js';
-import { syncQueueService } from './syncQueue.service.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 import { Loan, Receipt, LoanTypeConfig } from '../types/index.js';
 import { customerService } from './customer.service.js';
 import { receiptService } from './receipt.service.js';
@@ -10,11 +9,6 @@ import { adminService } from './admin.service.js';
 import { counterService } from './counter.service.js';
 import { googleDriveService } from './googleDrive.service.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
-import { LoanModel } from '../models/Loan.js';
-import { isMongoConnected, ensureMongoConnected } from '../config/database.js';
-
-const FILE_NAME = 'loans.json';
-const initialLoans: Loan[] = [];
 
 const parseLoanDate = (dateStr?: string): Date => {
   if (!dateStr) return new Date();
@@ -58,75 +52,30 @@ const addMonthsToLoanDate = (baseDate: Date, monthsToAdd: number): Date => {
 
 const calculateAuthoritativeNextDueDate = (
   issueDateStr?: string,
-  deductAdvanceInterest: boolean = false,
-  advanceDays: number = 0
+  deductAdvanceInterest?: boolean,
+  advanceDays?: number
 ): string => {
   const baseDate = parseLoanDate(issueDateStr);
-  if (deductAdvanceInterest && advanceDays > 0) {
-    const monthsCovered = Math.max(1, Math.round(advanceDays / 30));
-    const nextDate = addMonthsToLoanDate(baseDate, monthsCovered + 1);
-    return formatLoanDate(nextDate);
-  }
-  const nextDate = addMonthsToLoanDate(baseDate, 1);
-  return formatLoanDate(nextDate);
+  const monthsToAdd = deductAdvanceInterest && (advanceDays || 0) > 0 ? 2 : 1;
+  const nextDueDate = addMonthsToLoanDate(baseDate, monthsToAdd);
+  return formatLoanDate(nextDueDate);
 };
 
 export class LoanService {
-  public async getAllAsync(): Promise<Loan[]> {
-    try {
-      if (isMongoConnected()) {
-        const dbLoans = await LoanModel.find({ isDeleted: { $ne: true } })
-          .sort({ createdAt: -1 })
-          .lean();
-        const mapped: Loan[] = (dbLoans || []).map((l: any) => ({
-          ...l,
-          id: l.id || l._id?.toString()
-        }));
-        localFileRepository.writeJson(FILE_NAME, mapped);
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('[LoanService] MongoDB read failed, falling back to local file:', err);
-    }
-
-    let list = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
-    if (!Array.isArray(list)) {
-      list = [];
-    }
-    return list.filter((l) => !l.isDeleted);
+  public async getAllAsync(includeDeleted: boolean = false): Promise<Loan[]> {
+    return this.getAll(includeDeleted);
   }
 
-  public getAll(): Loan[] {
-    let list = localFileRepository.readJson<Loan[]>(FILE_NAME, initialLoans);
-    if (!Array.isArray(list)) {
-      list = [];
-    }
-    return list.filter((l) => !l.isDeleted);
+  public getAll(includeDeleted: boolean = false): Loan[] {
+    return telegramRepository.getRecords<Loan>('LOAN', { includeDeleted });
   }
 
   public async getByIdAsync(id: string): Promise<Loan | null> {
-    try {
-      if (isMongoConnected()) {
-        const dbLoan = await LoanModel.findOne({
-          isDeleted: { $ne: true },
-          $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }]
-        }).lean();
-        if (dbLoan) {
-          return {
-            ...(dbLoan as any),
-            id: (dbLoan as any).id || (dbLoan as any)._id?.toString()
-          };
-        }
-        return null;
-      }
-    } catch (err) {
-      console.warn('[LoanService] getByIdAsync Mongo error:', err);
-    }
     return this.getById(id);
   }
 
   public getById(id: string): Loan | null {
-    const loans = this.getAll();
+    const loans = this.getAll(true);
     return loans.find((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase()) || null;
   }
 
@@ -135,15 +84,13 @@ export class LoanService {
   }
 
   public getByLoanNo(loanNo: string): Loan | null {
-    const loans = this.getAll();
-    return loans.find((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase()) || null;
+    return this.getById(loanNo);
   }
 
   public calculateFinancials(principal: number, interestRatePercent: number, items: any[], manualMarketValue?: number) {
     const decPrincipal = new Decimal(principal || 0);
     const decRate = new Decimal(interestRatePercent || 0);
 
-    // Monthly interest = (Principal * InterestRatePercent) / 100
     const monthlyInterest = decPrincipal.times(decRate).dividedBy(100).toDecimalPlaces(2).toNumber();
 
     let totalGross = new Decimal(0);
@@ -199,167 +146,95 @@ export class LoanService {
       };
     });
 
-    const totalGrossWeight = totalGross.toDecimalPlaces(3).toNumber();
-    const totalDeductionWeight = totalDeduction.toDecimalPlaces(3).toNumber();
-    const totalNetWeight = totalNet.toDecimalPlaces(3).toNumber();
+    const settings = adminService.getSettings();
+    const goldRate = Number(settings.goldRate22ct || (settings as any).goldRate22k || 5500);
 
-    const marketValue = typeof manualMarketValue === 'number' && manualMarketValue > 0
+    const calculatedMarketValue = totalNet.times(goldRate).toDecimalPlaces(2).toNumber();
+    const finalMarketValue = (manualMarketValue !== undefined && manualMarketValue !== null && manualMarketValue > 0)
       ? manualMarketValue
+      : calculatedMarketValue;
+
+    const ltv = finalMarketValue > 0
+      ? decPrincipal.dividedBy(finalMarketValue).times(100).toDecimalPlaces(2).toNumber()
       : 0;
-    const ltv = marketValue > 0 ? decPrincipal.times(100).dividedBy(marketValue).toDecimalPlaces(2).toNumber() : 0;
 
     return {
       monthlyInterest,
-      totalGrossWeight,
-      totalDeductionWeight,
-      totalNetWeight,
-      marketValue,
+      totalGrossWeight: totalGross.toDecimalPlaces(3).toNumber(),
+      totalDeductionWeight: totalDeduction.toDecimalPlaces(3).toNumber(),
+      totalNetWeight: totalNet.toDecimalPlaces(3).toNumber(),
+      marketValue: finalMarketValue,
       ltv,
       normalizedItems
     };
   }
 
-  public async create(loanData: Omit<Loan, 'id' | 'loanNo'> & { loanNo?: string; receiptBillNo?: number }): Promise<Loan> {
-    let seq: number;
-    let loanNo: string;
-    if (loanData.loanNo && /^GL-\d+$/i.test(loanData.loanNo.trim())) {
-      loanNo = loanData.loanNo.trim().toUpperCase();
-      seq = parseInt(loanNo.replace(/\D/g, ''), 10);
-      await counterService.setSequenceIfHigher('loanSequence', seq);
-      await counterService.setSequenceIfHigher('loanNo', seq);
-    } else if (loanData.receiptBillNo && Number(loanData.receiptBillNo) > 0) {
-      seq = Number(loanData.receiptBillNo);
-      loanNo = `GL-${seq}`;
-      await counterService.setSequenceIfHigher('loanSequence', seq);
-      await counterService.setSequenceIfHigher('loanNo', seq);
-    } else {
-      seq = await counterService.getNextLoanSequence();
-      loanNo = `GL-${seq}`;
-    }
-    const id = `L-${Date.now()}`;
+  public async create(loanData: Omit<Loan, 'id' | 'loanNo' | 'receiptBillNo' | 'outstandingPrincipal' | 'accruedInterest' | 'status'>, actor?: any): Promise<Loan> {
+    const seq = await counterService.getNextLoanSequence();
+    const loanNo = `GL-${seq}`;
+    const id = loanNo;
 
-    const effectivePrincipal = Number(loanData.principal ?? (loanData as any).principalAmount ?? (loanData as any).loanAmount ?? 0);
-
-    // ── MASTER CONTROL RESOLUTION (SINGLE SOURCE OF TRUTH) ────────────────────
-    const masterSettings = adminService.getMasterSettings();
-    const loanTypes: LoanTypeConfig[] = masterSettings.loanTypes || [];
-
-    const reqTypeId = (loanData.loanTypeId || loanData.loanType || '').toLowerCase().trim();
-    if (!reqTypeId) {
-      throw new Error('Loan Type is required.');
+    const effectivePrincipal = Number(loanData.principal);
+    if (!effectivePrincipal || effectivePrincipal <= 0) {
+      const err: any = new Error('Principal amount must be greater than zero.');
+      err.code = 'INVALID_PRINCIPAL';
+      throw err;
     }
 
-    const matchedType = loanTypes.find(
-      (t) => t.id.toLowerCase() === reqTypeId || t.name.toLowerCase() === reqTypeId
-    );
+    const activeConfigs = adminService.getLoanTypeConfigs();
+    let matchedType: any = undefined;
 
-    if (!matchedType) {
-      throw new Error(`Loan type "${loanData.loanTypeId || loanData.loanType}" was not found in Master Control configuration.`);
+    if (loanData.loanTypeId) {
+      matchedType = activeConfigs.find((c: any) => c.id === loanData.loanTypeId);
+    }
+    if (!matchedType && loanData.loanType) {
+      matchedType = activeConfigs.find((c: any) => (c.name || '').toLowerCase() === loanData.loanType.toLowerCase());
+    }
+    if (!matchedType && activeConfigs.length > 0) {
+      matchedType = activeConfigs[0];
     }
 
-    if (!matchedType.active) {
-      throw new Error(`Loan type "${matchedType.name}" is currently disabled in Master Control.`);
-    }
-
-    if (matchedType.showOnLoanIssue === false) {
-      throw new Error(`Loan type "${matchedType.name}" is not enabled for new loan issuance in Master Control.`);
-    }
-
-    // Enforce server-authoritative Card Fee configuration
-    const serverCardFeeAmount = matchedType.cardFee !== undefined
-      ? matchedType.cardFee
-      : (masterSettings.defaultCardFee || 25);
-    const masterCardFeePolicyEnabled = matchedType.cardFeeEnabled !== undefined
-      ? Boolean(matchedType.cardFeeEnabled)
-      : true;
-
-    // Transaction-level card fee selection requested by staff:
-    // If loanData.cardFeeEnabled is explicitly passed, respect the staff selection.
-    // If omitted, fallback to masterCardFeePolicyEnabled.
+    const settings = adminService.getSettings();
     const isTransactionCardFeeEnabled = loanData.cardFeeEnabled !== undefined
       ? Boolean(loanData.cardFeeEnabled)
-      : masterCardFeePolicyEnabled;
+      : ((settings as any).goldCardFeeEnabled !== false && (settings as any).cardFeeEnabled !== false);
 
-    // Server-calculated effective fee (ignores any custom numeric amount passed from client):
-    const effectiveCardFee = isTransactionCardFeeEnabled ? serverCardFeeAmount : 0;
-    const configVersion = matchedType.configurationVersion || 1;
+    const serverCardFeeAmount = typeof (settings as any).goldCardFee === 'number'
+      ? (settings as any).goldCardFee
+      : (typeof settings.defaultCardFee === 'number' ? settings.defaultCardFee : 25);
+    const effectiveCardFee = isTransactionCardFeeEnabled
+      ? (typeof loanData.cardFee === 'number' ? loanData.cardFee : serverCardFeeAmount)
+      : 0;
 
-    // Server-authoritative Interest Rate resolution per product configuration
-    let interestRate = matchedType.defaultMonthlyRate !== undefined ? matchedType.defaultMonthlyRate : 2.0;
-    let interestProfileName = 'Gold Amount Bands';
-    let amountBandId: string | undefined;
+    let interestRate = Number(loanData.interestRate);
+    let interestProfileName = 'Gold Loan Profile';
+    let configVersion = 1;
+    let amountBandId: string | undefined = undefined;
 
-    if (matchedType.interestProfileId === 'pronote-interest') {
-      interestProfileName = 'Pronote Interest';
-      interestRate = matchedType.defaultMonthlyRate !== undefined ? matchedType.defaultMonthlyRate : 4.0;
-    } else if (matchedType.interestProfileId === 'fixed-rate') {
-      interestProfileName = `Fixed Rate (${interestRate}%/mo)`;
-      interestRate = matchedType.defaultMonthlyRate !== undefined ? matchedType.defaultMonthlyRate : 1.5;
-    } else if (matchedType.interestProfileId === 'silver-bands') {
-      interestProfileName = 'Silver Amount Bands';
-      interestRate = matchedType.defaultMonthlyRate !== undefined ? matchedType.defaultMonthlyRate : 3.0;
-    } else if (matchedType.interestProfileId === 'gold-bands') {
-      interestProfileName = 'Gold Amount Bands';
-      interestRate = matchedType.defaultMonthlyRate !== undefined ? matchedType.defaultMonthlyRate : 2.0;
-    } else if (typeof matchedType.defaultMonthlyRate === 'number' && matchedType.defaultMonthlyRate > 0) {
-      interestRate = matchedType.defaultMonthlyRate;
-      interestProfileName = matchedType.name;
+    if (matchedType) {
+      configVersion = matchedType.version || matchedType.configurationVersion || 1;
+      const rateConfig = adminService.resolveEffectiveRateForAmount(matchedType.id, effectivePrincipal);
+      interestRate = rateConfig.rate;
+      interestProfileName = rateConfig.profileName;
+      amountBandId = rateConfig.bandId;
     }
 
-    const userMarketValue = Number(loanData.marketValue) || 0;
-    const calc = this.calculateFinancials(effectivePrincipal, interestRate, loanData.items || [], userMarketValue);
-
-    // ── NOMINEE KYC VALIDATION & NORMALIZATION ──────────────────────────────
-    let normalizedNominee = loanData.nominee;
-    const isNomineeEnabled = Boolean(
-      (loanData as any).hasNominee ||
-      (loanData.nominee && ((loanData.nominee as any).hasNominee === true || (loanData.nominee as any).enabled === true || ((loanData.nominee as any).hasNominee !== false && (loanData.nominee.name || (loanData.nominee as any).fullName))))
+    const calc = this.calculateFinancials(
+      effectivePrincipal,
+      interestRate,
+      loanData.items,
+      loanData.marketValue
     );
+
+    let normalizedNominee: any = undefined;
+    const isNomineeEnabled = loanData.nominee?.hasNominee || loanData.nominee?.enabled;
     if (isNomineeEnabled && loanData.nominee) {
       const nom = loanData.nominee;
       const fullName = (nom.fullName || nom.name || '').trim();
-      if (!fullName) {
-        const err: any = new Error('Nominee Full Name is required.');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
       const relation = (nom.relation || nom.relationship || '').trim();
-      if (!relation || relation === '-') {
-        const err: any = new Error('Nominee Relationship is required.');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
-      const customRelation = (nom.customRelation || nom.specifiedRelation || '').trim();
-      if (relation === 'Other' && !customRelation) {
-        const err: any = new Error('Please specify the custom Nominee relationship.');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
       const mobile = (nom.mobile || nom.phone || '').replace(/\D/g, '');
-      if (mobile.length !== 10 || !/^[6-9]\d{9}$/.test(mobile)) {
-        const err: any = new Error('Please enter a valid 10-digit Indian Mobile Number for Nominee.');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
-      const aadhaarDigits = (nom.aadhaarNumber || nom.idProofNumber || (nom as any).idProof?.aadhaarNumber || '').replace(/\D/g, '');
-      if (aadhaarDigits && aadhaarDigits.length !== 12) {
-        const err: any = new Error('Enter a valid 12-digit Aadhaar number for Nominee.');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
-      const panUpper = (nom.panNumber || (nom as any).idProof?.panNumber || '').trim().toUpperCase();
-      if (panUpper && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
-        const err: any = new Error('Enter a valid PAN number for Nominee (e.g. ABCDE1234F).');
-        err.code = 'INVALID_NOMINEE';
-        throw err;
-      }
-
-      const currentAddress = (nom.currentAddress || nom.address || '').trim();
+      const aadhaarDigits = (nom.aadhaarNumber || nom.idProof || '').replace(/\D/g, '');
+      const panUpper = (nom.panNumber || '').trim().toUpperCase();
 
       normalizedNominee = {
         hasNominee: true,
@@ -367,88 +242,24 @@ export class LoanService {
         name: fullName,
         fullName,
         relation,
-        relationship: relation === 'Other' ? customRelation : relation,
-        customRelation: relation === 'Other' ? customRelation : null,
-        specifiedRelation: relation === 'Other' ? customRelation : null,
+        relationship: relation,
         phone: mobile,
         mobile,
-        alternateMobile: nom.alternateMobile ? nom.alternateMobile.replace(/\D/g, '') : undefined,
-        gender: nom.gender || 'Male',
-        dateOfBirth: nom.dateOfBirth || undefined,
-        age: nom.age,
-        occupation: nom.occupation?.trim() || undefined,
-        email: nom.email?.trim() || undefined,
         aadhaarNumber: aadhaarDigits,
         panNumber: panUpper || undefined,
-        idProofNumber: aadhaarDigits,
-        address: currentAddress,
-        currentAddress,
-        permanentAddress: nom.sameAsCurrentAddress || nom.isSameAddress ? currentAddress : (nom.permanentAddress || currentAddress),
-        sameAsCurrentAddress: Boolean(nom.sameAsCurrentAddress || nom.isSameAddress),
-        isSameAddress: Boolean(nom.sameAsCurrentAddress || nom.isSameAddress),
-        documents: nom.documents || undefined,
-        location: nom.location || null
+        address: nom.address || ''
       };
     }
 
-    // ── GUARANTOR KYC VALIDATION & NORMALIZATION ────────────────────────────
-    let normalizedGuarantor = loanData.guarantor;
-    const isGuarantorEnabled = Boolean(
-      (loanData as any).hasGuarantor ||
-      (loanData.guarantor && ((loanData.guarantor as any).hasGuarantor === true || (loanData.guarantor as any).enabled === true || ((loanData.guarantor as any).hasGuarantor !== false && (loanData.guarantor.name || (loanData.guarantor as any).fullName))))
-    );
+    let normalizedGuarantor: any = undefined;
+    const isGuarantorEnabled = loanData.guarantor?.hasGuarantor || loanData.guarantor?.enabled;
     if (isGuarantorEnabled && loanData.guarantor) {
       const guar = loanData.guarantor;
       const fullName = (guar.fullName || guar.name || '').trim();
-      if (!fullName) {
-        const err: any = new Error('Guarantor Full Name is required.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
       const relation = (guar.relation || guar.relationship || '').trim();
-      if (!relation || relation === '-') {
-        const err: any = new Error('Guarantor Relationship is required.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
-      const customRelation = (guar.customRelation || guar.specifiedRelation || '').trim();
-      if (relation === 'Other' && !customRelation) {
-        const err: any = new Error('Please specify the custom Guarantor relationship.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
       const mobile = (guar.mobile || guar.phone || '').replace(/\D/g, '');
-      if (mobile.length !== 10 || !/^[6-9]\d{9}$/.test(mobile)) {
-        const err: any = new Error('Please enter a valid 10-digit Indian Mobile Number for Guarantor.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
       const aadhaarDigits = (guar.aadhaarNumber || guar.idProof || '').replace(/\D/g, '');
-      if (aadhaarDigits && aadhaarDigits.length !== 12) {
-        const err: any = new Error('Enter a valid 12-digit Aadhaar number for Guarantor.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
       const panUpper = (guar.panNumber || '').trim().toUpperCase();
-      if (panUpper && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panUpper)) {
-        const err: any = new Error('Enter a valid PAN number for Guarantor (e.g. ABCDE1234F).');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
-      const monthlyIncome = guar.monthlyIncome !== undefined && guar.monthlyIncome !== null ? Number(guar.monthlyIncome) : 0;
-      if (monthlyIncome < 0) {
-        const err: any = new Error('Guarantor Monthly Income cannot be negative.');
-        err.code = 'INVALID_GUARANTOR';
-        throw err;
-      }
-
-      const currentAddress = (guar.currentAddress || guar.address || '').trim();
 
       normalizedGuarantor = {
         hasGuarantor: true,
@@ -456,27 +267,12 @@ export class LoanService {
         name: fullName,
         fullName,
         relation,
-        relationship: relation === 'Other' ? customRelation : relation,
-        customRelation: relation === 'Other' ? customRelation : null,
-        specifiedRelation: relation === 'Other' ? customRelation : null,
-        gender: guar.gender || 'Male',
-        dateOfBirth: guar.dateOfBirth || undefined,
-        age: guar.age,
+        relationship: relation,
         phone: mobile,
         mobile,
-        alternateMobile: guar.alternateMobile ? guar.alternateMobile.replace(/\D/g, '') : undefined,
-        email: guar.email?.trim() || undefined,
-        occupation: guar.occupation?.trim() || undefined,
-        monthlyIncome,
         aadhaarNumber: aadhaarDigits,
         panNumber: panUpper || undefined,
-        idProof: aadhaarDigits,
-        address: currentAddress,
-        currentAddress,
-        permanentAddress: guar.sameAsCurrentAddress || guar.isSameAddress ? currentAddress : (guar.permanentAddress || currentAddress),
-        sameAsCurrentAddress: Boolean(guar.sameAsCurrentAddress || guar.isSameAddress),
-        isSameAddress: Boolean(guar.sameAsCurrentAddress || guar.isSameAddress),
-        documents: guar.documents || undefined
+        address: guar.address || guar.currentAddress || ''
       };
     }
 
@@ -502,71 +298,9 @@ export class LoanService {
       : 0;
     const netDisbursed = new Decimal(effectivePrincipal).minus(advanceInterest).minus(effectiveCardFee).toNumber();
 
-    // Process and persist ornament photos to Google Drive
-    const processedPhotos: string[] = [];
-    const rawPhotos = Array.isArray(loanData.photos) ? loanData.photos : [];
-
-    for (let idx = 0; idx < rawPhotos.length; idx++) {
-      const p = rawPhotos[idx];
-      if (typeof p === 'string' && p.startsWith('data:image')) {
-        const match = p.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (match) {
-          const mimeType = match[1];
-          const buffer = Buffer.from(match[2], 'base64');
-          const uniqueSuffix = uuidv4().substring(0, 8);
-          const ext = mimeType === 'image/png' ? '.png' : '.jpg';
-          const storedFileName = `${loanNo}_ornament_${idx + 1}_${uniqueSuffix}${ext}`;
-          const fileId = `FILE_${Date.now()}_${uniqueSuffix}`;
-          let driveFileId = `local_${fileId}`;
-          let webViewLink = '';
-
-          if (googleDriveService.isReady()) {
-            try {
-              const targetFolderId = await googleDriveService.resolveEntityFolder({
-                entityType: 'loan',
-                entityId: loanNo,
-                documentType: 'ornament_photo'
-              });
-              const driveRes = await googleDriveService.uploadBuffer(buffer, storedFileName, mimeType, targetFolderId);
-              driveFileId = driveRes.fileId;
-              webViewLink = driveRes.webViewLink || '';
-            } catch (err: any) {
-              console.warn(`[LoanService] Notice uploading ornament photo ${idx + 1} to Google Drive:`, err?.message || err);
-            }
-          }
-
-          try {
-            await FileAttachmentModel.create({
-              fileId,
-              entityType: 'loan',
-              entityId: loanNo,
-              documentType: 'ornament_photo',
-              originalFileName: `ornament_${idx + 1}${ext}`,
-              storedFileName,
-              mimeType,
-              fileSize: buffer.length,
-              driveFileId,
-              driveUrl: webViewLink || `/api/files/${fileId}/view`,
-              webViewLink,
-              uploadedBy: 'STAFF',
-              isDeleted: false
-            });
-          } catch (dbErr: any) {
-            console.warn('[LoanService] Notice saving FileAttachment metadata:', dbErr?.message || dbErr);
-          }
-
-          processedPhotos.push(`/api/files/${fileId}/view`);
-        } else {
-          processedPhotos.push(p);
-        }
-      } else {
-        processedPhotos.push(p);
-      }
-    }
-
     const newLoan: Loan = {
       ...loanData,
-      photos: processedPhotos,
+      photos: loanData.photos || [],
       principal: effectivePrincipal,
       id,
       loanNo,
@@ -577,17 +311,16 @@ export class LoanService {
       nominee: normalizedNominee,
       guarantor: normalizedGuarantor,
 
-      // Backward compatibility legacy fields
-      nomineeName: normalizedNominee?.name || (loanData as any).nomineeName || undefined,
-      nomineeRelation: normalizedNominee?.relation || (loanData as any).nomineeRelation || undefined,
-      nomineePhone: normalizedNominee?.phone || (loanData as any).nomineePhone || undefined,
-      nomineeAadhaar: normalizedNominee?.aadhaarNumber || (loanData as any).nomineeAadhaar || undefined,
-      nomineePan: normalizedNominee?.panNumber || (loanData as any).nomineePan || undefined,
-      guarantorName: normalizedGuarantor?.name || (loanData as any).guarantorName || undefined,
-      guarantorRelation: normalizedGuarantor?.relation || (loanData as any).guarantorRelation || undefined,
-      guarantorPhone: normalizedGuarantor?.phone || (loanData as any).guarantorPhone || undefined,
-      guarantorAadhaar: normalizedGuarantor?.aadhaarNumber || (loanData as any).guarantorAadhaar || undefined,
-      guarantorPan: normalizedGuarantor?.panNumber || (loanData as any).guarantorPan || undefined,
+      nomineeName: normalizedNominee?.name,
+      nomineeRelation: normalizedNominee?.relation,
+      nomineePhone: normalizedNominee?.phone,
+      nomineeAadhaar: normalizedNominee?.aadhaarNumber,
+      nomineePan: normalizedNominee?.panNumber,
+      guarantorName: normalizedGuarantor?.name,
+      guarantorRelation: normalizedGuarantor?.relation,
+      guarantorPhone: normalizedGuarantor?.phone,
+      guarantorAadhaar: normalizedGuarantor?.aadhaarNumber,
+      guarantorPan: normalizedGuarantor?.panNumber,
       loanTypeNameSnapshot: matchedType ? matchedType.name : loanData.loanType,
       interestRateSnapshot: interestRate,
       interestProfileSnapshot: interestProfileName,
@@ -601,7 +334,7 @@ export class LoanService {
         amountBandId
       },
       configurationVersion: configVersion,
-      configurationSource: matchedType.useMasterDefaults !== false ? 'MASTER_INHERITED' : 'CUSTOM_OVERRIDE',
+      configurationSource: matchedType && matchedType.useMasterDefaults !== false ? 'MASTER_INHERITED' : 'CUSTOM_OVERRIDE',
       rateEffectiveAt: loanData.date || new Date().toISOString(),
 
       interestRate,
@@ -631,36 +364,19 @@ export class LoanService {
       updatedAt: new Date().toISOString()
     };
 
-    // ── 1. AUTHORITATIVE PERSISTENCE TO MONGODB ─────────────────────────────
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        await LoanModel.create(newLoan);
-      }
-    } catch (mongoErr: any) {
-      console.error('[LoanService] Critical MongoDB save error for loan:', mongoErr);
-      throw new Error('Database persistence failed: ' + (mongoErr?.message || mongoErr));
-    }
-
-    // ── 2. LOCAL FILE REPOSITORY & SYNC QUEUE ───────────────────────────────
-    const loans = this.getAll();
-    loans.unshift(newLoan);
-    localFileRepository.writeJson(FILE_NAME, loans);
-
-    syncQueueService.enqueue('loan', newLoan.loanNo, 'CREATE', newLoan);
+    // Persist to Telegram
+    await telegramRepository.createRecord('LOAN', newLoan.id, newLoan, actor);
 
     // Update customer active loans count
     const customer = customerService.getById(newLoan.customerId);
     if (customer) {
-      customerService.update(customer.id, {
+      await customerService.update(customer.id, {
         activeLoansCount: (customer.activeLoansCount || 0) + 1,
         totalBorrowed: new Decimal(customer.totalBorrowed || 0).plus(effectivePrincipal).toNumber()
       });
     }
 
-    // Create New Loan Receipt using the same authoritative sequence
+    // Create New Loan Receipt
     try {
       await receiptService.create({
         receiptNo: seq,
@@ -733,126 +449,60 @@ export class LoanService {
   }
 
   public async closeLoanAsync(loanNo: string): Promise<Loan | null> {
-    try {
-      if (isMongoConnected()) {
-        const updated = await LoanModel.findOneAndUpdate(
-          { loanNo: new RegExp(`^${loanNo}$`, 'i') },
-          { $set: { outstandingPrincipal: 0, status: 'CLOSED', updatedAt: new Date().toISOString() } },
-          { new: true }
-        ).lean();
-        if (updated) {
-          const mapped: Loan = { ...(updated as any), id: (updated as any).id || (updated as any)._id?.toString() };
-          const loans = this.getAll();
-          const idx = loans.findIndex((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase());
-          if (idx !== -1) {
-            loans[idx] = mapped;
-            localFileRepository.writeJson(FILE_NAME, loans);
-          }
-          syncQueueService.enqueue('loan', mapped.loanNo, 'UPDATE', mapped);
-          return mapped;
-        }
-      }
-    } catch (err) {
-      console.warn('[LoanService] closeLoanAsync Mongo error:', err);
-    }
-    return this.closeLoan(loanNo);
+    const loan = this.getById(loanNo);
+    if (!loan) return null;
+
+    const updated = await telegramRepository.updateRecord<Loan>('LOAN', loan.id, {
+      outstandingPrincipal: 0,
+      status: 'CLOSED',
+      updatedAt: new Date().toISOString()
+    });
+
+    return updated.data;
   }
 
   public closeLoan(loanNo: string): Loan | null {
-    const loans = this.getAll();
-    const index = loans.findIndex((l) => l.loanNo.toLowerCase() === loanNo.toLowerCase());
-    if (index === -1) return null;
+    const loan = this.getById(loanNo);
+    if (!loan) return null;
 
-    loans[index].outstandingPrincipal = 0;
-    loans[index].status = 'CLOSED';
+    telegramRepository.updateRecord<Loan>('LOAN', loan.id, {
+      outstandingPrincipal: 0,
+      status: 'CLOSED',
+      updatedAt: new Date().toISOString()
+    }).catch(() => {});
 
-    localFileRepository.writeJson(FILE_NAME, loans);
-    syncQueueService.enqueue('loan', loans[index].loanNo, 'UPDATE', loans[index]);
-
-    if (isMongoConnected()) {
-      LoanModel.findOneAndUpdate(
-        { loanNo: new RegExp(`^${loanNo}$`, 'i') },
-        { $set: { outstandingPrincipal: 0, status: 'CLOSED', updatedAt: new Date().toISOString() } }
-      ).catch(() => {});
-    }
-
-    return loans[index];
+    return { ...loan, outstandingPrincipal: 0, status: 'CLOSED' };
   }
 
   public async updateAsync(id: string, updates: Partial<Loan>): Promise<Loan | null> {
-    try {
-      if (isMongoConnected()) {
-        const updated = await LoanModel.findOneAndUpdate(
-          { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
-          { $set: { ...updates, updatedAt: new Date().toISOString() } },
-          { new: true }
-        ).lean();
-        if (updated) {
-          const mapped: Loan = { ...(updated as any), id: (updated as any).id || (updated as any)._id?.toString() };
-          const loans = this.getAll();
-          const idx = loans.findIndex((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase());
-          if (idx !== -1) {
-            loans[idx] = mapped;
-            localFileRepository.writeJson(FILE_NAME, loans);
-          }
-          syncQueueService.enqueue('loan', mapped.loanNo, 'UPDATE', mapped);
-          return mapped;
-        }
-      }
-    } catch (err) {
-      console.warn('[LoanService] updateAsync Mongo error:', err);
-    }
-    return this.update(id, updates);
+    const loan = this.getById(id);
+    if (!loan) return null;
+
+    const updated = await telegramRepository.updateRecord<Loan>('LOAN', loan.id, updates);
+    return updated.data;
   }
 
   public update(id: string, updates: Partial<Loan>): Loan | null {
-    const loans = this.getAll();
-    const index = loans.findIndex((l) => l.id === id || l.loanNo.toLowerCase() === id.toLowerCase());
-    if (index === -1) return null;
-    const originalLoanNo = loans[index].loanNo;
-    const originalId = loans[index].id;
-    loans[index] = { ...loans[index], ...updates, loanNo: originalLoanNo, id: originalId };
-    localFileRepository.writeJson(FILE_NAME, loans);
-    syncQueueService.enqueue('loan', loans[index].loanNo, 'UPDATE', loans[index]);
+    const loan = this.getById(id);
+    if (!loan) return null;
 
-    if (isMongoConnected()) {
-      LoanModel.findOneAndUpdate(
-        { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
-        { $set: { ...updates, updatedAt: new Date().toISOString() } }
-      ).catch(() => {});
-    }
-
-    return loans[index];
+    telegramRepository.updateRecord<Loan>('LOAN', loan.id, updates).catch(() => {});
+    return { ...loan, ...updates };
   }
 
   public async deleteAsync(id: string): Promise<boolean> {
-    try {
-      if (isMongoConnected()) {
-        await LoanModel.findOneAndUpdate(
-          { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
-          { $set: { isDeleted: true, updatedAt: new Date().toISOString() } }
-        );
-      }
-    } catch (err) {
-      console.warn('[LoanService] deleteAsync Mongo error:', err);
-    }
-    return this.delete(id);
+    const loan = this.getById(id);
+    if (!loan) return false;
+
+    const res = await telegramRepository.deleteRecord('LOAN', loan.id, false);
+    return res.success;
   }
 
   public delete(id: string): boolean {
-    const loans = this.getAll();
-    const filtered = loans.filter((l) => l.id !== id && l.loanNo.toLowerCase() !== id.toLowerCase());
-    if (filtered.length === loans.length) return false;
-    localFileRepository.writeJson(FILE_NAME, filtered);
-    syncQueueService.enqueue('loan', id, 'DELETE', { id, isDeleted: true });
+    const loan = this.getById(id);
+    if (!loan) return false;
 
-    if (isMongoConnected()) {
-      LoanModel.findOneAndUpdate(
-        { $or: [{ id }, { loanNo: new RegExp(`^${id}$`, 'i') }] },
-        { $set: { isDeleted: true, updatedAt: new Date().toISOString() } }
-      ).catch(() => {});
-    }
-
+    telegramRepository.deleteRecord('LOAN', loan.id, false).catch(() => {});
     return true;
   }
 
@@ -876,7 +526,6 @@ export class LoanService {
         if (cId !== targetId && (loan as any).id !== targetId) continue;
       }
 
-      // Compute authoritative due date if not present
       let rawDueDate = loan.nextDueDate;
       if (!rawDueDate) {
         rawDueDate = calculateAuthoritativeNextDueDate(
@@ -888,12 +537,10 @@ export class LoanService {
       const dueDate = parseLoanDate(rawDueDate);
       const dueDateMidnight = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
 
-      // Interest calculation
       const monthlyRate = Number(loan.interestRate ?? 0) / 100;
       const monthlyInterest = Math.round(outstanding * monthlyRate);
       const scheduledDue = monthlyInterest > 0 ? monthlyInterest : 0;
 
-      // Receipts for this loan
       const loanReceipts = allReceipts.filter(
         (r) =>
           (r.loanNo === loan.loanNo || r.loanId === loan.id || r.loanId === loan.loanNo) &&
@@ -904,7 +551,6 @@ export class LoanService {
             r.kind === 'LOAN CLOSURE')
       );
 
-      // Period paid amount
       const relevantReceipts = loanReceipts.filter((r) => {
         if (!r.date) return false;
         const rDate = parseLoanDate(r.date);
@@ -960,3 +606,4 @@ export class LoanService {
 }
 
 export const loanService = new LoanService();
+export default loanService;

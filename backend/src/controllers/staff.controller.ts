@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import { staffService } from '../services/staff.service.js';
+import { isTelegramStorageReady } from '../config/database.js';
 
 export const getStaffList = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable. Permanent MongoDB connection is required.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -22,18 +22,18 @@ export const getStaffList = async (req: Request, res: Response) => {
 
 export const getStaffProfile = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
     const { uid } = req.params;
     const user = await staffService.getStaffByUid(uid);
     if (!user) {
-      return res.status(404).json({ success: false, message: `Staff member "${uid}" not found in MongoDB.` });
+      return res.status(404).json({ success: false, message: `Staff member "${uid}" not found.` });
     }
     return res.json({ success: true, data: user });
   } catch (err: any) {
@@ -44,11 +44,11 @@ export const getStaffProfile = async (req: Request, res: Response) => {
 
 export const createStaff = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable. Permanent MongoDB connection is required.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -62,7 +62,7 @@ export const createStaff = async (req: Request, res: Response) => {
     const department = body.department;
 
     const actorUid = (req.headers['x-actor-uid'] as string) || (req.headers['user-id'] as string) || 'uid_master_admin_01';
-    const actorEmail = (req.headers['x-actor-email'] as string) || (req.headers['user-email'] as string) || 'goldfinancekkv@gmail.com';
+    const actorEmail = (req.headers['x-actor-email'] as string) || (req.headers['user-email'] as string) || 'admin@kkvgoldfinance.com';
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -97,7 +97,7 @@ export const createStaff = async (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       data: created,
-      message: 'Staff account created successfully and stored permanently in MongoDB.'
+      message: 'Staff account created successfully.'
     });
   } catch (err: any) {
     console.error('[StaffController] createStaff error:', err);
@@ -107,23 +107,23 @@ export const createStaff = async (req: Request, res: Response) => {
 
 export const updateStaff = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
     const { uid } = req.params;
     const updates = req.body || {};
     const actorUid = (req.headers['x-actor-uid'] as string) || (req.headers['user-id'] as string) || 'uid_master_admin_01';
-    const actorEmail = (req.headers['x-actor-email'] as string) || (req.headers['user-email'] as string) || 'goldfinancekkv@gmail.com';
+    const actorEmail = (req.headers['x-actor-email'] as string) || (req.headers['user-email'] as string) || 'admin@kkvgoldfinance.com';
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 
     const updated = await staffService.updateStaff(uid, updates, actorUid, actorEmail, ipAddress, userAgent);
-    return res.json({ success: true, data: updated, message: 'Staff profile updated successfully in MongoDB.' });
+    return res.json({ success: true, data: updated, message: 'Staff profile updated successfully.' });
   } catch (err: any) {
     console.error('[StaffController] updateStaff error:', err);
     return res.status(400).json({ success: false, message: err.message || 'Failed to update staff profile.' });
@@ -132,11 +132,11 @@ export const updateStaff = async (req: Request, res: Response) => {
 
 export const updateStaffPassword = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -149,12 +149,12 @@ export const updateStaffPassword = async (req: Request, res: Response) => {
     }
 
     const actorUid = (req.headers['x-actor-uid'] as string) || 'uid_master_admin_01';
-    const actorEmail = (req.headers['x-actor-email'] as string) || 'goldfinancekkv@gmail.com';
+    const actorEmail = (req.headers['x-actor-email'] as string) || 'admin@kkvgoldfinance.com';
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 
     await staffService.updatePassword(uid, targetPassword, actorUid, actorEmail, ipAddress, userAgent);
-    return res.json({ success: true, message: 'Staff password updated successfully in MongoDB.' });
+    return res.json({ success: true, message: 'Staff password updated successfully.' });
   } catch (err: any) {
     console.error('[StaffController] updateStaffPassword error:', err);
     return res.status(400).json({ success: false, message: err.message || 'Failed to update password.' });
@@ -163,11 +163,11 @@ export const updateStaffPassword = async (req: Request, res: Response) => {
 
 export const toggleStaffStatus = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -176,7 +176,7 @@ export const toggleStaffStatus = async (req: Request, res: Response) => {
     const targetActive = typeof isActive === 'boolean' ? isActive : status === 'active' || status === 'ACTIVE';
 
     const actorUid = (req.headers['x-actor-uid'] as string) || 'uid_master_admin_01';
-    const actorEmail = (req.headers['x-actor-email'] as string) || 'goldfinancekkv@gmail.com';
+    const actorEmail = (req.headers['x-actor-email'] as string) || 'admin@kkvgoldfinance.com';
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -208,22 +208,22 @@ export const revokeStaffSessions = (req: Request, res: Response) => {
 
 export const deleteStaff = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
     const { uid } = req.params;
     const actorUid = (req.headers['x-actor-uid'] as string) || 'uid_master_admin_01';
-    const actorEmail = (req.headers['x-actor-email'] as string) || 'goldfinancekkv@gmail.com';
+    const actorEmail = (req.headers['x-actor-email'] as string) || 'admin@kkvgoldfinance.com';
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const userAgent = req.headers['user-agent'] || '';
 
     await staffService.deleteStaff(uid, actorUid, actorEmail, ipAddress, userAgent);
-    return res.json({ success: true, message: 'Staff account deleted permanently from MongoDB.' });
+    return res.json({ success: true, message: 'Staff account deleted permanently.' });
   } catch (err: any) {
     console.error('[StaffController] deleteStaff error:', err);
     return res.status(400).json({ success: false, message: err.message });
@@ -232,11 +232,11 @@ export const deleteStaff = async (req: Request, res: Response) => {
 
 export const searchStaff = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -251,11 +251,11 @@ export const searchStaff = async (req: Request, res: Response) => {
 
 export const getAuditLogs = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
+    if (!isTelegramStorageReady()) {
       return res.status(503).json({
         success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
+        message: 'Storage is currently initializing.',
+        error: { code: 'STORAGE_INITIALIZING' }
       });
     }
 
@@ -269,14 +269,6 @@ export const getAuditLogs = async (req: Request, res: Response) => {
 
 export const verifyStaffCredentials = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
-      });
-    }
-
     const { email, password, username, id } = req.body || {};
     const emailOrStaffId = email || username || id;
 
@@ -330,14 +322,6 @@ export const verifyStaffCredentials = async (req: Request, res: Response) => {
 
 export const lookupStaff = async (req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database is currently unavailable.',
-        error: { code: 'DATABASE_DISCONNECTED' }
-      });
-    }
-
     const email = (req.body?.email || req.params?.email || req.query?.email || '') as string;
     if (!email || !email.trim()) {
       return res.status(400).json({ success: false, message: 'Email address is required.' });

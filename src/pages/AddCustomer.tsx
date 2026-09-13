@@ -120,7 +120,7 @@ export const AddCustomer: React.FC<AddCustomerProps> = ({
   const [extraPan, setExtraPan] = useState('');
   const [docName, setDocName] = useState('');
 
-  // Existing Attached KYC Documents (from backend MongoDB)
+  // Existing Attached KYC Documents (from storage)
   const [existingKycDocs, setExistingKycDocs] = useState<any[]>([]);
 
   // Attached KYC Document Files to upload
@@ -496,7 +496,7 @@ export const AddCustomer: React.FC<AddCustomerProps> = ({
     setCurrentPage('customers');
   };
 
-  // Form Submit to Backend MongoDB (Shared Add/Edit logic)
+  // Form Submit to Backend (Shared Add/Edit logic)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -698,9 +698,9 @@ export const AddCustomer: React.FC<AddCustomerProps> = ({
             <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: 'var(--text-muted, #64748b)' }}>
               {isEditMode
                 ? isLoadingCustomer
-                  ? 'Loading existing customer details from MongoDB...'
+                  ? 'Loading existing customer details...'
                   : `Updating profile for Customer ID: ${targetCustomer ? getCanonicalCustomerId(targetCustomer) : effectiveCustomerId || ''}`
-                : 'Personal information, identity proof, and addresses (MongoDB & Google Drive)'}
+                : 'Personal information, identity proof, and addresses (Telegram Storage & Google Drive)'}
             </p>
           </div>
         </div>
@@ -1485,7 +1485,7 @@ export const AddCustomer: React.FC<AddCustomerProps> = ({
                 {isSubmitting ? (
                   <>
                     <RefreshCw size={18} className="spin" style={{ animation: 'spin 1s linear infinite' }} />
-                    <span>{isEditMode ? 'Updating in MongoDB...' : 'Saving to MongoDB...'}</span>
+                    <span>{isEditMode ? 'Updating in Storage...' : 'Saving to Storage...'}</span>
                   </>
                 ) : (
                   <>

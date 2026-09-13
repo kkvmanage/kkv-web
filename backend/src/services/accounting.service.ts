@@ -1,39 +1,14 @@
 import Decimal from 'decimal.js';
-import { googleDriveRepository } from '../repositories/googleDrive.repository.js';
-import { syncQueueService } from './syncQueue.service.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 import { DayBookEntry, Loan, FixedDeposit } from '../types/index.js';
-import { DayBookModel } from '../models/DayBook.js';
-import { LoanModel } from '../models/Loan.js';
-import { FixedDepositModel } from '../models/FixedDeposit.js';
-import { isMongoConnected, ensureMongoConnected } from '../config/database.js';
-
-const FILE_NAME = 'daybook_entries.json';
-const initialDayBook: DayBookEntry[] = [];
 
 export class AccountingService {
   public async getDayBookAsync(): Promise<DayBookEntry[]> {
-    try {
-      if (isMongoConnected()) {
-        const dbEntries = await DayBookModel.find()
-          .sort({ _id: -1 })
-          .lean();
-        const mapped: DayBookEntry[] = (dbEntries || []).map((e: any) => ({
-          ...e,
-          id: e.id || e._id?.toString()
-        }));
-        googleDriveRepository.writeJson(FILE_NAME, mapped);
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('[AccountingService] getDayBookAsync Mongo error:', err);
-    }
-    const list = googleDriveRepository.readJson<DayBookEntry[]>(FILE_NAME, initialDayBook);
-    return Array.isArray(list) ? list : [];
+    return this.getDayBook();
   }
 
   public getDayBook(): DayBookEntry[] {
-    const list = googleDriveRepository.readJson<DayBookEntry[]>(FILE_NAME, initialDayBook);
-    return Array.isArray(list) ? list : [];
+    return telegramRepository.getRecords<DayBookEntry>('DAYBOOK');
   }
 
   public getBalances(): { cashInHand: number; cashAtBank: number } {
@@ -53,68 +28,10 @@ export class AccountingService {
   }
 
   public async getBalancesAsync(): Promise<{ cashInHand: number; cashAtBank: number }> {
-    const entries = await this.getDayBookAsync();
-    let cashInHand = new Decimal(0);
-    let cashAtBank = new Decimal(0);
-
-    entries.forEach((e) => {
-      cashInHand = cashInHand.plus(new Decimal(e.cashIn || 0)).minus(new Decimal(e.cashOut || 0));
-      cashAtBank = cashAtBank.plus(new Decimal(e.bankIn || 0)).minus(new Decimal(e.bankOut || 0));
-    });
-
-    return {
-      cashInHand: cashInHand.toNumber(),
-      cashAtBank: cashAtBank.toNumber()
-    };
+    return this.getBalances();
   }
 
-  public async addEntryAsync(entryData: Omit<DayBookEntry, 'id' | 'cashBal' | 'bankBal'>): Promise<DayBookEntry> {
-    const currentBal = await this.getBalancesAsync();
-
-    const cashIn = new Decimal(entryData.cashIn || 0);
-    const cashOut = new Decimal(entryData.cashOut || 0);
-    const bankIn = new Decimal(entryData.bankIn || 0);
-    const bankOut = new Decimal(entryData.bankOut || 0);
-
-    const newCashBal = new Decimal(currentBal.cashInHand).plus(cashIn).minus(cashOut).toNumber();
-    const newBankBal = new Decimal(currentBal.cashAtBank).plus(bankIn).minus(bankOut).toNumber();
-
-    const newEntry: DayBookEntry = {
-      ...entryData,
-      id: `db-${Date.now()}`,
-      time: entryData.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      cashIn: cashIn.toNumber(),
-      cashOut: cashOut.toNumber(),
-      bankIn: bankIn.toNumber(),
-      bankOut: bankOut.toNumber(),
-      cashBal: newCashBal,
-      bankBal: newBankBal,
-      date: entryData.date || new Date().toLocaleDateString('en-GB')
-    };
-
-    // 1. Authoritative persistence in MongoDB
-    try {
-      if (!isMongoConnected()) {
-        await ensureMongoConnected();
-      }
-      if (isMongoConnected()) {
-        await DayBookModel.create(newEntry);
-      }
-    } catch (mongoErr) {
-      console.error('[AccountingService] Mongo save daybook entry error:', mongoErr);
-    }
-
-    // 2. Local File Repository & Sync Queue
-    const entries = this.getDayBook();
-    entries.unshift(newEntry);
-    googleDriveRepository.writeJson(FILE_NAME, entries);
-    syncQueueService.enqueue('daybook', newEntry.id, 'CREATE', newEntry);
-
-    return newEntry;
-  }
-
-  public addEntry(entryData: Omit<DayBookEntry, 'id' | 'cashBal' | 'bankBal'>): DayBookEntry {
-    const entries = this.getDayBook();
+  public async addEntryAsync(entryData: Omit<DayBookEntry, 'id' | 'cashBal' | 'bankBal'>, actor?: any): Promise<DayBookEntry> {
     const currentBal = this.getBalances();
 
     const cashIn = new Decimal(entryData.cashIn || 0);
@@ -125,9 +42,10 @@ export class AccountingService {
     const newCashBal = new Decimal(currentBal.cashInHand).plus(cashIn).minus(cashOut).toNumber();
     const newBankBal = new Decimal(currentBal.cashAtBank).plus(bankIn).minus(bankOut).toNumber();
 
+    const id = `db-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const newEntry: DayBookEntry = {
       ...entryData,
-      id: `db-${Date.now()}`,
+      id,
       time: entryData.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       cashIn: cashIn.toNumber(),
       cashOut: cashOut.toNumber(),
@@ -138,46 +56,53 @@ export class AccountingService {
       date: entryData.date || new Date().toLocaleDateString('en-GB')
     };
 
-    if (isMongoConnected()) {
-      DayBookModel.create(newEntry).catch(() => {});
-    }
+    await telegramRepository.createRecord('DAYBOOK', id, newEntry, actor);
+    return newEntry;
+  }
 
-    entries.unshift(newEntry);
-    googleDriveRepository.writeJson(FILE_NAME, entries);
-    syncQueueService.enqueue('daybook', newEntry.id, 'CREATE', newEntry);
+  public addEntry(entryData: Omit<DayBookEntry, 'id' | 'cashBal' | 'bankBal'>): DayBookEntry {
+    const currentBal = this.getBalances();
+
+    const cashIn = new Decimal(entryData.cashIn || 0);
+    const cashOut = new Decimal(entryData.cashOut || 0);
+    const bankIn = new Decimal(entryData.bankIn || 0);
+    const bankOut = new Decimal(entryData.bankOut || 0);
+
+    const newCashBal = new Decimal(currentBal.cashInHand).plus(cashIn).minus(cashOut).toNumber();
+    const newBankBal = new Decimal(currentBal.cashAtBank).plus(bankIn).minus(bankOut).toNumber();
+
+    const id = `db-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const newEntry: DayBookEntry = {
+      ...entryData,
+      id,
+      time: entryData.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      cashIn: cashIn.toNumber(),
+      cashOut: cashOut.toNumber(),
+      bankIn: bankIn.toNumber(),
+      bankOut: bankOut.toNumber(),
+      cashBal: newCashBal,
+      bankBal: newBankBal,
+      date: entryData.date || new Date().toLocaleDateString('en-GB')
+    };
+
+    telegramRepository.createRecord('DAYBOOK', id, newEntry).catch(() => {});
     return newEntry;
   }
 
   public async getTrialBalance(): Promise<any[]> {
-    const balances = await this.getBalancesAsync();
-    let goldLoanPortfolio = 0;
-    let fdLiability = 0;
+    const balances = this.getBalances();
+    const loans = telegramRepository.getRecords<Loan>('LOAN');
+    const fds = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
 
-    if (isMongoConnected()) {
-      const activeLoans = await LoanModel.find({
-        isDeleted: { $ne: true },
-        status: { $in: ['ACTIVE', 'OVERDUE'] }
-      }).lean();
-      goldLoanPortfolio = activeLoans.reduce((sum: number, l: any) => sum + (l.outstandingPrincipal || 0), 0);
+    const goldLoanPortfolio = loans
+      .filter((l) => !l.isDeleted && (l.status === 'ACTIVE' || l.status === 'OVERDUE'))
+      .reduce((sum, l) => sum + (l.outstandingPrincipal || 0), 0);
 
-      const activeFds = await FixedDepositModel.find({
-        isDeleted: { $ne: true },
-        status: 'ACTIVE'
-      }).lean();
-      fdLiability = activeFds.reduce((sum: number, f: any) => sum + (f.principal || 0), 0);
-    } else {
-      const loans = googleDriveRepository.readJson<Loan[]>('loans.json', []);
-      const fds = googleDriveRepository.readJson<FixedDeposit[]>('fixed_deposits.json', []);
-      goldLoanPortfolio = loans
-        .filter((l) => l.status === 'ACTIVE' || l.status === 'OVERDUE')
-        .reduce((sum, l) => sum + (l.outstandingPrincipal || 0), 0);
-      fdLiability = fds
-        .filter((f) => f.status === 'ACTIVE')
-        .reduce((sum, f) => sum + (f.principal || 0), 0);
-    }
+    const fdLiability = fds
+      .filter((f) => !f.isDeleted && f.status === 'ACTIVE')
+      .reduce((sum, f) => sum + (f.principal || 0), 0);
 
-    const entries = await this.getDayBookAsync();
-
+    const entries = this.getDayBook();
     const interestIncome = entries
       .filter((e) => e.accountHead === 'Interest Income' || e.accountHead === 'Cash Collections')
       .reduce((sum, e) => sum + (e.cashIn || 0) + (e.bankIn || 0), 0);
@@ -197,7 +122,7 @@ export class AccountingService {
   }
 
   public async getProfitAndLoss(): Promise<any> {
-    const entries = await this.getDayBookAsync();
+    const entries = this.getDayBook();
     const interestIncome = entries
       .filter((e) => e.accountHead === 'Interest Income' || e.accountHead === 'Cash Collections')
       .reduce((sum, e) => sum + (e.cashIn || 0) + (e.bankIn || 0), 0);
@@ -234,32 +159,17 @@ export class AccountingService {
   }
 
   public async getBalanceSheet(): Promise<any> {
-    const balances = await this.getBalancesAsync();
-    let goldLoanPortfolio = 0;
-    let fdLiability = 0;
+    const balances = this.getBalances();
+    const loans = telegramRepository.getRecords<Loan>('LOAN');
+    const fds = telegramRepository.getRecords<FixedDeposit>('FIXED_DEPOSIT');
 
-    if (isMongoConnected()) {
-      const activeLoans = await LoanModel.find({
-        isDeleted: { $ne: true },
-        status: { $in: ['ACTIVE', 'OVERDUE'] }
-      }).lean();
-      goldLoanPortfolio = activeLoans.reduce((sum: number, l: any) => sum + (l.outstandingPrincipal || 0), 0);
+    const goldLoanPortfolio = loans
+      .filter((l) => !l.isDeleted && (l.status === 'ACTIVE' || l.status === 'OVERDUE'))
+      .reduce((sum, l) => sum + (l.outstandingPrincipal || 0), 0);
 
-      const activeFds = await FixedDepositModel.find({
-        isDeleted: { $ne: true },
-        status: 'ACTIVE'
-      }).lean();
-      fdLiability = activeFds.reduce((sum: number, f: any) => sum + (f.principal || 0), 0);
-    } else {
-      const loans = googleDriveRepository.readJson<Loan[]>('loans.json', []);
-      const fds = googleDriveRepository.readJson<FixedDeposit[]>('fixed_deposits.json', []);
-      goldLoanPortfolio = loans
-        .filter((l) => l.status === 'ACTIVE' || l.status === 'OVERDUE')
-        .reduce((sum, l) => sum + (l.outstandingPrincipal || 0), 0);
-      fdLiability = fds
-        .filter((f) => f.status === 'ACTIVE')
-        .reduce((sum, f) => sum + (f.principal || 0), 0);
-    }
+    const fdLiability = fds
+      .filter((f) => !f.isDeleted && f.status === 'ACTIVE')
+      .reduce((sum, f) => sum + (f.principal || 0), 0);
 
     const totalAssets = Math.max(0, balances.cashInHand) + Math.max(0, balances.cashAtBank) + goldLoanPortfolio;
     const totalLiabilities = fdLiability;
@@ -284,3 +194,4 @@ export class AccountingService {
 }
 
 export const accountingService = new AccountingService();
+export default accountingService;

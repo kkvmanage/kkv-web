@@ -75,7 +75,7 @@ router.put('/whatsapp-templates', updateWhatsAppTemplates);
 router.post('/unlock', unlockMasterControl);
 router.post('/change-master-password', changeMasterPassword);
 
-// Database & MongoDB Management
+// Database & Storage Management
 router.get('/database/status', getDatabaseStatus);
 router.post('/database/migrate-to-atlas', migrateToAtlas);
 

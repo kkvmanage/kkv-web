@@ -1,42 +1,50 @@
-import mongoose, { Schema, Document } from 'mongoose';
 import { DayBookEntry } from '../types/index.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IDayBookDocument extends Document, Omit<DayBookEntry, 'id'> {
+export interface IDayBookDocument extends Omit<DayBookEntry, 'id'> {
   id: string;
 }
 
-const DayBookSchema = new Schema(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    time: { type: String, required: true },
-    billNo: { type: String, required: true, index: true },
-    particulars: { type: String, required: true },
-    accountHead: { type: String, required: true },
-    mode: {
-      type: String,
-      enum: ['Cash', 'Bank', 'UPI'],
-      default: 'Cash'
-    },
-    cashIn: { type: Number, default: 0 },
-    cashOut: { type: Number, default: 0 },
-    bankIn: { type: Number, default: 0 },
-    bankOut: { type: Number, default: 0 },
-    cashBal: { type: Number, default: 0 },
-    bankBal: { type: Number, default: 0 },
-    tdsAmount: { type: Number, default: 0 },
-    customerName: { type: String },
-    loanNo: { type: String, index: true },
-    date: { type: String, required: true, index: true },
-    branchId: { type: String, index: true },
-    createdAt: { type: String, default: () => new Date().toISOString() }
-  },
-  {
-    timestamps: true,
-    collection: 'day_book_entries'
+export class DayBookModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<DayBookEntry>('DAYBOOK', { includeDeleted });
+
+    if (query.date) {
+      records = records.filter((r) => r.date === query.date);
+    }
+    if (query.branchId) {
+      records = records.filter((r) => r.branchId === query.branchId);
+    }
+
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
   }
-);
 
-DayBookSchema.index({ date: 1, createdAt: -1 });
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('DAYBOOK', undefined, includeDeleted);
+  }
 
-export const DayBookModel =
-  mongoose.models.DayBook || mongoose.model<IDayBookDocument>('DayBook', DayBookSchema);
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['DAYBOOK']);
+    return { deletedCount: cleared };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.id || `DB-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const res = await telegramRepository.createRecord('DAYBOOK', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
+
+export default DayBookModel;

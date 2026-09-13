@@ -1,99 +1,73 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IStaffAudit extends Document {
-  staffId: string;
+export interface IStaffAudit {
+  _id?: string;
+  id?: string;
+  staffId?: string;
   staffUid?: string;
   staffEmail?: string;
   action: string;
   performedBy: string;
   actorEmail?: string;
   description: string;
-  details?: string;
-  metadata?: any;
+  details?: string | any;
   ipAddress?: string;
   userAgent?: string;
-  timestamp: Date;
+  timestamp: Date | string;
+  createdAt?: Date | string;
 }
 
-const StaffAuditSchema = new Schema<IStaffAudit>(
-  {
-    staffId: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    staffUid: {
-      type: String,
-      trim: true
-    },
-    staffEmail: {
-      type: String,
-      lowercase: true,
-      trim: true
-    },
-    action: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    performedBy: {
-      type: String,
-      required: true,
-      default: 'SYSTEM',
-      trim: true
-    },
-    actorEmail: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      default: ''
-    },
-    description: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    details: {
-      type: String,
-      trim: true,
-      default: ''
-    },
-    metadata: {
-      type: Schema.Types.Mixed,
-      default: () => ({})
-    },
-    ipAddress: {
-      type: String,
-      default: ''
-    },
-    userAgent: {
-      type: String,
-      default: ''
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-      index: true
-    }
-  },
-  {
-    timestamps: false,
-    toJSON: {
-      virtuals: true,
-      transform: function (doc, ret: any) {
-        ret.id = ret._id?.toString();
-        return ret;
-      }
-    }
+export class StaffAuditModel {
+  public static async create(data: Partial<IStaffAudit>): Promise<IStaffAudit> {
+    const id = `AUDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const auditRecord: IStaffAudit = {
+      _id: id,
+      id,
+      staffId: data.staffId || 'SYSTEM',
+      staffUid: data.staffUid || data.staffId || 'SYSTEM',
+      staffEmail: data.staffEmail || '',
+      action: data.action || 'GENERAL_AUDIT',
+      performedBy: data.performedBy || 'SYSTEM',
+      actorEmail: data.actorEmail || '',
+      description: data.description || '',
+      details: data.details || '',
+      ipAddress: data.ipAddress || '',
+      userAgent: data.userAgent || '',
+      timestamp: data.timestamp || new Date().toISOString(),
+      createdAt: data.createdAt || new Date().toISOString()
+    };
+
+    await telegramRepository.createRecord('AUDIT', id, auditRecord, {
+      uid: auditRecord.performedBy,
+      email: auditRecord.actorEmail
+    });
+
+    return auditRecord;
   }
-);
 
-StaffAuditSchema.index({ timestamp: -1 });
-StaffAuditSchema.index({ staffId: 1, timestamp: -1 });
+  public static find(_query: any = {}): any {
+    const records = telegramRepository.getRecords<IStaffAudit>('AUDIT');
+    const sorted = [...records].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
 
-export const StaffAuditModel =
-  mongoose.models.StaffAudit || mongoose.model<IStaffAudit>('StaffAudit', StaffAuditSchema);
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      limit: (n: number) => ({
+        lean: async () => sorted.slice(0, n),
+        then: (resolve: any, reject?: any) => Promise.resolve(sorted.slice(0, n)).then(resolve, reject)
+      }),
+      lean: async () => sorted,
+      then: (resolve: any, reject?: any) => Promise.resolve(sorted).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async deleteMany(_query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['AUDIT']);
+    return { deletedCount: cleared };
+  }
+}
 
 export default StaffAuditModel;

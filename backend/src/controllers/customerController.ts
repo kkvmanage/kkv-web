@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { CustomerModel, ICustomer, IKYCDocument, ICustomerPhoto } from '../models/Customer.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { googleDriveService } from '../services/googleDrive.service.js';
 import { generateCustomerId } from '../utils/customerIdGenerator.js';
-import { ensureMongoConnected, isMongoConnected } from '../config/database.js';
+import { isStorageConnected } from '../config/database.js';
 
 export interface CreateCustomerRequest {
   fullName: string;
@@ -134,7 +133,7 @@ async function uploadAndRecordCustomerFile(options: {
     driveFileId = `local_${fileId}`;
   }
 
-  // Persist FileAttachment record in MongoDB
+  // Persist FileAttachment record in Telegram Storage
   try {
     await FileAttachmentModel.create({
       fileId,
@@ -167,20 +166,9 @@ async function uploadAndRecordCustomerFile(options: {
 
 /**
  * POST /api/customers
- * Permanent MongoDB creation with Google Drive attachments.
  */
 export const createCustomer = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'Database is currently unavailable. Permanent MongoDB connection is required.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
 
     const body = req.body || {};
     const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
@@ -228,7 +216,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Check duplicate phone number in MongoDB
+    // Check duplicate phone number in storage
     const existingInDb = await CustomerModel.findOne({
       isDeleted: { $ne: true },
       $or: [{ phoneNumber }, { phoneNormalized: phoneNumber }]
@@ -252,7 +240,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       url: '',
       mimeType: 'image/jpeg',
       fileSize: 0,
-      uploadedAt: new Date(),
+      uploadedAt: new Date().toISOString(),
       publicId: ''
     };
 
@@ -272,7 +260,7 @@ export const createCustomer = async (req: Request, res: Response) => {
         url: uploaded.url,
         mimeType: photoFile.mimetype || 'image/jpeg',
         fileSize: uploaded.fileSize,
-        uploadedAt: new Date(),
+        uploadedAt: new Date().toISOString(),
         publicId: uploaded.driveFileId
       };
     } else if (body.customerPhoto && typeof body.customerPhoto === 'string') {
@@ -292,7 +280,7 @@ export const createCustomer = async (req: Request, res: Response) => {
           url: uploaded.url,
           mimeType: parsed.mimeType,
           fileSize: uploaded.fileSize,
-          uploadedAt: new Date(),
+          uploadedAt: new Date().toISOString(),
           publicId: uploaded.driveFileId
         };
       } else {
@@ -302,7 +290,7 @@ export const createCustomer = async (req: Request, res: Response) => {
           url: body.customerPhoto,
           mimeType: 'image/jpeg',
           fileSize: 0,
-          uploadedAt: new Date(),
+          uploadedAt: new Date().toISOString(),
           publicId: `photo_${customerId}_${Date.now()}`
         };
       }
@@ -345,7 +333,7 @@ export const createCustomer = async (req: Request, res: Response) => {
         url: uploaded.url,
         mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
         fileSize: uploaded.fileSize,
-        uploadedAt: new Date(),
+        uploadedAt: new Date().toISOString(),
         publicId: uploaded.driveFileId,
         resourceType
       });
@@ -413,7 +401,7 @@ export const createCustomer = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Customer created successfully and saved permanently in MongoDB.',
+      message: 'Customer created successfully.',
       data: savedCustomer
     });
   } catch (error: any) {
@@ -430,17 +418,6 @@ export const createCustomer = async (req: Request, res: Response) => {
  */
 export const getCustomers = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'MongoDB is disconnected.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
-
     const includeDeleted = req.query.includeDeleted === 'true';
     const filter = includeDeleted ? {} : { isDeleted: { $ne: true } };
 
@@ -459,7 +436,7 @@ export const getCustomers = async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: 'Customers retrieved successfully from MongoDB.',
+      message: 'Customers retrieved successfully.',
       data: mapped,
       count: mapped.length,
       timestamp: new Date().toISOString()
@@ -468,7 +445,7 @@ export const getCustomers = async (req: Request, res: Response) => {
     console.error('[CustomerController] getCustomers error:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to retrieve customers from MongoDB.'
+      message: error.message || 'Failed to retrieve customers.'
     });
   }
 };
@@ -478,31 +455,18 @@ export const getCustomers = async (req: Request, res: Response) => {
  */
 export const getCustomerById = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'MongoDB is disconnected.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
-
     const targetId = req.params.id;
-    const isObjectId = mongoose.isValidObjectId(targetId);
-
     const customer = await CustomerModel.findOne({
       $or: [
         { customerId: targetId },
-        ...(isObjectId ? [{ _id: targetId }] : [])
+        { id: targetId }
       ]
-    }).lean();
+    });
 
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message: `Customer with ID "${targetId}" not found in MongoDB.`,
+        message: `Customer with ID "${targetId}" not found.`,
         error: { code: 'CUSTOMER_NOT_FOUND' }
       });
     }
@@ -535,17 +499,6 @@ export const getCustomerById = async (req: Request, res: Response) => {
  */
 export const searchCustomers = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'MongoDB is disconnected.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
-
     const query = ((req.query.query || req.query.q) as string || '').trim();
     if (!query) {
       return getCustomers(req, res);
@@ -596,26 +549,14 @@ export const searchCustomers = async (req: Request, res: Response) => {
  */
 export const updateCustomer = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'MongoDB is disconnected.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
-
     const targetId = req.params.id;
-    const isObjectId = mongoose.isValidObjectId(targetId);
     const body = req.body || {};
     const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
 
     const existing = await CustomerModel.findOne({
       $or: [
         { customerId: targetId },
-        ...(isObjectId ? [{ _id: targetId }] : [])
+        { id: targetId }
       ]
     });
 
@@ -764,7 +705,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
           url: uploaded.url,
           mimeType: file.mimetype || (isPdf ? 'application/pdf' : 'image/jpeg'),
           fileSize: uploaded.fileSize,
-          uploadedAt: new Date(),
+          uploadedAt: new Date().toISOString(),
           publicId: uploaded.driveFileId,
           resourceType
         });
@@ -778,7 +719,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      message: 'Customer updated successfully in MongoDB.',
+      message: 'Customer updated successfully.',
       data: updatedDoc
     });
   } catch (error: any) {
@@ -795,24 +736,13 @@ export const updateCustomer = async (req: Request, res: Response) => {
  */
 export const deleteCustomer = async (req: Request, res: Response) => {
   try {
-    if (!isMongoConnected()) {
-      await ensureMongoConnected();
-      if (!isMongoConnected()) {
-        return res.status(503).json({
-          success: false,
-          message: 'MongoDB is disconnected.',
-          error: { code: 'DATABASE_DISCONNECTED' }
-        });
-      }
-    }
 
     const targetId = req.params.id;
-    const isObjectId = mongoose.isValidObjectId(targetId);
 
     const customer = await CustomerModel.findOne({
       $or: [
         { customerId: targetId },
-        ...(isObjectId ? [{ _id: targetId }] : [])
+        { id: targetId }
       ]
     });
 
@@ -826,9 +756,9 @@ export const deleteCustomer = async (req: Request, res: Response) => {
 
     // Soft delete
     customer.isDeleted = true;
-    customer.deletedAt = new Date();
+    customer.deletedAt = new Date().toISOString();
     customer.deletedBy = (req as any).user?.email || (req as any).user?.id || 'ADMIN';
-    await customer.save();
+    await CustomerModel.findOneAndUpdate({ id: targetId }, customer);
 
     return res.json({
       success: true,
@@ -846,13 +776,12 @@ export const deleteCustomer = async (req: Request, res: Response) => {
 export const restoreCustomer = async (req: Request, res: Response) => {
   try {
     const targetId = req.params.id;
-    const isObjectId = mongoose.isValidObjectId(targetId);
 
     const customer = await CustomerModel.findOneAndUpdate(
       {
         $or: [
           { customerId: targetId },
-          ...(isObjectId ? [{ _id: targetId }] : [])
+          { id: targetId }
         ]
       },
       { isDeleted: false, deletedAt: null, deletedBy: null },
@@ -883,12 +812,11 @@ export const restoreCustomer = async (req: Request, res: Response) => {
 export const deletePermanentlyCustomer = async (req: Request, res: Response) => {
   try {
     const targetId = req.params.id;
-    const isObjectId = mongoose.isValidObjectId(targetId);
 
     const result = await CustomerModel.deleteOne({
       $or: [
         { customerId: targetId },
-        ...(isObjectId ? [{ _id: targetId }] : [])
+        { id: targetId }
       ]
     });
 

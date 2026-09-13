@@ -23,7 +23,6 @@ import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
 import { FDRenewalModel } from '../models/FDRenewal.js';
 import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
-import { getFinanceDb } from '../config/database.js';
 import { googleDriveService } from './googleDrive.service.js';
 import { env } from '../config/env.js';
 import {
@@ -480,7 +479,7 @@ class SystemRestoreService {
       rentalRepo.writeJson('expenses.json', rentalExpenses);
       rentalDayBookRepo.writeJson('rental_daybook.json', rentalDayBook);
 
-      // 4. Restore MongoDB Collections across all operational Finance and Rental domains
+      // 4. Restore Collections across all operational Finance and Rental domains
       try {
         await CustomerModel.deleteMany({});
         if (customers.length > 0) {
@@ -489,85 +488,65 @@ class SystemRestoreService {
             customerId: c.customerId || c.id,
             _id: c._id || undefined
           }));
-          await CustomerModel.insertMany(docsToInsert, { ordered: false });
+          await CustomerModel.insertMany(docsToInsert);
         }
 
         await LoanModel.deleteMany({});
         if (loans.length > 0) {
-          await LoanModel.insertMany(loans.map((l: any) => ({ ...l, id: l.id || l.loanNo, _id: l._id || undefined })), { ordered: false });
+          await LoanModel.insertMany(loans.map((l: any) => ({ ...l, id: l.id || l.loanNo, _id: l._id || undefined })));
         }
 
         await ReceiptModel.deleteMany({});
         if (receipts.length > 0) {
-          await ReceiptModel.insertMany(receipts.map((r: any) => ({ ...r, id: r.id || `RCPT-${r.receiptNo}`, _id: r._id || undefined })), { ordered: false });
+          await ReceiptModel.insertMany(receipts.map((r: any) => ({ ...r, id: r.id || `RCPT-${r.receiptNo}`, _id: r._id || undefined })));
         }
 
         await FixedDepositModel.deleteMany({});
         if (fixedDeposits.length > 0) {
-          await FixedDepositModel.insertMany(fixedDeposits.map((f: any) => ({ ...f, id: f.id || f.fdNo, _id: f._id || undefined })), { ordered: false });
+          await FixedDepositModel.insertMany(fixedDeposits.map((f: any) => ({ ...f, id: f.id || f.fdNo, _id: f._id || undefined })));
         }
 
         await FDCustomerModel.deleteMany({});
         if (fdCustomers.length > 0) {
-          await FDCustomerModel.insertMany(fdCustomers.map((fc: any) => ({ ...fc, id: fc.id || `fdc-${Date.now()}`, _id: fc._id || undefined })), { ordered: false });
+          await FDCustomerModel.insertMany(fdCustomers.map((fc: any) => ({ ...fc, id: fc.id || `fdc-${Date.now()}`, _id: fc._id || undefined })));
         }
 
         await FDInterestPayoutModel.deleteMany({});
         if (fdInterestPayouts.length > 0) {
-          await FDInterestPayoutModel.insertMany(fdInterestPayouts, { ordered: false });
+          await FDInterestPayoutModel.insertMany(fdInterestPayouts);
         }
 
         await FDWithdrawalModel.deleteMany({});
         if (fdWithdrawals.length > 0) {
-          await FDWithdrawalModel.insertMany(fdWithdrawals, { ordered: false });
+          await FDWithdrawalModel.insertMany(fdWithdrawals);
         }
 
         await FDRenewalModel.deleteMany({});
         const fdRenewals = parsedBackup.fdRenewals || (parsedBackup.finance && parsedBackup.finance.fdRenewals) || [];
         if (fdRenewals.length > 0) {
-          await FDRenewalModel.insertMany(fdRenewals, { ordered: false });
+          await FDRenewalModel.insertMany(fdRenewals);
         }
 
         await DayBookModel.deleteMany({});
         if (dayBookEntries.length > 0) {
-          await DayBookModel.insertMany(dayBookEntries, { ordered: false });
+          await DayBookModel.insertMany(dayBookEntries);
         }
 
         await FileAttachmentModel.deleteMany({});
         if (attachments && attachments.length > 0) {
-          await FileAttachmentModel.insertMany(attachments, { ordered: false });
+          await FileAttachmentModel.insertMany(attachments);
         }
 
-        const db = await getFinanceDb();
-        if (db) {
-          await db.collection('rental_complexes').deleteMany({});
-          if (rentalComplexes.length > 0) {
-            await db.collection('rental_complexes').insertMany(rentalComplexes as any);
-          }
+        // Restore rental data to repository
+        rentalRepo.setComplexes(rentalComplexes);
+        rentalRepo.setShops(rentalShops);
+        rentalRepo.setPayments(rentPayments);
+        rentalRepo.setExpenses(rentalExpenses);
+        rentalDayBookRepo.setEntries(rentalDayBook);
 
-          await db.collection('rental_shops').deleteMany({});
-          if (rentalShops.length > 0) {
-            await db.collection('rental_shops').insertMany(rentalShops as any);
-          }
-
-          await db.collection('rental_payments').deleteMany({});
-          if (rentPayments.length > 0) {
-            await db.collection('rental_payments').insertMany(rentPayments as any);
-          }
-
-          await db.collection('rental_expenses').deleteMany({});
-          if (rentalExpenses.length > 0) {
-            await db.collection('rental_expenses').insertMany(rentalExpenses as any);
-          }
-
-          await db.collection('rental_daybook').deleteMany({});
-          if (rentalDayBook.length > 0) {
-            await db.collection('rental_daybook').insertMany(rentalDayBook as any);
-          }
-        }
-        console.log(`[SystemRestoreService] Restored all collections across Finance & Rental to MongoDB.`);
+        console.log(`[SystemRestoreService] Restored all collections across Finance & Rental to Telegram persistent storage.`);
       } catch (mErr) {
-        console.warn('[SystemRestoreService] MongoDB restore collections warning:', (mErr as any)?.message || mErr);
+        console.warn('[SystemRestoreService] Storage restore collections warning:', (mErr as any)?.message || mErr);
       }
 
       // 5. Restore Sequence Counters (Finance & Rental)

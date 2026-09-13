@@ -1,30 +1,18 @@
 import fs from 'fs';
 import path from 'path';
-import mongoose from 'mongoose';
-import { connectDB, getFinanceDb } from '../config/database.js';
-import { getStorageBaseDir, getConfigDirectory, getStorageSubdirectory } from '../config/storage.js';
+import { getStorageSubdirectory } from '../config/storage.js';
 import { localFileRepository } from '../repositories/localFile.repository.js';
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
-import { CustomerModel } from '../models/Customer.js';
-import { LoanModel } from '../models/Loan.js';
-import { ReceiptModel } from '../models/Receipt.js';
-import { FixedDepositModel } from '../models/FixedDeposit.js';
-import { FDCustomerModel } from '../models/FDCustomer.js';
-import { FDInterestPayoutModel } from '../models/FDInterestPayout.js';
-import { FDWithdrawalModel } from '../models/FDWithdrawal.js';
-import { FDRenewalModel } from '../models/FDRenewal.js';
-import { DayBookModel } from '../models/DayBook.js';
-import { FileAttachmentModel } from '../models/FileAttachment.js';
-import { UserModel } from '../models/User.js';
-import { StaffAuditModel } from '../models/StaffAudit.js';
 import { seedUsers } from './seedAdmin.js';
 import { backupPackageService } from '../services/backupPackage.service.js';
 import { env } from '../config/env.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
+import { localAuthService } from '../services/localAuth.service.js';
 
 export interface ResetReport {
   environment: string;
-  database: string;
+  storage: string;
   timestamp: string;
   backupId?: string;
   backupFileName?: string;
@@ -47,17 +35,14 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     throw new Error('Reset script cannot be run in production mode without explicit ALLOW_PRODUCTION_RESET flag.');
   }
 
-  // 2. Connect to Database
-  console.log('[1/8] Establishing database connection...');
-  await connectDB();
-  const db = await getFinanceDb();
-  const dbName = db ? db.databaseName : 'Local/Embedded';
-  console.log(`✓ Connected to database: ${dbName} (Environment: ${env.NODE_ENV})`);
+  console.log('[1/7] Initializing Telegram storage manager...');
+  await telegramRepository.initialize();
+  console.log(`✓ Telegram storage ready (Environment: ${env.NODE_ENV})`);
 
-  // 3. Optional Pre-Reset Safety Backup
+  // 2. Pre-Reset Safety Backup
   let backupRecord: any = null;
   try {
-    console.log('\n[2/8] Generating pre-reset safety backup package...');
+    console.log('\n[2/7] Generating pre-reset safety backup package...');
     backupRecord = await backupPackageService.createFullBackupPackage(
       { userId: 'DEV_RESET_SCRIPT', name: 'Safe Initial Reset', role: 'ADMIN' },
       { backupType: 'PRE_WIPE_BACKUP' }
@@ -69,8 +54,8 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     console.warn('Notice: Pre-reset backup creation:', bErr?.message || bErr);
   }
 
-  // 4. Pre-Cleanup Counts Gathering
-  console.log('\n[3/8] Inspecting existing operational data...');
+  // 3. Pre-Cleanup Counts Gathering
+  console.log('\n[3/7] Inspecting existing operational data...');
   const financeCounts: Record<string, number> = {};
   const rentalCounts: Record<string, number> = {};
 
@@ -108,8 +93,8 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
   console.log('Rental operational records to clear:');
   Object.entries(rentalCounts).forEach(([k, v]) => console.log(`  - ${k}: ${v}`));
 
-  // 5. Clear Finance Local Storage
-  console.log('\n[4/8] Clearing Finance operational records in local storage...');
+  // 4. Clear Local File Storage
+  console.log('\n[4/7] Clearing operational records in local cache...');
   const dbDir = getStorageSubdirectory('database');
   for (const f of operationalFinanceFiles) {
     localFileRepository.writeJson(f, []);
@@ -121,8 +106,6 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     }
   }
 
-  // 6. Clear Rental Local Storage & Temp Files
-  console.log('[5/8] Clearing Rental operational records in local storage...');
   const rentalDir = getStorageSubdirectory('rental');
   rentalRepository.writeJson('complexes.json', []);
   rentalRepository.writeJson('shops.json', []);
@@ -145,53 +128,17 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     console.warn('Notice cleaning rental temp files:', tmpErr);
   }
 
-  // 7. Clear MongoDB Operational Collections
-  console.log('[6/8] Clearing MongoDB operational collections...');
+  // 5. Reset Telegram Storage Records
+  console.log('[5/7] Clearing Telegram persistent operational records...');
   try {
-    await Promise.all([
-      CustomerModel.deleteMany({}),
-      LoanModel.deleteMany({}),
-      ReceiptModel.deleteMany({}),
-      FixedDepositModel.deleteMany({}),
-      FDCustomerModel.deleteMany({}),
-      FDInterestPayoutModel.deleteMany({}),
-      FDWithdrawalModel.deleteMany({}),
-      FDRenewalModel.deleteMany({}),
-      DayBookModel.deleteMany({}),
-      FileAttachmentModel.deleteMany({}),
-      StaffAuditModel.deleteMany({})
-    ]);
-
-    if (db) {
-      const mongoOperationalCollections = [
-        'reminders',
-        'notifications',
-        'idempotency_keys',
-        'rental_complexes',
-        'rental_shops',
-        'rental_payments',
-        'rental_expenses',
-        'rental_daybook',
-        'rental_audit_logs',
-        'rental_sync_queue',
-        'staff_audits',
-        'staffaudits',
-        'audit_logs'
-      ];
-
-      for (const col of mongoOperationalCollections) {
-        try {
-          await db.collection(col).deleteMany({});
-        } catch (e) {}
-      }
-    }
-    console.log('✓ All MongoDB business collections cleared.');
+    await telegramRepository.resetApplicationData();
+    console.log('✓ Telegram application storage reset.');
   } catch (mErr: any) {
-    console.warn('Notice clearing MongoDB collections:', mErr?.message || mErr);
+    console.warn('Notice resetting Telegram storage:', mErr?.message || mErr);
   }
 
-  // 8. Reset ID Sequences and Numbering Counters to 0
-  console.log('[7/8] Resetting ID counters and sequences to 0...');
+  // 6. Reset ID Sequences and Numbering Counters to 0
+  console.log('[6/7] Resetting ID counters and sequences to 0...');
   localFileRepository.writeJson('counters.json', {
     customerId: 0,
     loanSequence: 0,
@@ -209,44 +156,31 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
     sync: 0
   });
 
-  if (db) {
-    try {
-      await db.collection('counters').deleteMany({});
-      await db.collection('counters').insertMany([
-        { _id: 'customerId' as any, seq: 0 },
-        { _id: 'loanSequence' as any, seq: 0 },
-        { _id: 'loanNo' as any, seq: 0 },
-        { _id: 'receiptNo' as any, seq: 0 },
-        { _id: 'fdNo' as any, seq: 0 }
-      ]);
-    } catch (e) {}
-  }
-
   localFileRepository.clearCache();
   rentalRepository.clearCache();
   rentalDayBookRepository.clearCache();
 
-  // 9. Re-verify Essential Authentication & Configuration
-  console.log('[8/8] Verifying essential authentication users & configurations...');
+  // 7. Re-verify Essential Authentication & Configuration
+  console.log('[7/7] Verifying essential authentication users & configurations...');
   await seedUsers();
 
-  const authUsers = await UserModel.find({}).select('email role staffId displayName status');
+  const authUsers = localAuthService.listUsers();
   const preservedUsersList = authUsers.map((u) => ({
     email: u.email,
     role: u.role,
     staffId: u.staffId
   }));
 
-  // 10. Post-Reset Verification Check
-  const finalCusts = localFileRepository.readJson<any[]>('customers.json', []).length;
-  const finalLoans = localFileRepository.readJson<any[]>('loans.json', []).length;
-  const finalRcpts = localFileRepository.readJson<any[]>('receipts.json', []).length;
-  const finalFds = localFileRepository.readJson<any[]>('fixed_deposits.json', []).length;
-  const finalComplexes = rentalRepository.getComplexes().length;
-  const finalShops = rentalRepository.getShops().length;
-  const finalPayments = rentalRepository.getPayments().length;
-  const finalExpenses = rentalRepository.getExpenses().length;
-  const finalDayBook = rentalDayBookRepository.readJson('rental_daybook.json', []).length;
+  // Post-Reset Verification Check
+  const finalCusts = telegramRepository.getRecords('CUSTOMER').length;
+  const finalLoans = telegramRepository.getRecords('LOAN').length;
+  const finalRcpts = telegramRepository.getRecords('RECEIPT').length;
+  const finalFds = telegramRepository.getRecords('FIXED_DEPOSIT').length;
+  const finalComplexes = telegramRepository.getRecords('RENTAL_COMPLEX').length;
+  const finalShops = telegramRepository.getRecords('RENTAL_SHOP').length;
+  const finalPayments = telegramRepository.getRecords('RENTAL_PAYMENT').length;
+  const finalExpenses = telegramRepository.getRecords('RENTAL_EXPENSE').length;
+  const finalDayBook = telegramRepository.getRecords('RENTAL_DAYBOOK').length;
 
   const finalCounts: Record<string, number> = {
     customers: finalCusts,
@@ -271,7 +205,7 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
 
   return {
     environment: env.NODE_ENV,
-    database: dbName,
+    storage: 'Telegram Remote Store',
     timestamp: new Date().toISOString(),
     backupId: backupRecord?.backupId,
     backupFileName: backupRecord?.fileName,
@@ -282,8 +216,8 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
       'settings.json (Master settings & interest rates)',
       'telegram_settings.json (Telegram integration)',
       'whatsapp_templates.json (WhatsApp notification templates)',
-      'User credentials, password hashes & RBAC permissions',
-      'Database schemas and indexes'
+      'User credentials, password hashes & RBAC permissions in localAuth store',
+      'Telegram Record Envelope schemas and indexes'
     ],
     finalCounts,
     zeroStateVerified

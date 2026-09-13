@@ -1320,8 +1320,7 @@ export const Settings: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '14px 18px', borderRadius: '10px', color: '#10B981' }}>
                   <CheckCircle size={22} />
                   <div>
-                    <strong style={{ fontSize: '14px', display: 'block' }}>Staff Account Created Successfully!</strong>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Permanent login credentials have been saved securely in MongoDB.</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Permanent login credentials have been saved securely with encrypted local storage.</span>
                   </div>
                 </div>
 
@@ -1454,7 +1453,7 @@ export const Settings: React.FC = () => {
                     </div>
                   </div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', display: 'block' }}>
-                    🔒 Password is automatically encrypted using bcrypt (10 rounds) and stored securely in MongoDB.
+                    🔒 Password is automatically encrypted using bcrypt (10 rounds) and stored securely.
                   </span>
                 </div>
 

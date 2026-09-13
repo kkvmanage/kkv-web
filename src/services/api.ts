@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-// Supports Centralized MongoDB Atlas + Local Storage Vault + Custom JWT Auth & RBAC
+// Supports Telegram Bot API Remote Persistent Storage + Local Storage Vault + Custom JWT Auth & RBAC
 
 let customApiBaseUrl: string | null = null;
 
@@ -84,10 +84,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.warn('[API Auth] 401 Unauthorized received on request:', error.config?.url);
-    }
-    if (!error.response) {
-      console.warn('[API Error] Unable to connect to KKV Gold Finance backend. Make sure the backend is running on port 8080.');
+      console.warn('[API Auth] 401 Unauthorized: Session expired or invalid on request:', error.config?.url);
+    } else if (error.response?.status === 403) {
+      console.warn('[API Auth] 403 Forbidden - Access Denied on request:', error.config?.url);
+    } else if (error.response?.status === 404) {
+      console.warn('[API Route] 404 Endpoint Not Found:', error.config?.url);
+    } else if (error.response?.status >= 500) {
+      console.error('[API Server] 500 Server Error:', error.response?.data?.message || error.message);
+    } else if (!error.response) {
+      console.warn('[API Network] Unable to reach KKV Gold Finance backend. Make sure the backend is running on port 8080.');
     }
     return Promise.reject(error);
   }
@@ -112,14 +117,15 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T 
     });
     
     if (res.status === 401) {
-      console.warn(`[Auth 401] Unauthorized on ${endpoint}`);
+      console.warn(`[Auth 401] Unauthorized / Session Expired on ${endpoint}`);
       return null;
     }
 
     if (res.status === 403) {
-      console.warn(`[Auth 403] Access Denied on ${endpoint}`);
       const errorJson = await res.json().catch(() => null);
-      throw new Error(errorJson?.message || 'Access Denied: You do not have permission for this action.');
+      const msg = errorJson?.message || 'Access Denied: You do not have permission for this action.';
+      console.warn(`[Auth 403] Access Denied on ${endpoint}: ${msg}`);
+      throw new Error(msg);
     }
 
     if (res.status === 409) {
@@ -138,10 +144,16 @@ async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T 
     const json = await res.json();
     return json.data ?? json;
   } catch (err: any) {
-    if (err.message && (err.message.includes('Conflict:') || err.message.includes('Access Denied'))) {
+    const msg = err?.message || '';
+    if (
+      msg.includes('Conflict:') ||
+      msg.toLowerCase().includes('access denied') ||
+      msg.toLowerCase().includes('forbidden') ||
+      msg.toLowerCase().includes('unauthorized')
+    ) {
       throw err;
     }
-    console.warn(`[API Error] Unable to connect to backend at ${baseUrl}${endpoint}.`);
+    console.warn(`[API Network Error] Unable to connect to backend at ${baseUrl}${endpoint}:`, msg);
     return null;
   }
 }

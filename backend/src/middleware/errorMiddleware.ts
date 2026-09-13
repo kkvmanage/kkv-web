@@ -12,22 +12,31 @@ export const errorHandler = (err: AppError, req: Request, res: Response, next: N
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
 
-  // Handle Mongoose Validation Error
+  // Handle Validation Error
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
-      message: 'Validation failed on submitted customer data',
+      message: 'Validation failed on submitted data',
       errors: err.errors || err.message
     });
   }
 
-  // Handle Mongoose Duplicate Key Error
-  if ((err as any).code === 11000) {
-    const field = Object.keys((err as any).keyValue || {})[0] || 'field';
+  // Handle Duplicate Key / Conflict Error
+  if (err.code === 'DUPLICATE_RECORD' || (err as any).code === 11000) {
+    const field = Object.keys((err as any).keyValue || {})[0] || 'identifier';
     return res.status(409).json({
       success: false,
       message: `A record with this ${field} already exists.`,
-      error: 'DUPLICATE_KEY_ERROR'
+      error: 'DUPLICATE_RECORD'
+    });
+  }
+
+  // Handle Concurrency Conflict Error
+  if (err.code === 'CONCURRENCY_CONFLICT') {
+    return res.status(409).json({
+      success: false,
+      message: err.message || 'Record has been modified by another workstation. Please refresh.',
+      error: 'CONCURRENCY_CONFLICT'
     });
   }
 

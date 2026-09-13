@@ -80,21 +80,9 @@ app.use(
   })
 );
 
+// Express JSON Body Parser
 app.use(express.json({ limit: '10mb' }));
 
-// Database Auto-Connect Middleware (transparently reconnects if state was idle/disconnected)
-app.use(async (req: Request, res: Response, next: NextFunction) => {
-  if (req.path === '/health' || req.path === '/api/health' || req.path === '/') {
-    return next();
-  }
-  try {
-    const { ensureMongoConnected } = await import('./config/database.js');
-    await ensureMongoConnected();
-  } catch (err) {
-    // Handled by downstream controller or readyState check
-  }
-  next();
-});
 
 // Root Information Endpoint
 app.get('/', (req: Request, res: Response) => {

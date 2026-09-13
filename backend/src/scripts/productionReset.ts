@@ -1,13 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import mongoose from 'mongoose';
-import { connectDB, getFinanceDb } from '../config/database.js';
-import { getStorageBaseDir, getConfigDirectory, getStorageSubdirectory } from '../config/storage.js';
+import { getStorageSubdirectory } from '../config/storage.js';
 import { localFileRepository } from '../repositories/localFile.repository.js';
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { seedUsers } from './seedAdmin.js';
 import { backupPackageService } from '../services/backupPackage.service.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
 export interface ProductionResetResult {
   success: boolean;
@@ -25,13 +24,9 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   console.log('🚀 KKV GOLD FINANCE: INITIATING PRODUCTION DATABASE RESET');
   console.log('================================================================\n');
 
-  // 1. Ensure Database Connection
-  try {
-    await connectDB();
-    console.log('✓ Database connection established.');
-  } catch (err: any) {
-    console.warn('Notice: MongoDB connection attempt in reset:', err?.message || err);
-  }
+  // 1. Ensure Telegram Storage Readiness
+  await telegramRepository.initialize();
+  console.log('✓ Telegram storage readiness established.');
 
   // 2. Pre-Reset Safety Backup
   let backupRecord: any = null;
@@ -47,7 +42,6 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   }
 
   // 3. Count records before clearing
-  const configDir = getConfigDirectory();
   const rentalDir = getStorageSubdirectory('rental');
   const dbDir = getStorageSubdirectory('database');
 
@@ -88,7 +82,6 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   console.log('\n[3/6] Clearing operational Finance files in local storage...');
   for (const f of operationalFinanceFiles) {
     localFileRepository.writeJson(f, []);
-    // Also clear under database/ mirror if present
     const p = path.join(dbDir, f);
     if (fs.existsSync(p)) {
       try {
@@ -107,7 +100,6 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   rentalRepository.writeJson('sync_queue.json', []);
   rentalDayBookRepository.writeJson('rental_daybook.json', []);
 
-  // Clean up any stray .tmp files in rental folder
   try {
     if (fs.existsSync(rentalDir)) {
       const files = fs.readdirSync(rentalDir);
@@ -142,58 +134,16 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   };
   rentalRepository.writeJson('counters.json', resetRentalCounters);
 
-  // 7. Clear MongoDB Operational Collections (if connected)
+  // 7. Clear Telegram Persistent Storage
   localFileRepository.clearCache();
   rentalRepository.clearCache();
   rentalDayBookRepository.clearCache();
 
-  const db = await getFinanceDb();
-  if (db) {
-    console.log('[6/6] Clearing MongoDB Atlas operational collections...');
-    const mongoCollectionsToClear = [
-      'customers',
-      'loans',
-      'receipts',
-      'fixed_deposits',
-      'fd_customers',
-      'fd_interest_payouts',
-      'fd_withdrawals',
-      'fd_renewals',
-      'daybook_entries',
-      'file_attachments',
-      'reminders',
-      'notifications',
-      'idempotency_keys',
-      'rental_daybook',
-      'rental_complexes',
-      'rental_shops',
-      'rental_payments',
-      'rental_expenses',
-      'rental_audit_logs',
-      'rental_sync_queue'
-    ];
-
-    for (const colName of mongoCollectionsToClear) {
-      try {
-        await db.collection(colName).deleteMany({});
-      } catch (err: any) {
-        // collection might not exist yet
-      }
-    }
-
-    // Reset MongoDB counters collection
-    try {
-      await db.collection('counters').deleteMany({});
-      await db.collection('counters').insertMany([
-        { _id: 'customerId' as any, seq: 0 },
-        { _id: 'loanSequence' as any, seq: 0 },
-        { _id: 'loanNo' as any, seq: 0 },
-        { _id: 'receiptNo' as any, seq: 0 },
-        { _id: 'fdNo' as any, seq: 0 }
-      ]);
-    } catch (cntErr) {
-      console.warn('Warning resetting MongoDB counters:', cntErr);
-    }
+  try {
+    console.log('[6/6] Clearing Telegram remote persistent storage...');
+    await telegramRepository.resetApplicationData();
+  } catch (tErr) {
+    console.warn('Warning resetting Telegram storage:', tErr);
   }
 
   // 8. Re-verify & Seed Required System Users (Admin, Staff, Rental Staff)
@@ -201,13 +151,13 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
   await seedUsers();
 
   // 9. Verify Zero State
-  const finalCustomers = localFileRepository.readJson<any[]>('customers.json', []).length;
-  const finalLoans = localFileRepository.readJson<any[]>('loans.json', []).length;
-  const finalReceipts = localFileRepository.readJson<any[]>('receipts.json', []).length;
-  const finalComplexes = rentalRepository.getComplexes().length;
-  const finalShops = rentalRepository.getShops().length;
-  const finalPayments = rentalRepository.getPayments().length;
-  const finalExpenses = rentalRepository.getExpenses().length;
+  const finalCustomers = telegramRepository.getRecords('CUSTOMER').length;
+  const finalLoans = telegramRepository.getRecords('LOAN').length;
+  const finalReceipts = telegramRepository.getRecords('RECEIPT').length;
+  const finalComplexes = telegramRepository.getRecords('RENTAL_COMPLEX').length;
+  const finalShops = telegramRepository.getRecords('RENTAL_SHOP').length;
+  const finalPayments = telegramRepository.getRecords('RENTAL_PAYMENT').length;
+  const finalExpenses = telegramRepository.getRecords('RENTAL_EXPENSE').length;
 
   const verifiedZeroState =
     finalCustomers === 0 &&
@@ -229,12 +179,12 @@ export async function executeProductionDatabaseReset(): Promise<ProductionResetR
     backupFileName: backupRecord?.fileName,
     clearedCollections: counts,
     preservedConfigurations: [
-      'admin_users / Staff authentication credentials',
+      'admin_users / Staff authentication credentials in localAuth store',
       'User roles and granular RBAC permissions',
       'Master Control Interest & Loan Rates profile',
       'Branch Settings & Contact Profile',
       'WhatsApp Templates & Printer Configurations',
-      'Database schemas, indexes, and models'
+      'Telegram Record Envelopes, schemas and indexes'
     ],
     resetCounters,
     verifiedZeroState

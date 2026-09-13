@@ -1,6 +1,8 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
-export interface IFileAttachment extends Document {
+export interface IFileAttachment {
+  _id?: string;
+  id?: string;
   fileId: string;
   entityType: string;
   entityId: string;
@@ -16,109 +18,96 @@ export interface IFileAttachment extends Document {
   webContentLink?: string;
   uploadedBy?: string;
   isDeleted: boolean;
-  deletedAt?: Date | null;
+  deletedAt?: Date | string | null;
   deletedBy?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
 }
 
-const FileAttachmentSchema = new Schema<IFileAttachment>(
-  {
-    fileId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true
-    },
-    entityType: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    entityId: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    documentType: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    originalFileName: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    storedFileName: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    mimeType: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    fileSize: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-    driveFileId: {
-      type: String,
-      required: true,
-      index: true,
-      trim: true
-    },
-    driveFolderId: {
-      type: String,
-      trim: true
-    },
-    driveUrl: {
-      type: String,
-      trim: true
-    },
-    webViewLink: {
-      type: String,
-      trim: true
-    },
-    webContentLink: {
-      type: String,
-      trim: true
-    },
-    uploadedBy: {
-      type: String,
-      trim: true
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true
-    },
-    deletedAt: {
-      type: Date,
-      default: null
-    },
-    deletedBy: {
-      type: String,
-      default: null
+export class FileAttachmentModel {
+  public static find(query: any = {}): any {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    let records = telegramRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT', { includeDeleted });
+
+    if (query.entityId) {
+      records = records.filter((f) => f.entityId === query.entityId);
     }
-  },
-  {
-    timestamps: true,
-    collection: 'file_attachments'
+    if (query.entityType) {
+      records = records.filter((f) => f.entityType === query.entityType);
+    }
+    if (query.fileId) {
+      records = records.filter((f) => f.fileId === query.fileId);
+    }
+
+    const chain = {
+      sort: () => chain,
+      select: () => chain,
+      lean: async () => records,
+      then: (resolve: any, reject?: any) => Promise.resolve(records).then(resolve, reject)
+    };
+    return chain;
   }
-);
 
-// Compound index for querying attachments by entity
-FileAttachmentSchema.index({ entityType: 1, entityId: 1, isDeleted: 1 });
-FileAttachmentSchema.index({ entityType: 1, documentType: 1, isDeleted: 1 });
+  public static findOne(query: any = {}): any {
+    const records = telegramRepository.getRecords<IFileAttachment>('FILE_ATTACHMENT');
+    let match: IFileAttachment | null = null;
+    if (query.fileId) {
+      match = records.find((f) => f.fileId === query.fileId) || null;
+    }
 
-export const FileAttachmentModel: Model<IFileAttachment> =
-  mongoose.models.FileAttachment || mongoose.model<IFileAttachment>('FileAttachment', FileAttachmentSchema);
+    const chain = {
+      select: () => chain,
+      lean: async () => match,
+      then: (resolve: any, reject?: any) => Promise.resolve(match).then(resolve, reject)
+    };
+    return chain;
+  }
+
+  public static async create(data: Partial<IFileAttachment>): Promise<IFileAttachment> {
+    const id = data.fileId || `FILE-${Date.now()}`;
+    const doc: IFileAttachment = {
+      fileId: id,
+      entityType: data.entityType || 'GENERAL',
+      entityId: data.entityId || 'NONE',
+      documentType: data.documentType || 'DOCUMENT',
+      originalFileName: data.originalFileName || 'file',
+      storedFileName: data.storedFileName || 'file',
+      mimeType: data.mimeType || 'application/octet-stream',
+      fileSize: data.fileSize || 0,
+      driveFileId: data.driveFileId || '',
+      driveFolderId: data.driveFolderId,
+      driveUrl: data.driveUrl,
+      webViewLink: data.webViewLink,
+      webContentLink: data.webContentLink,
+      uploadedBy: data.uploadedBy,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await telegramRepository.createRecord('FILE_ATTACHMENT', id, doc);
+    return doc;
+  }
+
+  public static async countDocuments(query: any = {}): Promise<number> {
+    const includeDeleted = query.isDeleted ? query.isDeleted.$ne !== true : false;
+    return telegramRepository.countRecords('FILE_ATTACHMENT', undefined, includeDeleted);
+  }
+
+  public static async deleteMany(query: any = {}): Promise<{ deletedCount: number }> {
+    const { cleared } = await telegramRepository.resetApplicationData(['FILE_ATTACHMENT']);
+    return { deletedCount: cleared };
+  }
+
+  public static async insertMany(docs: any[]): Promise<any[]> {
+    const results = [];
+    for (const d of docs) {
+      const id = d.fileId || d.id || `FILE-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const res = await telegramRepository.createRecord('FILE_ATTACHMENT', id, d);
+      results.push(res.data);
+    }
+    return results;
+  }
+}
 
 export default FileAttachmentModel;

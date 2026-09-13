@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { connectDB, getFinanceDb } from '../config/database.js';
 import { getStorageSubdirectory } from '../config/storage.js';
 import { rentalRepository } from '../modules/rental/repositories/rental.repository.js';
 import { rentalDayBookRepository } from '../modules/rental/repositories/rentalDayBook.repository.js';
 import { seedUsers } from './seedAdmin.js';
+import { telegramRepository } from '../telegram/telegram.repository.js';
 
 export interface RentalResetReport {
   success: boolean;
@@ -19,15 +19,7 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
   console.log('🧹 KKV GOLD FINANCE: RENTAL MODULE CLEAN INITIAL STATE RESET');
   console.log('================================================================\n');
 
-  // 1. Establish database connection if configured
-  try {
-    await connectDB();
-    console.log('✓ Database connection checked.');
-  } catch (err: any) {
-    console.warn('Notice: MongoDB connection in rental reset:', err?.message || err);
-  }
-
-  // 2. Count pre-reset rental records
+  // 1. Count pre-reset rental records
   const preResetComplexes = rentalRepository.getComplexes().length;
   const preResetShops = rentalRepository.getShops().length;
   const preResetPayments = rentalRepository.getPayments().length;
@@ -51,7 +43,7 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
     console.log(`  - ${entity}: ${count} record(s)`);
   });
 
-  // 3. Clear Local Rental Storage Files
+  // 2. Clear Local Rental Storage Files
   console.log('\n[2/4] Resetting local Rental repository storage files to empty state...');
   const rentalDir = getStorageSubdirectory('rental');
 
@@ -90,33 +82,34 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
     console.warn('Notice cleaning temp files:', cleanErr);
   }
 
-  // 4. Clear MongoDB Rental Collections (Preserving Finance & Auth)
-  console.log('\n[3/4] Clearing MongoDB Rental operational collections...');
+  // 3. Clear Telegram Rental operational records
+  console.log('\n[3/4] Clearing Telegram rental operational records...');
   try {
-    const db = await getFinanceDb();
-    if (db) {
-      await Promise.all([
-        db.collection('rental_complexes').deleteMany({}),
-        db.collection('rental_shops').deleteMany({}),
-        db.collection('rental_payments').deleteMany({}),
-        db.collection('rental_expenses').deleteMany({}),
-        db.collection('rental_daybook').deleteMany({}),
-        db.collection('rental_audit_logs').deleteMany({}),
-        db.collection('rental_sync_queue').deleteMany({})
-      ]);
-      console.log('✓ All MongoDB rental operational collections cleared.');
-    } else {
-      console.log('✓ File-based rental storage cleared (MongoDB offline).');
+    const rentalTypes = [
+      'RENTAL_COMPLEX',
+      'RENTAL_SHOP',
+      'RENTAL_PAYMENT',
+      'RENTAL_EXPENSE',
+      'RENTAL_DAYBOOK',
+      'RENTAL_AUDIT_LOG'
+    ] as any[];
+
+    for (const entityType of rentalTypes) {
+      const records = telegramRepository.getRecords(entityType);
+      for (const r of records) {
+        await telegramRepository.deleteRecord(entityType, r.id, false);
+      }
     }
-  } catch (mongoErr) {
-    console.warn('Warning clearing MongoDB collections:', mongoErr);
+    console.log('✓ Telegram rental operational records cleared.');
+  } catch (tErr) {
+    console.warn('Warning clearing Telegram rental records:', tErr);
   }
 
-  // 5. Verify & Preserve Authentication Accounts
+  // 4. Verify & Preserve Authentication Accounts
   console.log('\n[4/4] Verifying that authentication and staff user accounts remain active...');
   await seedUsers();
 
-  // 6. Post-Reset Zero State Verification
+  // 5. Post-Reset Zero State Verification
   const postResetCounts: Record<string, number> = {
     complexes: rentalRepository.getComplexes().length,
     shops: rentalRepository.getShops().length,
@@ -145,7 +138,7 @@ export async function executeRentalDataReset(): Promise<RentalResetReport> {
     timestamp: new Date().toISOString(),
     clearedEntities,
     postResetCounts,
-    preservedAuthAccounts: ['admin@kkvgold.com', 'staff@kkvgold.com', 'rental@kkvgold.com']
+    preservedAuthAccounts: ['admin@kkvgoldfinance.com', 'staff@kkvgoldfinance.com', 'rental@kkvgoldfinance.com']
   };
 }
 

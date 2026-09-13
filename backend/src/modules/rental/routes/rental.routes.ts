@@ -14,7 +14,9 @@ router.get('/dashboard', authorizePermission('rental', 'view'), rentalController
 router.get('/complexes', authorizePermission('rental', 'view'), rentalController.getComplexes.bind(rentalController));
 router.post('/complexes', authorizePermission('rental', 'create'), rentalController.createComplex.bind(rentalController));
 router.get('/complexes/:id', authorizePermission('rental', 'view'), rentalController.getComplexById.bind(rentalController));
+router.get('/complexes/:id/delete-check', authorizePermission('rental', 'view'), rentalController.getComplexDeleteCheck.bind(rentalController));
 router.put('/complexes/:id', authorizePermission('rental', 'update'), rentalController.updateComplex.bind(rentalController));
+router.delete('/complexes/:id', authorizeRoles('ADMIN'), rentalController.deleteComplex.bind(rentalController));
 
 // Shops
 router.get('/shops', authorizePermission('rental', 'view'), rentalController.getShops.bind(rentalController));
@@ -22,7 +24,9 @@ router.post('/shops', authorizePermission('rental', 'create'), rentalController.
 router.get('/shops/:id', authorizePermission('rental', 'view'), rentalController.getShopById.bind(rentalController));
 router.get('/shops/:id/status', authorizePermission('rental', 'view'), rentalController.getShopMonthlyStatus.bind(rentalController));
 router.get('/shops/:id/settlement', authorizePermission('rental', 'view'), rentalController.getShopSettlement.bind(rentalController));
+router.get('/shops/:id/delete-check', authorizePermission('rental', 'view'), rentalController.getShopDeleteCheck.bind(rentalController));
 router.post('/shops/:id/close', authorizePermission('rental', 'update'), rentalController.closeShop.bind(rentalController));
+router.post('/shops/:id/refund-deposit', authorizePermission('rental', 'update'), rentalController.refundSecurityDeposit.bind(rentalController));
 router.delete('/shops/:id', authorizeRoles('ADMIN'), rentalController.deleteShop.bind(rentalController));
 router.put('/shops/:id', authorizePermission('rental', 'update'), rentalController.updateShop.bind(rentalController));
 

@@ -176,6 +176,23 @@ export class RentalRepository {
     return complex;
   }
 
+  public deleteComplex(complexId: string): boolean {
+    const list = this.getComplexes();
+    const filtered = list.filter((c) => c.complexId !== complexId && c.id !== complexId);
+    if (filtered.length !== list.length) {
+      this.writeJson('complexes.json', filtered);
+      getFinanceDb().then((db) => {
+        if (db) {
+          db.collection('rental_complexes').deleteOne({
+            $or: [{ complexId }, { id: complexId }]
+          }).catch((err) => console.warn('[RentalRepository] Mongo deleteComplex error:', err));
+        }
+      }).catch(() => {});
+      return true;
+    }
+    return false;
+  }
+
   // ── Shops CRUD ───────────────────────────────────────────────────────────
   public getShops(): RentalShop[] {
     return this.readJson<RentalShop[]>('shops.json', []);

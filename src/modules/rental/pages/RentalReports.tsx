@@ -300,7 +300,7 @@ export const RentalReports: React.FC = () => {
                   <th style={{ textAlign: 'right' }}>EXPECTED RENT</th>
                   <th style={{ textAlign: 'right' }}>COLLECTED</th>
                   <th style={{ textAlign: 'right' }}>PENDING</th>
-                  <th style={{ textAlign: 'right' }}>ADVANCE</th>
+                  <th style={{ textAlign: 'right' }}>SECURITY DEPOSIT</th>
                   <th style={{ textAlign: 'right' }}>EXPENSES</th>
                   <th style={{ textAlign: 'right' }}>NET REVENUE</th>
                 </tr>

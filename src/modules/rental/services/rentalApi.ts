@@ -16,7 +16,9 @@ import {
   RentalDayBookResponse,
   RentalDayBookEntry,
   PendingRentResponse,
-  ShopSettlementSummary
+  ShopSettlementSummary,
+  ComplexDeleteCheck,
+  ShopDeleteCheck
 } from '../types/rental.types';
 import { getApiBaseUrl, getStoredAuthToken } from '../../../services/api';
 
@@ -76,6 +78,16 @@ export const rentalApi = {
     });
   },
 
+  getComplexDeleteCheck: async (id: string) => {
+    return request<ComplexDeleteCheck>(`/rental/complexes/${id}/delete-check`);
+  },
+
+  deleteComplex: async (id: string) => {
+    return request<{ success: boolean; message: string }>(`/rental/complexes/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   // ── Shops ──────────────────────────────────────────────────────────────────
   getShops: async (params?: { complexId?: string; status?: RentalStatus; search?: string }) => {
     const searchParams = new URLSearchParams();
@@ -99,11 +111,36 @@ export const rentalApi = {
     return request<ShopSettlementSummary>(`/rental/shops/${id}/settlement`);
   },
 
-  closeShop: async (id: string, data: { reason?: string; notes?: string }) => {
+  getShopDeleteCheck: async (id: string) => {
+    return request<ShopDeleteCheck>(`/rental/shops/${id}/delete-check`);
+  },
+
+  closeShop: async (id: string, data: {
+    reason?: string;
+    notes?: string;
+    refundAmount?: number;
+    refundPaymentMode?: PaymentMode | string;
+    refundNotes?: string;
+  }) => {
     return request<RentalShop>(`/rental/shops/${id}/close`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  refundSecurityDeposit: async (id: string, data: {
+    refundAmount: number;
+    paymentMode: PaymentMode | string;
+    refundDate?: string;
+    notes?: string;
+  }) => {
+    return request<{ shop: RentalShop; refundedAmount: number; remainingBalance: number }>(
+      `/rental/shops/${id}/refund-deposit`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
   },
 
   deleteShop: async (id: string) => {
@@ -179,7 +216,6 @@ export const rentalApi = {
     shopId: string;
     paymentMonth: string;
     amountReceived: number;
-    advanceToUse?: number;
     paymentMode?: PaymentMode;
     cashAmount?: number;
     gpayAmount?: number;

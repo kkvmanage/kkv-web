@@ -70,6 +70,31 @@ export class RentalController {
     }
   }
 
+  public async getComplexDeleteCheck(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = await rentalService.getComplexDeleteCheck(id);
+      res.json({ success: true, data });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
+  public async deleteComplex(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).user?.uid || (req as any).user?.email || 'ADMIN';
+      const success = await rentalService.deleteComplex(id, userId);
+      if (!success) {
+        res.status(404).json({ success: false, message: `Complex ${id} not found` });
+        return;
+      }
+      res.json({ success: true, message: `Complex ${id} permanently deleted` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
   // ── Shops ──────────────────────────────────────────────────────────────────
   public async getShops(req: Request, res: Response): Promise<void> {
     try {
@@ -155,6 +180,31 @@ export class RentalController {
         message: `Shop "${result.shop.shopNumber}" successfully closed and archived`,
         data: result
       });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
+  public async refundSecurityDeposit(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).user?.uid || (req as any).user?.email || 'STAFF';
+      const result = await rentalService.refundSecurityDeposit(id, req.body, userId);
+      res.json({
+        success: true,
+        message: `Security deposit refund of \u20b9${result.refundedAmount.toLocaleString('en-IN')} processed successfully`,
+        data: result
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
+  public async getShopDeleteCheck(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = await rentalService.getShopDeleteCheck(id);
+      res.json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, message: err.message });
     }

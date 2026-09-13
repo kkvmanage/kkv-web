@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertTriangle, CheckCircle, Store, User, Building2 } from 'lucide-react';
+import { X, AlertTriangle, CheckCircle, Store, User, Building2, ShieldCheck, Banknote } from 'lucide-react';
 import { rentalApi } from '../services/rentalApi';
-import { RentalShop, ShopSettlementSummary } from '../types/rental.types';
+import { RentalShop, ShopSettlementSummary, PaymentMode } from '../types/rental.types';
 
 interface CloseShopModalProps {
   isOpen: boolean;
@@ -21,6 +21,12 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
   const [settlement, setSettlement] = useState<ShopSettlementSummary | null>(null);
   const [closingReason, setClosingReason] = useState('Tenancy Completed');
   const [settlementNotes, setSettlementNotes] = useState('');
+
+  // Refund fields
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundPaymentMode, setRefundPaymentMode] = useState<PaymentMode>('CASH');
+  const [refundNotes, setRefundNotes] = useState('');
+
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -28,6 +34,9 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
       setError('');
       setClosingReason('Tenancy Completed');
       setSettlementNotes('');
+      setRefundAmount('');
+      setRefundPaymentMode('CASH');
+      setRefundNotes('');
       fetchSettlement();
     } else {
       setSettlement(null);
@@ -42,6 +51,11 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
       const res = await rentalApi.getShopSettlement(shop.shopId);
       if (res.success && res.data) {
         setSettlement(res.data);
+        // Pre-fill refund amount with refundable deposit
+        const refundable = res.data.refundableDeposit ?? 0;
+        if (refundable > 0) {
+          setRefundAmount(String(refundable));
+        }
       } else {
         setError(res.message || 'Failed to load shop settlement details');
       }
@@ -54,9 +68,22 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
 
   if (!isOpen || !shop) return null;
 
+  const securityDepositAmount = settlement?.securityDepositAmount ?? (shop.advanceAmount || 0);
+  const securityDepositBalance = settlement?.securityDepositBalance ?? (shop.availableAdvance || 0);
+  const pendingRent = settlement?.pendingRent ?? 0;
+  const refundableDeposit = settlement?.refundableDeposit ?? securityDepositBalance;
+  const hasOutstanding = pendingRent > 0;
+  const numRefundAmount = Number(refundAmount) || 0;
+  const isRefundExceedingBalance = numRefundAmount > securityDepositBalance;
+
   const handleCloseShop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shop) return;
+
+    if (isRefundExceedingBalance) {
+      setError(`Refund amount (₹${numRefundAmount.toLocaleString('en-IN')}) cannot exceed the security deposit balance (₹${securityDepositBalance.toLocaleString('en-IN')})`);
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -64,7 +91,10 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
     try {
       const res = await rentalApi.closeShop(shop.shopId, {
         reason: closingReason,
-        notes: settlementNotes
+        notes: settlementNotes,
+        refundAmount: numRefundAmount > 0 ? numRefundAmount : undefined,
+        refundPaymentMode: numRefundAmount > 0 ? refundPaymentMode : undefined,
+        refundNotes: refundNotes.trim() || undefined
       });
 
       if (res.success) {
@@ -80,12 +110,12 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
     }
   };
 
-  const pendingRent = settlement?.pendingRent ?? 0;
-  const originalAdvance = settlement?.originalAdvance ?? (shop.advanceAmount || shop.availableAdvance || 0);
-  const advanceAdjusted = settlement?.advanceAdjusted ?? Math.max(0, originalAdvance - (shop.availableAdvance || 0));
-  const availableAdvance = settlement?.availableAdvance ?? (shop.availableAdvance || 0);
-  const refundableAdvance = settlement?.refundableAdvance ?? Math.max(0, availableAdvance - pendingRent);
-  const hasOutstanding = pendingRent > 0;
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '13px'
+  };
 
   return (
     <div
@@ -109,13 +139,13 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
         className="card"
         style={{
           width: '100%',
-          maxWidth: '560px',
-          maxHeight: '90vh',
+          maxWidth: '580px',
+          maxHeight: '92vh',
           overflowY: 'auto',
           backgroundColor: 'var(--bg-card, #1e222d)',
           border: '1px solid var(--border-color, #2e3545)',
           borderRadius: '12px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
           color: 'var(--text-primary, #e2e8f0)',
           padding: '0'
         }}
@@ -149,10 +179,10 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text-primary, #ffffff)' }}>
-                Close Shop & Tenancy Settlement
+                Close Shop &amp; Tenancy Settlement
               </h3>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)' }}>
-                Financial settlement review before shop closure
+                Security deposit refund &amp; closure confirmation
               </div>
             </div>
           </div>
@@ -203,14 +233,14 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Shop & Tenant Info Header */}
+              {/* Shop & Tenant Info */}
               <div
                 style={{
                   backgroundColor: 'rgba(255, 255, 255, 0.03)',
                   border: '1px solid var(--border-color, #2e3545)',
                   borderRadius: '8px',
                   padding: '14px 16px',
-                  marginBottom: '18px'
+                  marginBottom: '16px'
                 }}
               >
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '12.5px' }}>
@@ -221,19 +251,16 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                       {shop.complexName || settlement?.complexName || shop.complexId}
                     </strong>
                   </div>
-
                   <div>
                     <span style={{ color: 'var(--text-muted, #64748b)', fontSize: '11px', display: 'block' }}>SHOP / UNIT</span>
                     <strong style={{ color: 'var(--color-gold-light, #daa520)' }}>
                       {shop.shopNumber} {shop.doorNumber ? `(Door ${shop.doorNumber})` : ''}
                     </strong>
                   </div>
-
                   <div>
                     <span style={{ color: 'var(--text-muted, #64748b)', fontSize: '11px', display: 'block' }}>BUSINESS NAME</span>
                     <strong style={{ color: 'var(--text-primary, #ffffff)' }}>{shop.shopName}</strong>
                   </div>
-
                   <div>
                     <span style={{ color: 'var(--text-muted, #64748b)', fontSize: '11px', display: 'block' }}>TENANT</span>
                     <strong style={{ color: 'var(--text-primary, #ffffff)', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -250,7 +277,7 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                   border: '1px solid var(--border-color, #2e3545)',
                   borderRadius: '8px',
                   overflow: 'hidden',
-                  marginBottom: '18px'
+                  marginBottom: '16px'
                 }}
               >
                 <div
@@ -262,54 +289,45 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase',
                     color: 'var(--color-gold-light, #daa520)',
-                    borderBottom: '1px solid var(--border-color, #2e3545)'
+                    borderBottom: '1px solid var(--border-color, #2e3545)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
                   }}
                 >
-                  Financial Settlement Summary
+                  <ShieldCheck size={14} />
+                  Security Deposit &amp; Rent Settlement
                 </div>
 
-                <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={rowStyle}>
                     <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Monthly Rent:</span>
                     <span style={{ fontWeight: 600 }}>₹{shop.monthlyRent.toLocaleString('en-IN')}</span>
                   </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Pending Rent Dues:</span>
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color: pendingRent > 0 ? '#ef4444' : '#10b981'
-                      }}
-                    >
+                  <div style={rowStyle}>
+                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Outstanding Rent Dues:</span>
+                    <span style={{ fontWeight: 700, color: pendingRent > 0 ? '#ef4444' : '#10b981' }}>
                       ₹{pendingRent.toLocaleString('en-IN')}
                     </span>
                   </div>
 
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color, #2e3545)', margin: '4px 0' }} />
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Original Advance Received:</span>
-                    <span>₹{originalAdvance.toLocaleString('en-IN')}</span>
+                  <div style={rowStyle}>
+                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Original Security Deposit:</span>
+                    <span>₹{securityDepositAmount.toLocaleString('en-IN')}</span>
                   </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Advance Already Adjusted:</span>
-                    <span style={{ color: advanceAdjusted > 0 ? '#f59e0b' : 'inherit' }}>
-                      - ₹{advanceAdjusted.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Current Available Advance:</span>
+                  <div style={rowStyle}>
+                    <span style={{ color: 'var(--text-secondary, #94a3b8)' }}>Current Deposit Balance:</span>
                     <span style={{ fontWeight: 600, color: '#3b82f6' }}>
-                      ₹{availableAdvance.toLocaleString('en-IN')}
+                      ₹{securityDepositBalance.toLocaleString('en-IN')}
                     </span>
                   </div>
 
+                  {/* Refundable highlight */}
                   <div
                     style={{
-                      marginTop: '6px',
+                      marginTop: '4px',
                       padding: '12px 14px',
                       backgroundColor: 'rgba(218, 165, 32, 0.1)',
                       border: '1px solid rgba(218, 165, 32, 0.3)',
@@ -321,20 +339,20 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                   >
                     <div>
                       <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-gold-light, #daa520)', textTransform: 'uppercase' }}>
-                        Refundable Advance Balance
+                        Refundable Security Deposit
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary, #94a3b8)' }}>
-                        (Available Advance − Outstanding Dues)
+                        Current balance held for tenant
                       </div>
                     </div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--color-gold-light, #daa520)' }}>
-                      ₹{refundableAdvance.toLocaleString('en-IN')}
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--color-gold-light, #daa520)' }}>
+                      ₹{refundableDeposit.toLocaleString('en-IN')}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Outstanding Status Message */}
+              {/* Outstanding Rent Warning */}
               {hasOutstanding ? (
                 <div
                   style={{
@@ -351,9 +369,9 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                 >
                   <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
-                    <strong>Outstanding Rent Detected (₹{pendingRent.toLocaleString('en-IN')})</strong>
+                    <strong>Outstanding Rent: ₹{pendingRent.toLocaleString('en-IN')}</strong>
                     <div style={{ marginTop: '2px', fontSize: '11.5px', color: 'var(--text-secondary, #94a3b8)' }}>
-                      Closing this shop will record the closure settlement with ₹{pendingRent.toLocaleString('en-IN')} pending debt and ₹{refundableAdvance.toLocaleString('en-IN')} net refundable advance. Historical rent and receipt records will remain preserved.
+                      There is unpaid rent. The security deposit is NOT automatically deducted — adjust the refund amount manually if an authorized deduction is agreed upon.
                     </div>
                   </div>
                 </div>
@@ -377,8 +395,102 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                 </div>
               )}
 
-              {/* Closure Details Input */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '18px' }}>
+              {/* Security Deposit Refund Section */}
+              <div
+                style={{
+                  border: '1px solid var(--border-color, #2e3545)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  marginBottom: '16px'
+                }}
+              >
+                <div
+                  style={{
+                    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                    padding: '10px 16px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                    color: '#60a5fa',
+                    borderBottom: '1px solid var(--border-color, #2e3545)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Banknote size={14} />
+                  Security Deposit Refund (Optional)
+                </div>
+
+                <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary, #94a3b8)' }}>
+                    Enter the amount being refunded to the tenant now. Leave at <strong>0</strong> if the refund will be processed separately. This creates a <strong>Security Deposit Refund</strong> entry in the Day Book.
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                        REFUND AMOUNT (₹)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        max={securityDepositBalance}
+                        className="input-control"
+                        placeholder="0"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        style={{
+                          width: '100%',
+                          fontSize: '13px',
+                          borderColor: isRefundExceedingBalance ? '#ef4444' : undefined
+                        }}
+                      />
+                      {isRefundExceedingBalance && (
+                        <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '3px' }}>
+                          Cannot exceed deposit balance ₹{securityDepositBalance.toLocaleString('en-IN')}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                        REFUND METHOD
+                      </label>
+                      <select
+                        className="select-control"
+                        value={refundPaymentMode}
+                        onChange={(e) => setRefundPaymentMode(e.target.value as PaymentMode)}
+                        style={{ width: '100%', height: '36px', fontSize: '13px' }}
+                        disabled={numRefundAmount <= 0}
+                      >
+                        <option value="CASH">Cash</option>
+                        <option value="GPAY">GPay / Bank Transfer</option>
+                        <option value="BOTH">Cash + GPay</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                      REFUND NOTES (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      className="input-control"
+                      placeholder="e.g. Refunded via NEFT #REF12345, deduction for damages agreed"
+                      value={refundNotes}
+                      onChange={(e) => setRefundNotes(e.target.value)}
+                      style={{ width: '100%', fontSize: '12.5px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Closure Details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
                     Closing Reason <span style={{ color: '#ef4444' }}>*</span>
@@ -402,12 +514,12 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>
-                    Settlement Notes & Remarks (Optional)
+                    Settlement Notes &amp; Remarks (Optional)
                   </label>
                   <textarea
                     className="input-control"
                     rows={2}
-                    placeholder="e.g., Security deposit to be refunded via NEFT after key handover..."
+                    placeholder="e.g., Keys returned, meter reading noted, property inspection completed..."
                     value={settlementNotes}
                     onChange={(e) => setSettlementNotes(e.target.value)}
                     style={{ width: '100%', resize: 'vertical', fontSize: '12.5px' }}
@@ -428,7 +540,7 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                   lineHeight: '1.4'
                 }}
               >
-                🔒 <strong>Data Protection:</strong> Closing this shop stops future monthly rent generation and removes it from active pending collections. All historical rent records, receipts, day book entries, and reports remain 100% intact.
+                🔒 <strong>Data Protection:</strong> Closing this shop archives the tenancy. All historical rent records, receipts, day book entries, and reports remain 100% intact. A security deposit refund entry will be recorded in the Day Book if a refund amount is specified.
               </div>
 
               {/* Action Buttons */}
@@ -445,9 +557,9 @@ export const CloseShopModal: React.FC<CloseShopModalProps> = ({
                 <button
                   type="submit"
                   className="btn"
-                  disabled={loading || fetchingSettlement}
+                  disabled={loading || fetchingSettlement || isRefundExceedingBalance}
                   style={{
-                    minWidth: '140px',
+                    minWidth: '160px',
                     backgroundColor: '#dc2626',
                     color: '#ffffff',
                     border: 'none',

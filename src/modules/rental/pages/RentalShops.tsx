@@ -22,6 +22,7 @@ import { RentalHeader } from '../components/RentalHeader';
 import { ShopModal } from '../components/ShopModal';
 import { PaymentModal } from '../components/PaymentModal';
 import { CloseShopModal } from '../components/CloseShopModal';
+import { SafeDeleteModal } from '../components/SafeDeleteModal';
 
 interface RentalShopsProps {
   onSelectShop?: (shopId: string) => void;
@@ -60,6 +61,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
   const [targetShopIdForPayment, setTargetShopIdForPayment] = useState<string | undefined>(undefined);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [shopToClose, setShopToClose] = useState<RentalShop | null>(null);
+  const [shopToDelete, setShopToDelete] = useState<RentalShop | null>(null);
 
   const fetchShops = async () => {
     setLoading(true);
@@ -158,23 +160,8 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
     }
   };
 
-  const handleDeleteShop = async (shop: RentalShop) => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to permanently delete shop "${shop.shopNumber}" (${shop.shopName})?\n\nIMPORTANT: If this shop has any historical payments, receipts, or advance records, deletion will be blocked to protect accounting history. Use "Close Shop" instead.`
-    );
-    if (!confirmDelete) return;
-
-    try {
-      const res = await rentalApi.deleteShop(shop.shopId);
-      if (res.success) {
-        showToast(res.message || 'Shop deleted successfully', 'success');
-        await fetchShops();
-      } else {
-        showToast(res.message || 'Failed to delete shop', 'error');
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Error deleting shop', 'error');
-    }
+  const handleDeleteShop = (shop: RentalShop) => {
+    setShopToDelete(shop);
   };
 
   const filtered = shops.filter((s) => {
@@ -199,7 +186,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
     <div className="page-content">
       <RentalHeader
         title="Commercial Shops & Tenants"
-        subtitle="Manage shop units across complexes, tenant contact details, monthly rents, and advances"
+        subtitle="Manage shop units across complexes, tenant contact details, monthly rents, and security deposits"
         actions={
           <button
             type="button"
@@ -392,7 +379,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
                   <th>TENANT NAME</th>
                   <th>CONTACT & EB</th>
                   <th style={{ textAlign: 'right' }}>MONTHLY RENT</th>
-                  <th style={{ textAlign: 'right' }}>AVAIL. ADVANCE</th>
+                  <th style={{ textAlign: 'right' }}>SECURITY DEPOSIT</th>
                   <th>STATUS</th>
                   <th style={{ textAlign: 'center' }}>ACTIONS</th>
                 </tr>
@@ -545,6 +532,21 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
                             >
                               <Ban size={11} />
                             </button>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                style={{
+                                  padding: '2px 6px',
+                                  color: '#ef4444'
+                                }}
+                                onClick={() => handleDeleteShop(shop)}
+                                title="Delete Shop (Only allowed if no financial history exists)"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
                           </>
                         )}
 
@@ -689,6 +691,26 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
         }}
         shop={shopToClose}
       />
+
+      {/* Safe Delete Modal */}
+      {shopToDelete && (
+        <SafeDeleteModal
+          isOpen={!!shopToDelete}
+          onClose={() => setShopToDelete(null)}
+          entityType="SHOP"
+          entityId={shopToDelete.shopId}
+          entityName={`${shopToDelete.shopNumber} — ${shopToDelete.shopName}`}
+          subtitle={`Tenant: ${shopToDelete.tenantName} • Complex: ${shopToDelete.complexName || ''}`}
+          onDeleted={() => {
+            showToast(`Shop ${shopToDelete.shopNumber} permanently deleted`, 'success');
+            fetchShops();
+          }}
+          onCloseShop={(shopId) => {
+            setShopToClose(shopToDelete);
+            setIsCloseModalOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 };

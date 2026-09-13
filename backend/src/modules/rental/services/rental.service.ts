@@ -17,7 +17,9 @@ import {
   PendingRentItem,
   PendingRentSummary,
   PendingRentResponse,
-  ShopSettlementSummary
+  ShopSettlementSummary,
+  ComplexDeleteCheck,
+  ShopDeleteCheck
 } from '../types/rental.types.js';
 
 export class RentalService {
@@ -219,6 +221,94 @@ export class RentalService {
     return updated;
   }
 
+  public async getComplexDeleteCheck(complexId: string): Promise<ComplexDeleteCheck> {
+    const complex = rentalRepository.getComplexById(complexId);
+    if (!complex) throw new Error(`Complex ${complexId} not found`);
+
+    const shops = rentalRepository.getShopsByComplexId(complexId);
+    const activeShops = shops.filter((s) => s.status === 'ACTIVE');
+    const payments = rentalRepository.getPayments().filter((p) => p.complexId === complexId);
+    const expenses = rentalRepository.getExpenses().filter((e) => e.complexId === complexId);
+    const dayBookEntries = (await rentalDayBookRepository.getManualEntries()).filter((d) => d.complexId === complexId);
+
+    const securityDepositsHeld = shops.reduce((sum, s) => sum + (Number(s.availableAdvance) || 0), 0);
+    const currentMonth = this.getCurrentMonth();
+    let totalPendingRent = 0;
+    activeShops.forEach((s) => {
+      const sPayments = payments.filter((p) => p.shopId === s.shopId);
+      const metrics = this.getShopRentDueMetrics(s, currentMonth, sPayments);
+      totalPendingRent += (metrics.pendingAmount || 0);
+    });
+
+    const shopsCount = shops.length;
+    const activeShopsCount = activeShops.length;
+    const paymentsCount = payments.length;
+    const expensesCount = expenses.length;
+    const dayBookEntriesCount = dayBookEntries.length;
+
+    const hasDependencies =
+      shopsCount > 0 ||
+      paymentsCount > 0 ||
+      expensesCount > 0 ||
+      dayBookEntriesCount > 0 ||
+      securityDepositsHeld > 0;
+
+    let reason: string | undefined;
+    if (hasDependencies) {
+      const parts: string[] = [];
+      if (shopsCount > 0) parts.push(`${shopsCount} shop(s) (${activeShopsCount} active)`);
+      if (securityDepositsHeld > 0) parts.push(`₹${securityDepositsHeld.toLocaleString('en-IN')} security deposits held`);
+      if (paymentsCount > 0) parts.push(`${paymentsCount} rent payment(s)`);
+      if (expensesCount > 0) parts.push(`${expensesCount} expense(s)`);
+      if (dayBookEntriesCount > 0) parts.push(`${dayBookEntriesCount} Day Book record(s)`);
+      reason = `Cannot permanently delete complex "${complex.complexName}" (${complex.complexId}). It contains ${parts.join(', ')}. For data safety, please Disable or Archive the complex instead.`;
+    } else {
+      reason = `No rental or financial history was found. This unused complex can be permanently deleted.`;
+    }
+
+    return {
+      complexId: complex.complexId,
+      complexName: complex.complexName,
+      canDelete: !hasDependencies,
+      reason,
+      dependencies: {
+        shopsCount,
+        activeShopsCount,
+        paymentsCount,
+        expensesCount,
+        dayBookEntriesCount,
+        securityDepositsHeld,
+        pendingRent: totalPendingRent
+      }
+    };
+  }
+
+  public async deleteComplex(complexId: string, userId: string = 'SYSTEM'): Promise<boolean> {
+    const complex = rentalRepository.getComplexById(complexId);
+    if (!complex) throw new Error(`Complex ${complexId} not found`);
+
+    const check = await this.getComplexDeleteCheck(complexId);
+    if (!check.canDelete) {
+      throw new Error(check.reason || `Cannot delete complex ${complex.complexName} because it contains dependent records.`);
+    }
+
+    const success = rentalRepository.deleteComplex(complexId);
+    if (success) {
+      rentalRepository.saveAuditLog({
+        id: rentalRepository.nextAuditId(),
+        auditId: rentalRepository.nextAuditId(),
+        userId,
+        action: 'DELETE_COMPLEX',
+        entityType: 'Complex',
+        entityId: complexId,
+        oldValue: complex,
+        timestamp: new Date().toISOString()
+      });
+      await syncService.enqueue('Complex', complexId, 'DELETE', complex);
+    }
+    return success;
+  }
+
   // ── Shops ──────────────────────────────────────────────────────────────────
   public async getShops(filters?: { complexId?: string; status?: RentalStatus; search?: string }): Promise<RentalShop[]> {
     let list = rentalRepository.getShops();
@@ -282,6 +372,9 @@ export class RentalService {
     const complex = rentalRepository.getComplexById(data.complexId);
     if (!complex) {
       throw new Error(`Complex ${data.complexId} does not exist`);
+    }
+    if (complex.status === 'INACTIVE') {
+      throw new Error(`Cannot add a shop to disabled/inactive complex "${complex.complexName}". Please enable the complex first.`);
     }
 
     if (!data.shopNumber || !data.shopNumber.trim()) {
@@ -428,7 +521,8 @@ export class RentalService {
       ebNumber: string;
       monthlyRent: number;
       rentDueDay: number;
-      advanceAmount: number;
+      // advanceAmount is intentionally excluded — it is an immutable historical record.
+      // Only availableAdvance may be adjusted through authorised ledger operations.
       availableAdvance: number;
       status: RentalStatus;
     }>,
@@ -497,7 +591,9 @@ export class RentalService {
       ebNumber: data.ebNumber !== undefined ? data.ebNumber.trim() : existing.ebNumber,
       monthlyRent: data.monthlyRent !== undefined ? Number(data.monthlyRent) : existing.monthlyRent,
       rentDueDay: data.rentDueDay !== undefined ? Math.min(31, Math.max(1, Math.round(Number(data.rentDueDay)))) : (existing.rentDueDay || 10),
-      advanceAmount: data.advanceAmount !== undefined ? Number(data.advanceAmount) : existing.advanceAmount,
+      // advanceAmount is ALWAYS preserved from the existing record — it is the original security deposit
+      // and must never be overwritten by a shop-profile update.
+      advanceAmount: existing.advanceAmount,
       availableAdvance: data.availableAdvance !== undefined ? Number(data.availableAdvance) : existing.availableAdvance,
       status: data.status !== undefined ? data.status : existing.status,
       updatedAt: now,
@@ -542,12 +638,14 @@ export class RentalService {
     const expenses = rentalRepository.getExpenses().filter((e) => e.shopId === shopId);
 
     const metrics = this.getShopRentDueMetrics(shop, currentMonth, payments);
-    const originalAdvance = Number(shop.advanceAmount) || 0;
-    const advanceUsed = payments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
-    const availableAdvance = Number(shop.availableAdvance) || 0;
+    const securityDepositAmount = Number(shop.advanceAmount) || 0;
+    const securityDepositBalance = Number(shop.availableAdvance) || 0;
+    // Deducted = original minus current balance (already applied adjustments)
+    const securityDepositDeducted = Math.max(0, securityDepositAmount - securityDepositBalance);
     const pendingRent = metrics.pendingAmount || 0;
     const outstandingBalance = pendingRent;
-    const refundableAdvance = Math.max(0, availableAdvance - pendingRent);
+    // Refundable = current balance (the business decides whether to deduct outstanding rent)
+    const refundableDeposit = securityDepositBalance;
     const financialTransactionCount = payments.length + expenses.length;
 
     return {
@@ -564,14 +662,14 @@ export class RentalService {
       monthlyRent: shop.monthlyRent,
       rentDueDay: shop.rentDueDay || 10,
       pendingRent,
-      originalAdvance,
-      advanceUsed,
-      availableAdvance,
+      securityDepositAmount,
+      securityDepositDeducted,
+      securityDepositBalance,
       outstandingBalance,
-      refundableAdvance,
+      refundableDeposit,
       financialTransactionCount,
       canClose: shop.status !== 'CLOSED',
-      canDelete: financialTransactionCount === 0 && availableAdvance === 0 && pendingRent === 0,
+      canDelete: financialTransactionCount === 0 && securityDepositBalance === 0 && pendingRent === 0,
       status: shop.status
     };
   }
@@ -581,6 +679,9 @@ export class RentalService {
     data: {
       reason?: string;
       notes?: string;
+      refundAmount?: number;
+      refundPaymentMode?: PaymentMode | string;
+      refundNotes?: string;
     },
     userId: string = 'STAFF'
   ): Promise<{ shop: RentalShop; settlement: ShopSettlementSummary }> {
@@ -593,6 +694,15 @@ export class RentalService {
 
     const settlement = await this.getShopSettlementSummary(shopId);
     const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+
+    // Validate refund amount
+    const refundAmount = Math.max(0, Number(data.refundAmount || 0));
+    if (refundAmount > settlement.securityDepositBalance) {
+      throw new Error(
+        `Refund amount (\u20b9${refundAmount}) cannot exceed the security deposit balance (\u20b9${settlement.securityDepositBalance})`
+      );
+    }
 
     const updatedShop: RentalShop = {
       ...shop,
@@ -601,13 +711,45 @@ export class RentalService {
       closedBy: userId,
       closingReason: data.reason || 'Tenancy ended',
       settlementNotes: data.notes || '',
-      refundableAdvanceAtClose: settlement.refundableAdvance,
+      refundableAdvanceAtClose: settlement.refundableDeposit,
       closingPendingRent: settlement.pendingRent,
+      // Record the refunded amount by reducing availableAdvance
+      availableAdvance: Math.max(0, (Number(shop.availableAdvance) || 0) - refundAmount),
       updatedAt: now,
       syncStatus: 'PENDING'
     };
 
     rentalRepository.saveShop(updatedShop);
+
+    // Record Security Deposit Refund in Day Book
+    if (refundAmount > 0) {
+      const complex = rentalRepository.getComplexById(shop.complexId);
+      const refundEntry: RentalDayBookEntry = {
+        id: `rdb_refund_${shopId}_${Date.now()}`,
+        voucherNo: `REFUND-${shopId}`,
+        date: today,
+        transactionType: 'SECURITY_DEPOSIT_REFUND',
+        category: 'Security Deposit Refund',
+        description: `Security Deposit Refund - ${shop.tenantName} (${shop.shopNumber}) on shop closure`,
+        complexId: shop.complexId,
+        complexName: complex?.complexName || shop.complexName || '',
+        shopId: shop.shopId,
+        shopNumber: shop.shopNumber,
+        shopName: shop.shopName,
+        tenantName: shop.tenantName,
+        paymentMode: (data.refundPaymentMode as PaymentMode) || 'CASH',
+        debit: refundAmount,   // Refund is money going OUT
+        credit: 0,
+        referenceType: 'REFUND',
+        referenceId: shopId,
+        entrySource: 'SYSTEM',
+        notes: data.refundNotes || `Security deposit refund on shop closure. Closing reason: ${data.reason || 'Tenancy ended'}`,
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now
+      };
+      await rentalDayBookRepository.saveManualEntry(refundEntry);
+    }
 
     rentalRepository.saveAuditLog({
       id: rentalRepository.nextAuditId(),
@@ -619,7 +761,8 @@ export class RentalService {
       oldValue: shop,
       newValue: {
         ...updatedShop,
-        settlementSummary: settlement
+        settlementSummary: settlement,
+        depositRefunded: refundAmount
       },
       timestamp: now
     });
@@ -632,22 +775,157 @@ export class RentalService {
     };
   }
 
-  public async deleteShop(shopId: string, userId: string = 'SYSTEM'): Promise<boolean> {
+  // ── Security Deposit Refund (standalone, before or independent of close) ───
+  public async refundSecurityDeposit(
+    shopId: string,
+    data: {
+      refundAmount: number;
+      paymentMode: PaymentMode | string;
+      refundDate?: string;
+      notes?: string;
+    },
+    userId: string = 'STAFF'
+  ): Promise<{ shop: RentalShop; refundedAmount: number; remainingBalance: number }> {
+    const shop = rentalRepository.getShopById(shopId);
+    if (!shop) throw new Error(`Shop ${shopId} not found`);
+
+    const refundAmount = Number(data.refundAmount);
+    if (isNaN(refundAmount) || refundAmount <= 0) {
+      throw new Error('Refund amount must be a positive number');
+    }
+
+    const currentBalance = Number(shop.availableAdvance) || 0;
+    if (refundAmount > currentBalance) {
+      throw new Error(
+        `Refund amount (\u20b9${refundAmount.toLocaleString('en-IN')}) exceeds the current security deposit balance (\u20b9${currentBalance.toLocaleString('en-IN')})`
+      );
+    }
+
+    const now = new Date().toISOString();
+    const today = data.refundDate || now.slice(0, 10);
+    const remainingBalance = currentBalance - refundAmount;
+
+    // Update deposit balance
+    const updatedShop: RentalShop = {
+      ...shop,
+      availableAdvance: remainingBalance,
+      updatedAt: now,
+      syncStatus: 'PENDING'
+    };
+    rentalRepository.saveShop(updatedShop);
+
+    // Record in Day Book
+    const complex = rentalRepository.getComplexById(shop.complexId);
+    const refundEntry: RentalDayBookEntry = {
+      id: `rdb_refund_${shopId}_${Date.now()}`,
+      voucherNo: `REFUND-${shopId}-${Date.now()}`,
+      date: today,
+      transactionType: 'SECURITY_DEPOSIT_REFUND',
+      category: 'Security Deposit Refund',
+      description: `Security Deposit Refund - ${shop.tenantName} (${shop.shopNumber})`,
+      complexId: shop.complexId,
+      complexName: complex?.complexName || shop.complexName || '',
+      shopId: shop.shopId,
+      shopNumber: shop.shopNumber,
+      shopName: shop.shopName,
+      tenantName: shop.tenantName,
+      paymentMode: (data.paymentMode as PaymentMode) || 'CASH',
+      debit: refundAmount,
+      credit: 0,
+      referenceType: 'REFUND',
+      referenceId: shopId,
+      entrySource: 'SYSTEM',
+      notes: data.notes || `Partial security deposit refund. Remaining balance: \u20b9${remainingBalance.toLocaleString('en-IN')}`,
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now
+    };
+    await rentalDayBookRepository.saveManualEntry(refundEntry);
+
+    rentalRepository.saveAuditLog({
+      id: rentalRepository.nextAuditId(),
+      auditId: rentalRepository.nextAuditId(),
+      userId,
+      action: 'SECURITY_DEPOSIT_REFUND',
+      entityType: 'Advance',
+      entityId: shopId,
+      newValue: { refundAmount, remainingBalance, paymentMode: data.paymentMode },
+      timestamp: now
+    });
+
+    await syncService.enqueue('Shop', shopId, 'UPDATE', updatedShop);
+    return { shop: updatedShop, refundedAmount: refundAmount, remainingBalance };
+  }
+
+  public async getShopDeleteCheck(shopId: string): Promise<ShopDeleteCheck> {
     const shop = rentalRepository.getShopById(shopId);
     if (!shop) throw new Error(`Shop ${shopId} not found`);
 
     const payments = rentalRepository.getPaymentsByShopId(shopId);
     const expenses = rentalRepository.getExpenses().filter((e) => e.shopId === shopId);
-    const availableAdvance = Number(shop.availableAdvance) || 0;
+    const dayBookEntries = (await rentalDayBookRepository.getManualEntries()).filter(
+      (d) => d.shopId === shopId || d.referenceId === shopId
+    );
+
+    const securityDepositAmount = Number(shop.advanceAmount) || 0;
+    const securityDepositBalance = Number(shop.availableAdvance) || 0;
 
     const currentMonth = this.getCurrentMonth();
     const metrics = this.getShopRentDueMetrics(shop, currentMonth, payments);
     const pendingRent = metrics.pendingAmount || 0;
 
-    if (payments.length > 0 || expenses.length > 0 || availableAdvance > 0 || pendingRent > 0) {
-      throw new Error(
-        `Cannot permanently delete shop "${shop.shopNumber}" (${shop.shopId}) because it has active/historical financial records (${payments.length} payment(s), ${expenses.length} expense(s), ₹${availableAdvance} advance). Please use "Close Shop" to safely archive it.`
-      );
+    const paymentsCount = payments.length;
+    const expensesCount = expenses.length;
+    const dayBookEntriesCount = dayBookEntries.length;
+
+    const hasFinancialRecords =
+      paymentsCount > 0 ||
+      expensesCount > 0 ||
+      dayBookEntriesCount > 0 ||
+      securityDepositAmount > 0 ||
+      securityDepositBalance > 0 ||
+      pendingRent > 0;
+
+    let reason: string | undefined;
+    if (hasFinancialRecords) {
+      const parts: string[] = [];
+      if (paymentsCount > 0) parts.push(`${paymentsCount} rent payment(s)`);
+      if (securityDepositBalance > 0) parts.push(`₹${securityDepositBalance.toLocaleString('en-IN')} security deposit balance`);
+      if (pendingRent > 0) parts.push(`₹${pendingRent.toLocaleString('en-IN')} pending rent`);
+      if (expensesCount > 0) parts.push(`${expensesCount} expense(s)`);
+      if (dayBookEntriesCount > 0) parts.push(`${dayBookEntriesCount} Day Book record(s)`);
+      reason = `Cannot permanently delete shop "${shop.shopNumber}" (${shop.shopName || shop.shopId}). It contains ${parts.join(', ')}. Financial history must be preserved. Use "Close Shop" to settle and archive it.`;
+    } else {
+      reason = `This shop has no financial or rental history and can be permanently deleted.`;
+    }
+
+    return {
+      shopId: shop.shopId,
+      shopNumber: shop.shopNumber,
+      shopName: shop.shopName,
+      tenantName: shop.tenantName,
+      complexName: shop.complexName,
+      canDelete: !hasFinancialRecords,
+      reason,
+      dependencies: {
+        paymentsCount,
+        expensesCount,
+        dayBookEntriesCount,
+        securityDepositAmount,
+        securityDepositBalance,
+        pendingRent,
+        status: shop.status
+      }
+    };
+  }
+
+  public async deleteShop(shopId: string, userId: string = 'SYSTEM'): Promise<boolean> {
+    const shop = rentalRepository.getShopById(shopId);
+    if (!shop) throw new Error(`Shop ${shopId} not found`);
+
+    const check = await this.getShopDeleteCheck(shopId);
+    if (!check.canDelete) {
+      throw new Error(check.reason || `Cannot permanently delete shop "${shop.shopNumber}". Financial history exists.`);
     }
 
     const success = rentalRepository.deleteShop(shopId);
@@ -662,6 +940,7 @@ export class RentalService {
         oldValue: shop,
         timestamp: new Date().toISOString()
       });
+      await syncService.enqueue('Shop', shopId, 'DELETE', shop);
     }
     return success;
   }
@@ -723,7 +1002,6 @@ export class RentalService {
       shopId: string;
       paymentMonth: string;
       amountReceived: number;
-      advanceToUse?: number;
       paymentMode: PaymentMode;
       cashAmount?: number;
       gpayAmount?: number;
@@ -740,17 +1018,9 @@ export class RentalService {
     if (!complex) throw new Error(`Complex ${data.complexId} not found`);
 
     const amountReceived = Math.max(0, Number(data.amountReceived || 0));
-    const advanceToUse = Math.max(0, Number(data.advanceToUse || 0));
 
-    if (amountReceived === 0 && advanceToUse === 0) {
-      throw new Error('Payment amount received or advance to use must be greater than zero');
-    }
-
-    // Validate Advance Availability
-    if (advanceToUse > shop.availableAdvance) {
-      throw new Error(
-        `Requested advance (₹${advanceToUse}) exceeds available advance balance (₹${shop.availableAdvance})`
-      );
+    if (amountReceived === 0) {
+      throw new Error('Payment amount received must be greater than zero');
     }
 
     // Validate Payment Mode & Split
@@ -769,7 +1039,7 @@ export class RentalService {
       gpayAmount = Number(data.gpayAmount || 0);
       if (Math.abs(cashAmount + gpayAmount - amountReceived) > 0.01) {
         throw new Error(
-          `Cash amount (₹${cashAmount}) + GPay amount (₹${gpayAmount}) must equal total amount received (₹${amountReceived})`
+          `Cash amount (\u20b9${cashAmount}) + GPay amount (\u20b9${gpayAmount}) must equal total amount received (\u20b9${amountReceived})`
         );
       }
     }
@@ -784,21 +1054,22 @@ export class RentalService {
     const monthlyRent = shop.monthlyRent;
     const remainingDueBeforeThisPayment = Math.max(0, monthlyRent - priorCovered);
 
-    // Apply Advance Used first (up to remaining due)
-    const actualAdvanceUsed = Math.min(advanceToUse, remainingDueBeforeThisPayment);
-    const dueAfterAdvance = Math.max(0, remainingDueBeforeThisPayment - actualAdvanceUsed);
+    // Security deposit is NEVER used for rent collection.
+    // advanceUsed is always 0 in rent payments.
+    const actualAdvanceUsed = 0;
+    const dueAfterAdvance = remainingDueBeforeThisPayment;
 
     // Rent covered by new cash/gpay payment
     const rentCoveredByPayment = Math.min(amountReceived, dueAfterAdvance);
 
-    // Any surplus received generates Advance Credit for future months
+    // Any surplus received generates Rent Credit for future months
     const advanceGenerated = Math.max(0, amountReceived - dueAfterAdvance);
 
     // Outstanding balance for this month after this transaction
     const balanceAfterPayment = Math.max(0, dueAfterAdvance - rentCoveredByPayment);
 
     // Calculate total covered status
-    const totalCoveredNow = priorCovered + actualAdvanceUsed + rentCoveredByPayment;
+    const totalCoveredNow = priorCovered + rentCoveredByPayment;
     let paymentStatus: 'PAID' | 'PARTIAL' | 'PENDING' = 'PENDING';
     if (totalCoveredNow >= monthlyRent) {
       paymentStatus = 'PAID';
@@ -806,10 +1077,12 @@ export class RentalService {
       paymentStatus = 'PARTIAL';
     }
 
-    // Update Shop's available advance balance
-    const newAvailableAdvance = shop.availableAdvance - actualAdvanceUsed + advanceGenerated;
-    shop.availableAdvance = newAvailableAdvance;
-    rentalRepository.saveShop(shop);
+    // Overpayment surplus increases availableAdvance (rent credit, NOT security deposit)
+    if (advanceGenerated > 0) {
+      const newAvailableAdvance = shop.availableAdvance + advanceGenerated;
+      shop.availableAdvance = newAvailableAdvance;
+      rentalRepository.saveShop(shop);
+    }
 
     const now = new Date().toISOString();
     const paymentId = rentalRepository.nextPaymentId();
@@ -855,28 +1128,15 @@ export class RentalService {
       timestamp: now
     });
 
-    if (actualAdvanceUsed > 0) {
-      rentalRepository.saveAuditLog({
-        id: rentalRepository.nextAuditId(),
-        auditId: rentalRepository.nextAuditId(),
-        userId,
-        action: 'ADVANCE_USED',
-        entityType: 'Advance',
-        entityId: shop.shopId,
-        newValue: { amount: actualAdvanceUsed, paymentId, remainingAdvance: newAvailableAdvance },
-        timestamp: now
-      });
-    }
-
     if (advanceGenerated > 0) {
       rentalRepository.saveAuditLog({
         id: rentalRepository.nextAuditId(),
         auditId: rentalRepository.nextAuditId(),
         userId,
-        action: 'ADVANCE_GENERATED',
+        action: 'RENT_CREDIT_GENERATED',
         entityType: 'Advance',
         entityId: shop.shopId,
-        newValue: { amount: advanceGenerated, paymentId, totalAdvance: newAvailableAdvance },
+        newValue: { amount: advanceGenerated, paymentId, totalAdvance: shop.availableAdvance },
         timestamp: now
       });
     }

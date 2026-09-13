@@ -41,7 +41,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [selectedShopId, setSelectedShopId] = useState('');
   const [paymentMonth, setPaymentMonth] = useState(getCurrentMonth());
   const [amountReceived, setAmountReceived] = useState<string>('');
-  const [advanceToUse, setAdvanceToUse] = useState<string>('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
   const [cashAmount, setCashAmount] = useState<string>('');
   const [gpayAmount, setGpayAmount] = useState<string>('');
@@ -70,7 +69,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
       setPaymentMonth(getCurrentMonth());
       setAmountReceived('');
-      setAdvanceToUse('');
       setPaymentMode('CASH');
       setCashAmount('');
       setGpayAmount('');
@@ -132,23 +130,19 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Calculate live preview
+  // Calculate live preview — security deposit is NEVER applied to rent collection
   const numMonthlyRent = selectedShop?.monthlyRent || 0;
   const numAmountReceived = Number(amountReceived) || 0;
-  const numAdvanceToUse = Number(advanceToUse) || 0;
-  const availableAdvance = selectedShop?.availableAdvance || 0;
 
   const priorPaid = shopStatusData ? shopStatusData.amountPaid + shopStatusData.advanceUsed : 0;
   const dueBeforeThis = Math.max(0, numMonthlyRent - priorPaid);
 
-  const actualAdvanceUsed = Math.min(numAdvanceToUse, dueBeforeThis);
-  const dueAfterAdvance = Math.max(0, dueBeforeThis - actualAdvanceUsed);
+  const rentCovered = Math.min(numAmountReceived, dueBeforeThis);
+  // Overpayment surplus (not a security deposit — just excess rent paid)
+  const rentCreditGenerated = Math.max(0, numAmountReceived - dueBeforeThis);
+  const finalBalance = Math.max(0, dueBeforeThis - rentCovered);
 
-  const rentCovered = Math.min(numAmountReceived, dueAfterAdvance);
-  const advanceGenerated = Math.max(0, numAmountReceived - dueAfterAdvance);
-  const finalBalance = Math.max(0, dueAfterAdvance - rentCovered);
-
-  const totalCoveredAfter = priorPaid + actualAdvanceUsed + rentCovered;
+  const totalCoveredAfter = priorPaid + rentCovered;
   const previewStatus = totalCoveredAfter >= numMonthlyRent ? 'PAID' : totalCoveredAfter > 0 ? 'PARTIAL' : 'PENDING';
 
   const numCash = Number(cashAmount) || 0;
@@ -164,13 +158,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       return;
     }
 
-    if (numAmountReceived === 0 && numAdvanceToUse === 0) {
-      setError('Amount received or advance to use must be greater than zero');
-      return;
-    }
-
-    if (numAdvanceToUse > availableAdvance) {
-      setError(`Advance to use (₹${numAdvanceToUse}) cannot exceed available advance (₹${availableAdvance})`);
+    if (numAmountReceived === 0) {
+      setError('Amount received must be greater than zero');
       return;
     }
 
@@ -188,7 +177,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         shopId: selectedShopId,
         paymentMonth,
         amountReceived: numAmountReceived,
-        advanceToUse: numAdvanceToUse,
         paymentMode,
         cashAmount: paymentMode === 'CASH' ? numAmountReceived : paymentMode === 'GPAY' ? 0 : numCash,
         gpayAmount: paymentMode === 'GPAY' ? numAmountReceived : paymentMode === 'CASH' ? 0 : numGpay,
@@ -327,13 +315,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px', textTransform: 'uppercase' }}>
-                    Monthly Rent / Avail. Advance
+                    Monthly Rent
                   </span>
                   <span style={{ color: 'var(--text-brand, #176B52)', fontWeight: 800 }}>₹{selectedShop.monthlyRent.toLocaleString('en-IN')}</span>
                   {selectedShop.availableAdvance > 0 && (
-                    <span style={{ color: '#2563eb', fontWeight: 700, marginLeft: '6px', fontSize: '11px' }}>
-                      (Adv: ₹{selectedShop.availableAdvance.toLocaleString('en-IN')})
-                    </span>
+                    <div style={{ color: '#2563eb', fontWeight: 600, fontSize: '10px', marginTop: '2px' }}>
+                      Deposit Held: ₹{selectedShop.availableAdvance.toLocaleString('en-IN')}
+                    </div>
                   )}
                 </div>
               </div>
@@ -368,40 +356,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
             </div>
 
-            {/* Advance to Use & Amount Received */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                  USE ADVANCE (MAX ₹{availableAdvance})
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className="input-control"
-                  placeholder="0"
-                  min="0"
-                  max={availableAdvance}
-                  value={advanceToUse}
-                  onChange={(e) => setAdvanceToUse(e.target.value)}
-                  disabled={availableAdvance <= 0}
-                />
-              </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
-                  AMOUNT RECEIVED (₹) *
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  className="input-control"
-                  placeholder="e.g. 15000"
-                  min="0"
-                  value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value)}
-                  required
-                />
-              </div>
+            {/* Amount Received */}
+            <div>
+              <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
+                AMOUNT RECEIVED (₹) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                className="input-control"
+                placeholder="e.g. 15000"
+                min="0"
+                value={amountReceived}
+                onChange={(e) => setAmountReceived(e.target.value)}
+                required
+              />
             </div>
 
             {/* Payment Mode Selection */}
@@ -518,8 +487,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </strong>
               </div>
               <div>
-                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>ADVANCE GEN.</span>
-                <strong style={{ color: '#2563eb' }}>₹{advanceGenerated.toLocaleString('en-IN')}</strong>
+                <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>RENT CREDIT</span>
+                <strong style={{ color: '#2563eb' }}>₹{rentCreditGenerated.toLocaleString('en-IN')}</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>PREVIEW STATUS</span>

@@ -129,7 +129,7 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
     <div className="page-content">
       <RentalHeader
         title="Complex Rental Management"
-        subtitle="Manage commercial complexes, shops, monthly rent collections, advances, and expenses"
+        subtitle="Manage commercial complexes, shops, monthly rent collections, security deposits, and expenses"
         actions={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -223,7 +223,7 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
               />
 
               <RentalStatCard
-                label="AVAILABLE ADVANCE"
+                label="SECURITY DEPOSITS HELD"
                 value={`₹${dashboardData.availableAdvance.toLocaleString('en-IN')}`}
                 icon={<PiggyBank size={20} />}
                 variant="info"

@@ -86,11 +86,15 @@ export interface ShopSettlementSummary {
   monthlyRent: number;
   rentDueDay: number;
   pendingRent: number;
-  originalAdvance: number;
-  advanceUsed: number;
-  availableAdvance: number;
+  /** Original security deposit collected at tenancy start — immutable */
+  securityDepositAmount: number;
+  /** Amount adjusted/deducted from the security deposit */
+  securityDepositDeducted: number;
+  /** Current remaining security deposit balance */
+  securityDepositBalance: number;
   outstandingBalance: number;
-  refundableAdvance: number;
+  /** Refundable deposit after deductions */
+  refundableDeposit: number;
   financialTransactionCount: number;
   canClose: boolean;
   canDelete: boolean;
@@ -283,6 +287,8 @@ export type RentalTransactionType =
   | 'RENT_COLLECTION'
   | 'ADVANCE_RENT'
   | 'SECURITY_DEPOSIT'
+  | 'SECURITY_DEPOSIT_REFUND'
+  | 'SECURITY_DEPOSIT_ADJUSTMENT'
   | 'LATE_FEE'
   | 'MAINTENANCE_INCOME'
   | 'OTHER_INCOME'
@@ -358,5 +364,40 @@ export interface RentalDayBookSummary {
   totalCount: number;
   page: number;
   limit: number;
+}
+
+export interface ComplexDeleteCheck {
+  complexId: string;
+  complexName: string;
+  canDelete: boolean;
+  reason?: string;
+  dependencies: {
+    shopsCount: number;
+    activeShopsCount: number;
+    paymentsCount: number;
+    expensesCount: number;
+    dayBookEntriesCount: number;
+    securityDepositsHeld: number;
+    pendingRent: number;
+  };
+}
+
+export interface ShopDeleteCheck {
+  shopId: string;
+  shopNumber: string;
+  shopName: string;
+  tenantName: string;
+  complexName?: string;
+  canDelete: boolean;
+  reason?: string;
+  dependencies: {
+    paymentsCount: number;
+    expensesCount: number;
+    dayBookEntriesCount: number;
+    securityDepositAmount: number;
+    securityDepositBalance: number;
+    pendingRent: number;
+    status: RentalStatus;
+  };
 }
 

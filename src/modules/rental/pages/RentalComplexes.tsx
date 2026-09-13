@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Search, Edit2, CheckCircle2, Ban, ArrowRight } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, CheckCircle2, Ban, ArrowRight, Trash2 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
+import { isAdminRole } from '../../../config/permissions';
 import { rentalApi } from '../services/rentalApi';
 import { RentalComplex, RentalShop, RentalStatus } from '../types/rental.types';
 import { RentalHeader } from '../components/RentalHeader';
 import { ComplexModal } from '../components/ComplexModal';
+import { SafeDeleteModal } from '../components/SafeDeleteModal';
 
 interface RentalComplexesProps {
   onSelectComplex?: (complexId: string) => void;
@@ -12,7 +14,8 @@ interface RentalComplexesProps {
 }
 
 export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComplex, onManageShops }) => {
-  const { setCurrentPage, showToast } = useApp();
+  const { setCurrentPage, showToast, userRole, currentUser } = useApp();
+  const isAdmin = userRole === 'ADMIN' || currentUser?.role === 'ADMIN' || (userRole ? isAdminRole(userRole) : false);
 
   const [complexes, setComplexes] = useState<RentalComplex[]>([]);
   const [shops, setShops] = useState<RentalShop[]>([]);
@@ -22,6 +25,7 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingComplex, setEditingComplex] = useState<RentalComplex | null>(null);
+  const [complexToDelete, setComplexToDelete] = useState<RentalComplex | null>(null);
 
   const fetchComplexes = async () => {
     setLoading(true);
@@ -341,6 +345,23 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
                       {complex.status === 'ACTIVE' ? <Ban size={12} /> : <CheckCircle2 size={12} />}
                       <span>{complex.status === 'ACTIVE' ? 'Disable' : 'Enable'}</span>
                     </button>
+
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          color: '#ef4444'
+                        }}
+                        onClick={() => setComplexToDelete(complex)}
+                        title="Delete Complex (Only allowed if no shops or financial history exist)"
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </div>
 
                   <button
@@ -360,13 +381,32 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
         </div>
       )}
 
-      {/* Modal */}
+      {/* Edit / Create Modal */}
       <ComplexModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveComplex}
         complexToEdit={editingComplex}
       />
+
+      {/* Safe Delete Modal */}
+      {complexToDelete && (
+        <SafeDeleteModal
+          isOpen={!!complexToDelete}
+          onClose={() => setComplexToDelete(null)}
+          entityType="COMPLEX"
+          entityId={complexToDelete.complexId}
+          entityName={complexToDelete.complexName}
+          subtitle={`Location: ${complexToDelete.location}`}
+          onDeleted={() => {
+            showToast(`Complex ${complexToDelete.complexName} permanently deleted`, 'success');
+            fetchComplexes();
+          }}
+          onDisableComplex={async (complexId) => {
+            await handleToggleStatus(complexToDelete);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -175,14 +175,14 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
 
         <div className="card" style={{ padding: '14px 16px', backgroundColor: 'rgba(37, 99, 235, 0.08)' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase' }}>
-            AVAILABLE ADVANCE
+            SECURITY DEPOSIT BALANCE
           </span>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#2563eb', marginTop: '4px' }}>
             ₹{shop?.availableAdvance.toLocaleString('en-IN')}
           </div>
           {shop?.advanceAmount !== undefined && shop.advanceAmount !== shop.availableAdvance && (
             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-              Initial: ₹{shop.advanceAmount.toLocaleString('en-IN')}
+              Original Deposit: ₹{shop.advanceAmount.toLocaleString('en-IN')}
             </span>
           )}
         </div>
@@ -258,8 +258,8 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
                   <th>MONTH</th>
                   <th>PAYMENT DATE</th>
                   <th style={{ textAlign: 'right' }}>AMOUNT PAID</th>
-                  <th style={{ textAlign: 'right' }}>ADVANCE USED</th>
-                  <th style={{ textAlign: 'right' }}>ADVANCE GEN.</th>
+                  <th style={{ textAlign: 'right' }}>DEPOSIT USED</th>
+                  <th style={{ textAlign: 'right' }}>RENT CREDIT</th>
                   <th style={{ textAlign: 'right' }}>BALANCE</th>
                   <th>MODE</th>
                   <th>STATUS</th>

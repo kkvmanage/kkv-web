@@ -547,7 +547,7 @@ export const RentalAdminView: React.FC = () => {
 
         <div className="stat-card">
           <div className="stat-card-info">
-            <span className="stat-card-label">AVAILABLE ADVANCE</span>
+            <span className="stat-card-label">SECURITY DEPOSIT HELD</span>
             <span className="stat-card-value" style={{ color: '#2563EB' }}>
               ₹{((summary?.availableAdvance ?? summary?.advanceAmount) || 0).toLocaleString('en-IN')}
             </span>
@@ -752,7 +752,7 @@ export const RentalAdminView: React.FC = () => {
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>EXPECTED</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>COLLECTED</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>PENDING</th>
-                    <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>ADVANCE</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>SECURITY DEPOSIT</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>EXPENSES</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>NET COLLECTION</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'center' }}>RATE</th>
@@ -1048,7 +1048,7 @@ export const RentalAdminView: React.FC = () => {
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>MONTHLY RENT</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>PAID THIS MONTH</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>PENDING BALANCE</th>
-                    <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>ADVANCE AVAILABLE</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>DEPOSIT HELD</th>
                     <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'center' }}>ACTION</th>
                   </tr>
                 </thead>
@@ -1180,7 +1180,7 @@ export const RentalAdminView: React.FC = () => {
                     </div>
                   </div>
                   <div style={{ padding: '12px', backgroundColor: '#F8FAF9', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '11px', color: '#66756D', fontWeight: 700 }}>Available Advance</div>
+                    <div style={{ fontSize: '11px', color: '#66756D', fontWeight: 700 }}>Security Deposit Held</div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: '#2563EB', marginTop: '4px' }}>
                       ₹{(complexDetailData.advance || 0).toLocaleString('en-IN')}
                     </div>
@@ -1329,7 +1329,7 @@ export const RentalAdminView: React.FC = () => {
                     </div>
                   </div>
                   <div style={{ padding: '12px', backgroundColor: '#F8FAF9', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '11px', color: '#66756D', fontWeight: 700 }}>Available Advance</div>
+                    <div style={{ fontSize: '11px', color: '#66756D', fontWeight: 700 }}>Security Deposit Balance</div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: '#2563EB', marginTop: '4px' }}>
                       ₹{(shopDetailData.availableAdvance || 0).toLocaleString('en-IN')}
                     </div>
@@ -1484,7 +1484,7 @@ export const RentalAdminView: React.FC = () => {
               )}
               {selectedPaymentDetail.advanceUsed > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#2563EB' }}>
-                  <span>Advance Used:</span>
+                  <span>Deposit Used:</span>
                   <span>₹{selectedPaymentDetail.advanceUsed?.toLocaleString('en-IN')}</span>
                 </div>
               )}

@@ -81,13 +81,18 @@ export interface ShopSettlementSummary {
   monthlyRent: number;
   rentDueDay?: number;
   status: RentalStatus;
-  originalAdvance: number;
-  advanceAdjusted: number;
-  availableAdvance: number;
+  /** Original security deposit collected at tenancy start — immutable */
+  securityDepositAmount: number;
+  /** Amount deducted from security deposit through authorized settlement */
+  securityDepositDeducted: number;
+  /** Current remaining security deposit balance */
+  securityDepositBalance: number;
+  /** Pending monthly rent (separate from security deposit) */
   pendingRent: number;
   otherOutstanding: number;
   totalOutstanding: number;
-  refundableAdvance: number;
+  /** Refundable deposit = balance minus any deductions */
+  refundableDeposit: number;
   settlementStatus: 'NO_BALANCE' | 'REFUNDABLE' | 'OUTSTANDING_DUE';
   canClose: boolean;
   blockReason?: string;
@@ -333,7 +338,14 @@ export interface SyncSummary {
   spreadsheetId?: string;
 }
 
-export type RentalTransactionType = 'RENT_PAYMENT' | 'EXPENSE' | 'MANUAL_INCOME' | 'MANUAL_EXPENSE';
+export type RentalTransactionType =
+  | 'RENT_PAYMENT'
+  | 'EXPENSE'
+  | 'MANUAL_INCOME'
+  | 'MANUAL_EXPENSE'
+  | 'SECURITY_DEPOSIT_RECEIVED'
+  | 'SECURITY_DEPOSIT_REFUND'
+  | 'SECURITY_DEPOSIT_ADJUSTMENT';
 
 export interface RentalDayBookEntry {
   id: string;
@@ -442,6 +454,41 @@ export interface PendingRentResponse {
   summary: PendingRentSummary;
   items: PendingRentItem[];
   month: string;
+}
+
+export interface ComplexDeleteCheck {
+  complexId: string;
+  complexName: string;
+  canDelete: boolean;
+  reason?: string;
+  dependencies: {
+    shopsCount: number;
+    activeShopsCount: number;
+    paymentsCount: number;
+    expensesCount: number;
+    dayBookEntriesCount: number;
+    securityDepositsHeld: number;
+    pendingRent: number;
+  };
+}
+
+export interface ShopDeleteCheck {
+  shopId: string;
+  shopNumber: string;
+  shopName: string;
+  tenantName: string;
+  complexName?: string;
+  canDelete: boolean;
+  reason?: string;
+  dependencies: {
+    paymentsCount: number;
+    expensesCount: number;
+    dayBookEntriesCount: number;
+    securityDepositAmount: number;
+    securityDepositBalance: number;
+    pendingRent: number;
+    status: RentalStatus;
+  };
 }
 
 

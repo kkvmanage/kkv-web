@@ -2237,5 +2237,28 @@ input:checked + .toggle-track::before {
   }
 }
 
+/* ============================================================
+   DAY BOOK & ACCOUNTS DASHBOARD LAYOUT
+   ============================================================ */
+.daybook-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1200px) {
+  .daybook-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .daybook-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 

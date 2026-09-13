@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
-  Download,
   FileSpreadsheet,
   Plus,
   X,
@@ -14,18 +13,29 @@ import {
   Scale,
   TrendingUp,
   Landmark,
-  BadgePercent
+  BadgePercent,
+  Inbox,
+  Printer
 } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
-import { StatCard, StatGrid } from '../components/ui/StatCard';
-import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
 export const Accounts: React.FC = () => {
-  const { currentPage, dayBookEntries, cashInHand, cashAtBank, addDayBookEntry, loans, fixedDeposits, showToast } = useApp();
+  const {
+    currentPage,
+    setCurrentPage,
+    dayBookEntries,
+    cashInHand,
+    cashAtBank,
+    addDayBookEntry,
+    loans,
+    fixedDeposits,
+    showToast
+  } = useApp();
+
   const [activeTab, setActiveTab] = useState<'day-book' | 'trial-balance' | 'profit-loss' | 'balance-sheet'>('day-book');
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (['day-book', 'trial-balance', 'profit-loss', 'balance-sheet'].includes(currentPage)) {
       setActiveTab(currentPage as any);
     }
@@ -36,6 +46,8 @@ export const Accounts: React.FC = () => {
   const [toDate, setToDate] = useState(todayISO);
   const [pnlPeriod, setPnlPeriod] = useState<'this-month' | 'last-month' | 'this-year' | 'all-time'>('this-month');
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
+  const [showPaise, setShowPaise] = useState(true);
+  const [showTdsModal, setShowTdsModal] = useState(false);
 
   // New manual entry modal state
   const [particulars, setParticulars] = useState('');
@@ -44,9 +56,35 @@ export const Accounts: React.FC = () => {
   const [amount, setAmount] = useState<string>('');
   const [entryDate, setEntryDate] = useState(new Date().toLocaleDateString('en-GB').replace(/\//g, '-'));
 
-  // Calculations for Today In / Out
-  const todayIn = dayBookEntries.reduce((acc, e) => acc + (e.cashIn + e.bankIn), 0);
-  const todayOut = dayBookEntries.reduce((acc, e) => acc + (e.cashOut + e.bankOut), 0);
+  // Normalize date helper
+  const normalizeToIso = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const trimmed = dateStr.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+      const [d, m, y] = trimmed.split('-');
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+      const [d, m, y] = trimmed.split('/');
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    return trimmed;
+  };
+
+  // Filtered day book entries based on date range
+  const filteredEntries = dayBookEntries.filter((e) => {
+    if (!fromDate && !toDate) return true;
+    const entryIso = normalizeToIso(e.date);
+    if (!entryIso) return true;
+    if (fromDate && entryIso < fromDate) return false;
+    if (toDate && entryIso > toDate) return false;
+    return true;
+  });
+
+  // Calculations for In / Out
+  const todayIn = filteredEntries.reduce((acc, e) => acc + (e.cashIn + e.bankIn), 0);
+  const todayOut = filteredEntries.reduce((acc, e) => acc + (e.cashOut + e.bankOut), 0);
 
   // Financial aggregates
   const totalGoldLoansOutstanding = loans.reduce((acc, l) => acc + l.outstandingPrincipal, 0);
@@ -59,6 +97,13 @@ export const Accounts: React.FC = () => {
   const totalExpenses = interestPaidOnDeposits;
   const netProfit = totalIncome - totalExpenses;
   const totalFDPrincipal = fixedDeposits.reduce((acc, f) => acc + f.principal, 0);
+
+  const formatMoney = (num: number) => {
+    return (num || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: showPaise ? 2 : 0,
+      maximumFractionDigits: showPaise ? 2 : 0
+    });
+  };
 
   const handleCreateEntry = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,17 +137,7 @@ export const Accounts: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-    showToast('Generating official PDF statement...', 'info');
-  };
-
-  const [showPaise, setShowPaise] = useState(true);
-  const [showTdsModal, setShowTdsModal] = useState(false);
-
-  const formatMoney = (num: number) => {
-    return num.toLocaleString('en-IN', {
-      minimumFractionDigits: showPaise ? 2 : 0,
-      maximumFractionDigits: showPaise ? 2 : 0
-    });
+    window.print();
   };
 
   const tabs = [
@@ -113,17 +148,58 @@ export const Accounts: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <div
+      className="page-content"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box'
+      }}
+    >
+      {/* Primary Page Header */}
       <PageHeader
-        title="General Ledger & Accounts"
-        description="Comprehensive double-entry day book, trial balances, profit/loss statements, and balance sheet auditing."
-        breadcrumbs={[{ label: 'Home' }, { label: 'Accounting' }]}
-        action={
-          <div className="flex items-center gap-2">
+        title={
+          activeTab === 'day-book'
+            ? 'Day Book'
+            : activeTab === 'trial-balance'
+            ? 'Trial Balance'
+            : activeTab === 'profit-loss'
+            ? 'Profit & Loss'
+            : 'Balance Sheet'
+        }
+        subtitle={
+          activeTab === 'day-book'
+            ? 'Daily cash and bank transactions chronologically summarized'
+            : activeTab === 'trial-balance'
+            ? 'Double-entry balance verification of all asset, liability, revenue and expense heads.'
+            : activeTab === 'profit-loss'
+            ? 'Operating revenue from interest and fees versus financial expenses and costs.'
+            : 'Statement of financial position detailing branch assets, liabilities and reserves.'
+        }
+        breadcrumbs={[
+          { label: 'Home' },
+          { label: 'Accounts' },
+          {
+            label:
+              activeTab === 'day-book'
+                ? 'Day Book'
+                : activeTab === 'trial-balance'
+                ? 'Trial Balance'
+                : activeTab === 'profit-loss'
+                ? 'Profit & Loss'
+                : 'Balance Sheet'
+          }
+        ]}
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <Button
               variant="outline"
               size="sm"
-              icon={<BadgePercent className="w-4 h-4 text-primary-500" />}
+              icon={<BadgePercent size={15} style={{ color: 'var(--primary, #176B52)' }} />}
               onClick={() => setShowTdsModal(true)}
             >
               TDS Ledger
@@ -131,7 +207,7 @@ export const Accounts: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
+              icon={<FileSpreadsheet size={15} style={{ color: 'var(--primary, #176B52)' }} />}
               onClick={handleExportExcel}
             >
               Export Excel
@@ -139,7 +215,7 @@ export const Accounts: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              icon={<Download className="w-4 h-4 text-slate-600" />}
+              icon={<Printer size={15} />}
               onClick={handleExportPDF}
             >
               Print / PDF
@@ -148,23 +224,52 @@ export const Accounts: React.FC = () => {
         }
       />
 
-      {/* Navigation Tabs Bar */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-2">
-        {tabs.map(tab => {
+      {/* Segmented Navigation Tabs Control */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '4px',
+          backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+          borderRadius: '10px',
+          border: '1px solid var(--border, #E2E8E5)',
+          overflowX: 'auto',
+          width: 'fit-content',
+          maxWidth: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ${
-                isActive
-                  ? 'border-primary-500 text-primary-600 dark:text-primary-400 bg-primary-50/50 dark:bg-primary-950/20 rounded-t-lg'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                setCurrentPage(tab.id as any);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                fontSize: '13px',
+                fontWeight: isActive ? 700 : 500,
+                color: isActive ? '#FFFFFF' : 'var(--text-secondary, #64748B)',
+                backgroundColor: isActive ? 'var(--primary, #176B52)' : 'transparent',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+                boxShadow: isActive ? '0 2px 6px rgba(23, 107, 82, 0.25)' : 'none'
+              }}
             >
-              <Icon className="w-4 h-4" />
-              {tab.label}
+              <Icon size={15} style={{ flexShrink: 0 }} />
+              <span>{tab.label}</span>
             </button>
           );
         })}
@@ -172,48 +277,95 @@ export const Accounts: React.FC = () => {
 
       {/* TDS LEDGER MODAL */}
       {showTdsModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--surface, #FFFFFF)',
+              border: '1px solid var(--border, #E2E8E5)',
+              borderRadius: '16px',
+              maxWidth: '560px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              position: 'relative',
+              boxSizing: 'border-box'
+            }}
+          >
             <button
-              className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+              type="button"
+              style={{
+                position: 'absolute',
+                right: '16px',
+                top: '16px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)'
+              }}
               onClick={() => setShowTdsModal(false)}
             >
-              <X className="w-5 h-5" />
+              <X size={20} />
             </button>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400 rounded-xl">
-                <BadgePercent className="w-6 h-6" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  padding: '10px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(23, 107, 82, 0.1)',
+                  color: 'var(--primary, #176B52)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <BadgePercent size={24} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">TDS Deductions Ledger</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Section 194A Tax Deducted at Source on Interest Payments</p>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  TDS Deductions Ledger
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                  Section 194A Tax Deducted at Source on Interest Payments
+                </p>
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl my-4">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold">
-                  <tr>
-                    <th className="px-3.5 py-2.5">Date</th>
-                    <th className="px-3.5 py-2.5">Bill No</th>
-                    <th className="px-3.5 py-2.5">Customer</th>
-                    <th className="px-3.5 py-2.5 text-right">Gross Interest</th>
-                    <th className="px-3.5 py-2.5 text-right">TDS (10%)</th>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '10px', margin: '16px 0' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--surface-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Date</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Bill No</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Customer</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Gross Interest</th>
+                    <th style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>TDS (10%)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                    <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">25-08-2026</td>
-                    <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400">RCPT-104</td>
-                    <td className="px-3.5 py-2.5 font-medium text-slate-900 dark:text-white">Thayba Begum</td>
-                    <td className="px-3.5 py-2.5 text-right font-medium">₹1,500.00</td>
-                    <td className="px-3.5 py-2.5 text-right font-bold text-rose-600 dark:text-rose-400">₹150.00</td>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>25-08-2026</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--primary, #176B52)', fontFamily: 'monospace' }}>RCPT-104</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 500, color: 'var(--text-primary)' }}>Thayba Begum</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace' }}>₹1,500.00</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#DC2626', fontFamily: 'monospace' }}>₹150.00</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
               <Button variant="primary" onClick={() => setShowTdsModal(false)}>
                 Close
               </Button>
@@ -222,494 +374,1115 @@ export const Accounts: React.FC = () => {
         </div>
       )}
 
-      {/* DAY BOOK TAB */}
+      {/* DAY BOOK TAB CONTENT */}
       {activeTab === 'day-book' && (
-        <div className="space-y-6">
-          {/* 4 Summary Metric Cards */}
-          <StatGrid columns={4}>
-            <StatCard
-              title="Cash In Hand (Vault)"
-              value={`₹${formatMoney(cashInHand)}`}
-              subtitle="Physical counter vault balance"
-              icon={<Wallet className="w-5 h-5 text-emerald-500" />}
-              variant={cashInHand >= 0 ? 'emerald' : 'rose'}
-            />
-            <StatCard
-              title="Cash At Bank"
-              value={`₹${formatMoney(cashAtBank)}`}
-              subtitle="Branch Current A/c"
-              icon={<Building2 className="w-5 h-5 text-indigo-500" />}
-              variant={cashAtBank >= 0 ? 'indigo' : 'rose'}
-            />
-            <StatCard
-              title="Today Receipts (In)"
-              value={`₹${formatMoney(todayIn)}`}
-              subtitle="Total receipts & credits"
-              icon={<ArrowDownLeft className="w-5 h-5 text-teal-500" />}
-              variant="teal"
-            />
-            <StatCard
-              title="Today Disbursed (Out)"
-              value={`₹${formatMoney(todayOut)}`}
-              subtitle="Total disbursements & debits"
-              icon={<ArrowUpRight className="w-5 h-5 text-amber-500" />}
-              variant="amber"
-            />
-          </StatGrid>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
+          {/* 4 Summary KPI Cards Grid */}
+          <div className="daybook-kpi-grid">
+            {/* Card 1: Cash in Hand */}
+            <div
+              className="card"
+              style={{
+                backgroundColor: 'var(--surface, #FFFFFF)',
+                border: '1px solid var(--border, #E2E8E5)',
+                borderRadius: '12px',
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                minWidth: 0,
+                boxSizing: 'border-box'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary, #64748B)' }}>
+                  Cash In Hand (Vault)
+                </span>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: cashInHand >= 0 ? '#176B52' : '#DC2626', lineHeight: 1.2, letterSpacing: '-0.3px', marginTop: '2px', fontFamily: 'monospace' }}>
+                  ₹{formatMoney(cashInHand)}
+                </div>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted, #8A9E95)', marginTop: '2px' }}>
+                  Physical counter vault balance
+                </span>
+              </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(23, 107, 82, 0.10)', color: '#176B52', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Wallet size={20} />
+              </div>
+            </div>
 
-          {/* Main Day Book Card */}
-          <Card
-            title="Daily Transaction Journal"
-            subtitle="Real-time cash in hand, bank transfers, receipts and disbursement ledger"
-            headerRight={
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
-                  <span className="text-[11px] font-bold text-slate-500">PAISE</span>
+            {/* Card 2: Cash at Bank */}
+            <div
+              className="card"
+              style={{
+                backgroundColor: 'var(--surface, #FFFFFF)',
+                border: '1px solid var(--border, #E2E8E5)',
+                borderRadius: '12px',
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                minWidth: 0,
+                boxSizing: 'border-box'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary, #64748B)' }}>
+                  Cash At Bank
+                </span>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: cashAtBank >= 0 ? '#4F46E5' : '#DC2626', lineHeight: 1.2, letterSpacing: '-0.3px', marginTop: '2px', fontFamily: 'monospace' }}>
+                  ₹{formatMoney(cashAtBank)}
+                </div>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted, #8A9E95)', marginTop: '2px' }}>
+                  Branch Current A/c balance
+                </span>
+              </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(99, 102, 241, 0.10)', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Building2 size={20} />
+              </div>
+            </div>
+
+            {/* Card 3: Today's Receipts */}
+            <div
+              className="card"
+              style={{
+                backgroundColor: 'var(--surface, #FFFFFF)',
+                border: '1px solid var(--border, #E2E8E5)',
+                borderRadius: '12px',
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                minWidth: 0,
+                boxSizing: 'border-box'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary, #64748B)' }}>
+                  Today's Receipts (In)
+                </span>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#0D9488', lineHeight: 1.2, letterSpacing: '-0.3px', marginTop: '2px', fontFamily: 'monospace' }}>
+                  ₹{formatMoney(todayIn)}
+                </div>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted, #8A9E95)', marginTop: '2px' }}>
+                  Total incoming receipts &amp; credits
+                </span>
+              </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(20, 184, 166, 0.10)', color: '#0D9488', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <ArrowDownLeft size={20} />
+              </div>
+            </div>
+
+            {/* Card 4: Today's Disbursed */}
+            <div
+              className="card"
+              style={{
+                backgroundColor: 'var(--surface, #FFFFFF)',
+                border: '1px solid var(--border, #E2E8E5)',
+                borderRadius: '12px',
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                minWidth: 0,
+                boxSizing: 'border-box'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-secondary, #64748B)' }}>
+                  Today's Disbursed (Out)
+                </span>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#D97706', lineHeight: 1.2, letterSpacing: '-0.3px', marginTop: '2px', fontFamily: 'monospace' }}>
+                  ₹{formatMoney(todayOut)}
+                </div>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted, #8A9E95)', marginTop: '2px' }}>
+                  Total outgoing loans &amp; debits
+                </span>
+              </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(217, 119, 6, 0.10)', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <ArrowUpRight size={20} />
+              </div>
+            </div>
+          </div>
+
+          {/* Main Transaction Journal Container */}
+          <div
+            className="card"
+            style={{
+              backgroundColor: 'var(--surface, #FFFFFF)',
+              border: '1px solid var(--border, #E2E8E5)',
+              borderRadius: '14px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+              padding: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              width: '100%',
+              boxSizing: 'border-box'
+            }}
+          >
+            {/* Header & Filter Toolbar */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-subtle, #EDF2EE)',
+                backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px'
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Receipt size={18} style={{ color: 'var(--primary, #176B52)' }} />
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary, #1A2E26)', margin: 0 }}>
+                    Daily Transaction Journal
+                  </h3>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted, #8A9E95)', margin: '3px 0 0 0' }}>
+                  Real-time cash in hand, bank transfers, receipts and disbursements
+                </p>
+              </div>
+
+              {/* Filter and Action Controls: [From Date] [To Date] [Today] [Show Paise] [Add Entry] */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* Date Range Selector Box */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: 'var(--surface, #FFFFFF)',
+                    border: '1px solid var(--border, #E2E8E5)',
+                    borderRadius: '8px',
+                    padding: '4px 8px',
+                    height: '38px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted, #8A9E95)', textTransform: 'uppercase' }}>From</span>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: 'var(--text-primary, #1A2E26)',
+                      outline: 'none',
+                      padding: 0,
+                      height: 'auto',
+                      width: '125px'
+                    }}
+                  />
+                  <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border, #E2E8E5)' }} />
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted, #8A9E95)', textTransform: 'uppercase' }}>To</span>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: 'var(--text-primary, #1A2E26)',
+                      outline: 'none',
+                      padding: 0,
+                      height: 'auto',
+                      width: '125px'
+                    }}
+                  />
                   <button
                     type="button"
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-all ${
-                      showPaise
-                        ? 'bg-primary-500 text-white shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400'
-                    }`}
-                    onClick={() => setShowPaise(!showPaise)}
+                    onClick={() => {
+                      setFromDate(todayISO);
+                      setToDate(todayISO);
+                    }}
+                    style={{
+                      border: 'none',
+                      background: 'rgba(23, 107, 82, 0.08)',
+                      color: 'var(--primary, #176B52)',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
                   >
-                    {showPaise ? 'ON' : 'OFF'}
+                    Today
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-slate-500">FROM</span>
-                  <input
-                    type="date"
-                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                  />
-                  <span className="font-semibold text-slate-500">TO</span>
-                  <input
-                    type="date"
-                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setFromDate(todayISO); setToDate(todayISO); }}
+                {/* Show Paise Switch */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: 'var(--surface, #FFFFFF)',
+                    border: '1px solid var(--border, #E2E8E5)',
+                    borderRadius: '8px',
+                    padding: '0 12px',
+                    height: '38px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary, #64748B)', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                    Show Paise
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showPaise}
+                    onClick={() => setShowPaise(!showPaise)}
+                    style={{
+                      width: '34px',
+                      height: '20px',
+                      borderRadius: '10px',
+                      backgroundColor: showPaise ? 'var(--primary, #176B52)' : '#CBD5E1',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      padding: 0,
+                      transition: 'background-color 0.2s',
+                      outline: 'none'
+                    }}
                   >
-                    Today
-                  </Button>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '2px',
+                        left: showPaise ? '16px' : '2px',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#FFFFFF',
+                        transition: 'left 0.2s',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                      }}
+                    />
+                  </button>
                 </div>
 
+                {/* Primary Add Entry Button */}
                 <Button
                   variant="primary"
-                  size="sm"
-                  icon={<Plus className="w-4 h-4" />}
+                  icon={<Plus size={15} />}
                   onClick={() => setShowAddEntryModal(true)}
+                  style={{ height: '38px', fontWeight: 700 }}
                 >
                   Add Entry
                 </Button>
               </div>
-            }
-          >
-            {/* Day Book Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
-                  <tr>
-                    <th className="px-3.5 py-3">Time</th>
-                    <th className="px-3.5 py-3">Bill #</th>
-                    <th className="px-3.5 py-3">Particulars & Head</th>
-                    <th className="px-3.5 py-3 text-right">Cash In</th>
-                    <th className="px-3.5 py-3 text-right">Cash Out</th>
-                    <th className="px-3.5 py-3 text-right">Bank In</th>
-                    <th className="px-3.5 py-3 text-right">Bank Out</th>
-                    <th className="px-3.5 py-3 text-right">Cash Bal</th>
-                    <th className="px-3.5 py-3 text-right">Bank Bal</th>
+            </div>
+
+            {/* Table Area Container with Horizontally Scrollable Wrapper */}
+            <div style={{ width: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12.5px' }}>
+                <thead>
+                  <tr
+                    style={{
+                      backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                      color: 'var(--text-muted, #8A9E95)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.6px',
+                      borderBottom: '1px solid var(--border, #E2E8E5)',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 5
+                    }}
+                  >
+                    <th style={{ padding: '12px 14px', width: '130px', whiteSpace: 'nowrap' }}>DATE / TIME</th>
+                    <th style={{ padding: '12px 14px', width: '110px', whiteSpace: 'nowrap' }}>REF / BILL #</th>
+                    <th style={{ padding: '12px 16px', minWidth: '260px' }}>PARTICULARS &amp; ACCOUNT HEAD</th>
+                    <th style={{ padding: '12px 14px', width: '110px', textAlign: 'right', color: '#16A34A', whiteSpace: 'nowrap' }}>CASH IN</th>
+                    <th style={{ padding: '12px 14px', width: '110px', textAlign: 'right', color: '#DC2626', whiteSpace: 'nowrap' }}>CASH OUT</th>
+                    <th style={{ padding: '12px 14px', width: '110px', textAlign: 'right', color: '#16A34A', whiteSpace: 'nowrap' }}>BANK IN</th>
+                    <th style={{ padding: '12px 14px', width: '110px', textAlign: 'right', color: '#DC2626', whiteSpace: 'nowrap' }}>BANK OUT</th>
+                    <th style={{ padding: '12px 14px', width: '120px', textAlign: 'right', whiteSpace: 'nowrap' }}>CASH BAL</th>
+                    <th style={{ padding: '12px 16px', width: '120px', textAlign: 'right', whiteSpace: 'nowrap' }}>BANK BAL</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                <tbody>
                   {/* Opening Balance Row */}
-                  <tr className="bg-slate-50/70 dark:bg-slate-800/30 font-semibold text-slate-600 dark:text-slate-300">
-                    <td className="px-3.5 py-2.5 text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400">Opening Balance</td>
-                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-2.5 text-right font-bold">₹0.00</td>
-                    <td className="px-3.5 py-2.5 text-right font-bold">₹0.00</td>
+                  <tr style={{ backgroundColor: 'var(--surface-secondary, #F4F7F5)', borderBottom: '1px solid var(--border, #E2E8E5)', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '11px' }}>-</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '11px' }}>-</td>
+                    <td style={{ padding: '10px 16px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'var(--border, #E2E8E5)',
+                          color: 'var(--text-primary, #1A2E26)',
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          letterSpacing: '0.4px',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        OPENING BALANCE
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      ₹{formatMoney(0)}
+                    </td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      ₹{formatMoney(0)}
+                    </td>
                   </tr>
 
-                  {/* Transaction Entries */}
-                  {dayBookEntries.map((e) => (
-                    <tr key={e.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="px-3.5 py-2.5 text-slate-400 font-mono text-[11px]">{e.time}</td>
-                      <td className="px-3.5 py-2.5 font-bold text-primary-600 dark:text-primary-400 font-mono">{e.billNo}</td>
-                      <td className="px-3.5 py-2.5">
-                        <div className="font-semibold text-slate-900 dark:text-white">{e.particulars}</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                          {e.accountHead} • <span className="text-primary-600 dark:text-primary-400">{e.mode}</span>
+                  {/* Transaction Rows */}
+                  {filteredEntries.map((e) => (
+                    <tr
+                      key={e.id}
+                      style={{ borderBottom: '1px solid var(--border-subtle, #EDF2EE)', transition: 'background-color 0.15s' }}
+                    >
+                      <td style={{ padding: '12px 14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                        {e.date} {e.time ? `• ${e.time}` : ''}
+                      </td>
+                      <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary, #176B52)', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                        {e.billNo}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary, #1A2E26)', fontSize: '13px' }}>{e.particulars}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                          <span style={{ padding: '1px 6px', backgroundColor: 'var(--surface-secondary, #F4F7F5)', borderRadius: '4px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            {e.accountHead}
+                          </span>
+                          <span>•</span>
+                          <span style={{ fontWeight: 700, color: 'var(--primary, #176B52)' }}>{e.mode}</span>
+                          {e.customerName && (
+                            <>
+                              <span>•</span>
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{e.customerName}</span>
+                            </>
+                          )}
                         </div>
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                        {e.cashIn > 0 ? `₹${e.cashIn.toLocaleString('en-IN')}` : '-'}
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#16A34A' }}>
+                        {e.cashIn > 0 ? `₹${formatMoney(e.cashIn)}` : '-'}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-semibold text-rose-600 dark:text-rose-400">
-                        {e.cashOut > 0 ? `₹${e.cashOut.toLocaleString('en-IN')}` : '-'}
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#DC2626' }}>
+                        {e.cashOut > 0 ? `₹${formatMoney(e.cashOut)}` : '-'}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                        {e.bankIn > 0 ? `₹${e.bankIn.toLocaleString('en-IN')}` : '-'}
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#16A34A' }}>
+                        {e.bankIn > 0 ? `₹${formatMoney(e.bankIn)}` : '-'}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-semibold text-rose-600 dark:text-rose-400">
-                        {e.bankOut > 0 ? `₹${e.bankOut.toLocaleString('en-IN')}` : '-'}
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#DC2626' }}>
+                        {e.bankOut > 0 ? `₹${formatMoney(e.bankOut)}` : '-'}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-bold text-slate-900 dark:text-white">
-                        ₹{e.cashBal.toLocaleString('en-IN')}
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        ₹{formatMoney(e.cashBal)}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-bold text-slate-900 dark:text-white">
-                        ₹{e.bankBal.toLocaleString('en-IN')}
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        ₹{formatMoney(e.bankBal)}
                       </td>
                     </tr>
                   ))}
 
+                  {/* Empty State when no entries */}
+                  {filteredEntries.length === 0 && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '56px 24px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <div
+                            style={{
+                              width: '48px',
+                              height: '48px',
+                              borderRadius: '12px',
+                              backgroundColor: 'rgba(23, 107, 82, 0.08)',
+                              color: 'var(--primary, #176B52)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginBottom: '6px'
+                            }}
+                          >
+                            <Inbox size={24} />
+                          </div>
+                          <h4 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary, #1A2E26)', margin: 0 }}>
+                            No transactions found
+                          </h4>
+                          <p style={{ fontSize: '12.5px', color: 'var(--text-secondary, #64748B)', margin: 0, maxWidth: '420px', lineHeight: 1.4 }}>
+                            Transactions for the selected date range ({fromDate} to {toDate}) will appear here.
+                          </p>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={<Plus size={14} />}
+                            onClick={() => setShowAddEntryModal(true)}
+                            style={{ marginTop: '12px' }}
+                          >
+                            + Record Entry
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
                   {/* Closing Balance Row */}
-                  <tr className="bg-primary-50/50 dark:bg-primary-950/30 font-bold border-t-2 border-primary-200 dark:border-primary-800 text-slate-900 dark:text-white">
-                    <td className="px-3.5 py-3 text-slate-400">-</td>
-                    <td className="px-3.5 py-3 text-slate-400">-</td>
-                    <td className="px-3.5 py-3 font-extrabold text-primary-700 dark:text-primary-300">Closing Balance</td>
-                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-3 text-right text-slate-400">-</td>
-                    <td className="px-3.5 py-3 text-right text-primary-700 dark:text-primary-300 text-sm">
-                      ₹{cashInHand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  <tr
+                    style={{
+                      backgroundColor: 'rgba(23, 107, 82, 0.08)',
+                      borderTop: '2px solid rgba(23, 107, 82, 0.3)',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '11px' }}>-</td>
+                    <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '11px' }}>-</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(23, 107, 82, 0.15)',
+                          color: 'var(--primary, #176B52)',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          letterSpacing: '0.4px',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        CLOSING BALANCE
+                      </span>
                     </td>
-                    <td className="px-3.5 py-3 text-right text-primary-700 dark:text-primary-300 text-sm">
-                      ₹{cashAtBank.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <td style={{ padding: '12px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>-</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', fontWeight: 800, color: 'var(--primary, #176B52)' }}>
+                      ₹{formatMoney(cashInHand)}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', fontWeight: 800, color: 'var(--primary, #176B52)' }}>
+                      ₹{formatMoney(cashAtBank)}
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
       {/* TRIAL BALANCE TAB */}
       {activeTab === 'trial-balance' && (
-        <Card
-          title="Trial Balance Ledger"
-          subtitle="Summary of active debit and credit balances for dual entry verification"
-          headerRight={
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-              <ShieldCheck className="w-4 h-4" />
+        <div
+          className="card"
+          style={{
+            backgroundColor: 'var(--surface, #FFFFFF)',
+            border: '1px solid var(--border, #E2E8E5)',
+            borderRadius: '14px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            padding: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-subtle, #EDF2EE)',
+              backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Scale size={18} style={{ color: 'var(--primary, #176B52)' }} />
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary, #1A2E26)', margin: 0 }}>
+                  Trial Balance Ledger
+                </h3>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted, #8A9E95)', margin: '3px 0 0 0' }}>
+                Summary of active debit and credit balances for dual entry verification
+              </p>
+            </div>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                color: '#16A34A'
+              }}
+            >
+              <ShieldCheck size={16} />
               Books Balanced
             </span>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-semibold">
-                <tr>
-                  <th className="px-4 py-3">Account Head</th>
-                  <th className="px-4 py-3">Group Category</th>
-                  <th className="px-4 py-3 text-right">Debit (₹)</th>
-                  <th className="px-4 py-3 text-right">Credit (₹)</th>
+          </div>
+
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12.5px' }}>
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                    color: 'var(--text-muted, #8A9E95)',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.6px',
+                    borderBottom: '1px solid var(--border, #E2E8E5)'
+                  }}
+                >
+                  <th style={{ padding: '12px 18px' }}>Account Head</th>
+                  <th style={{ padding: '12px 18px' }}>Group Category</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'right' }}>Debit (₹)</th>
+                  <th style={{ padding: '12px 18px', textAlign: 'right' }}>Credit (₹)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Gold Loan Principal Portfolio</td>
-                  <td className="px-4 py-3 text-slate-500">Current Assets</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</td>
-                  <td className="px-4 py-3 text-right text-slate-400">-</td>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '12px 18px', fontWeight: 600, color: 'var(--text-primary)' }}>Gold Loan Principal Portfolio</td>
+                  <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>Current Assets</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>₹{formatMoney(totalGoldLoansOutstanding)}</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
                 </tr>
-                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Cash In Hand (Vault Reserve)</td>
-                  <td className="px-4 py-3 text-slate-500">Current Assets</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</td>
-                  <td className="px-4 py-3 text-right text-slate-400">-</td>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '12px 18px', fontWeight: 600, color: 'var(--text-primary)' }}>Cash In Hand (Vault Reserve)</td>
+                  <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>Current Assets</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>₹{formatMoney(Math.max(0, cashInHand))}</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
                 </tr>
-                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Fixed Deposits Liability</td>
-                  <td className="px-4 py-3 text-slate-500">Current Liabilities</td>
-                  <td className="px-4 py-3 text-right text-slate-400">-</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalFDPrincipal.toLocaleString('en-IN')}</td>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '12px 18px', fontWeight: 600, color: 'var(--text-primary)' }}>Fixed Deposits Liability</td>
+                  <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>Current Liabilities</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>₹{formatMoney(totalFDPrincipal)}</td>
                 </tr>
-                <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Interest &amp; Processing Income</td>
-                  <td className="px-4 py-3 text-slate-500">Revenue</td>
-                  <td className="px-4 py-3 text-right text-slate-400">-</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">₹{totalIncome.toLocaleString('en-IN')}</td>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '12px 18px', fontWeight: 600, color: 'var(--text-primary)' }}>Interest &amp; Processing Income</td>
+                  <td style={{ padding: '12px 18px', color: 'var(--text-secondary)' }}>Revenue</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                  <td style={{ padding: '12px 18px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>₹{formatMoney(totalIncome)}</td>
                 </tr>
-                <tr className="bg-primary-50/60 dark:bg-primary-950/40 font-bold border-t-2 border-primary-300 dark:border-primary-700">
-                  <td colSpan={2} className="px-4 py-3.5 text-primary-900 dark:text-primary-200 uppercase tracking-wider">
+                <tr
+                  style={{
+                    backgroundColor: 'rgba(23, 107, 82, 0.08)',
+                    borderTop: '2px solid rgba(23, 107, 82, 0.3)',
+                    fontWeight: 700
+                  }}
+                >
+                  <td colSpan={2} style={{ padding: '14px 18px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
                     Total Trial Balance
                   </td>
-                  <td className="px-4 py-3.5 text-right text-primary-800 dark:text-primary-300 font-extrabold text-sm">
-                    ₹{(totalGoldLoansOutstanding + Math.max(0, cashInHand)).toLocaleString('en-IN')}
+                  <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--primary, #176B52)', fontWeight: 800, fontSize: '14px', fontFamily: 'monospace' }}>
+                    ₹{formatMoney(totalGoldLoansOutstanding + Math.max(0, cashInHand))}
                   </td>
-                  <td className="px-4 py-3.5 text-right text-primary-800 dark:text-primary-300 font-extrabold text-sm">
-                    ₹{(totalFDPrincipal + totalIncome).toLocaleString('en-IN')}
+                  <td style={{ padding: '14px 18px', textAlign: 'right', color: 'var(--primary, #176B52)', fontWeight: 800, fontSize: '14px', fontFamily: 'monospace' }}>
+                    ₹{formatMoney(totalFDPrincipal + totalIncome)}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* PROFIT & LOSS TAB */}
       {activeTab === 'profit-loss' && (
-        <div className="space-y-6">
-          <Card
-            title="Profit & Loss Statement"
-            subtitle="Automated revenue and expenditure breakdown calculated from ledger transactions"
-            headerRight={
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-slate-500">FROM</span>
+        <div
+          className="card"
+          style={{
+            backgroundColor: 'var(--surface, #FFFFFF)',
+            border: '1px solid var(--border, #E2E8E5)',
+            borderRadius: '14px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            padding: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-subtle, #EDF2EE)',
+              backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <TrendingUp size={18} style={{ color: 'var(--primary, #176B52)' }} />
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary, #1A2E26)', margin: 0 }}>
+                  Profit &amp; Loss Statement
+                </h3>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted, #8A9E95)', margin: '3px 0 0 0' }}>
+                Automated revenue and expenditure breakdown calculated from ledger transactions
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'var(--surface, #FFFFFF)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  borderRadius: '8px',
+                  padding: '4px 8px',
+                  height: '34px',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>From</span>
                 <input
                   type="date"
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', fontSize: '12px', color: 'var(--text-primary)', outline: 'none', width: '120px' }}
                 />
-                <span className="text-xs font-semibold text-slate-500">TO</span>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>To</span>
                 <input
                   type="date"
-                  className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', fontSize: '12px', color: 'var(--text-primary)', outline: 'none', width: '120px' }}
                 />
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
-                  {(['this-month', 'last-month', 'this-year', 'all-time'] as const).map((p) => (
-                    <button
-                      key={p}
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-md capitalize transition-all ${
-                        pnlPeriod === p
-                          ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
-                          : 'text-slate-600 dark:text-slate-400'
-                      }`}
-                      onClick={() => setPnlPeriod(p)}
-                    >
-                      {p.replace('-', ' ')}
-                    </button>
-                  ))}
-                </div>
               </div>
-            }
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left: Income */}
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
-                  <h3 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">
+
+              <div
+                style={{
+                  display: 'flex',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  borderRadius: '8px',
+                  padding: '2px'
+                }}
+              >
+                {(['this-month', 'last-month', 'this-year', 'all-time'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPnlPeriod(p)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '12px',
+                      fontWeight: pnlPeriod === p ? 700 : 500,
+                      color: pnlPeriod === p ? '#FFFFFF' : 'var(--text-secondary)',
+                      backgroundColor: pnlPeriod === p ? 'var(--primary, #176B52)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {p.replace('-', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+              {/* Income */}
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border, #E2E8E5)' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#16A34A', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
                     Income &amp; Revenues
-                  </h3>
-                  <span className="text-[11px] text-slate-400">All credited streams</span>
+                  </h4>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>All credited streams</span>
                 </div>
 
-                <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-300">Interest Earned on Loans</span>
-                    <strong className="font-bold text-slate-900 dark:text-white">₹{totalInterestEarned.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Interest Earned on Loans</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(totalInterestEarned)}</strong>
                   </div>
-                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-300">Card &amp; Processing Fees</span>
-                    <strong className="font-bold text-slate-900 dark:text-white">₹{cardFeesEarned.toLocaleString('en-IN')}</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Card &amp; Processing Fees</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(cardFeesEarned)}</strong>
                   </div>
-                  <div className="flex justify-between pt-2 text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', fontSize: '14px', fontWeight: 800, color: '#16A34A' }}>
                     <span>Total Income</span>
-                    <span>₹{totalIncome.toLocaleString('en-IN')}</span>
+                    <span style={{ fontFamily: 'monospace' }}>₹{formatMoney(totalIncome)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Expenses */}
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
-                  <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wide">
+              {/* Expenses */}
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border, #E2E8E5)' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
                     Expenses &amp; Outflows
-                  </h3>
-                  <span className="text-[11px] text-slate-400">All operational debits</span>
+                  </h4>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>All operational debits</span>
                 </div>
 
-                <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-300">Interest Paid on Fixed Deposits</span>
-                    <strong className="font-bold text-slate-900 dark:text-white">₹{interestPaidOnDeposits.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Interest Paid on Fixed Deposits</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(interestPaidOnDeposits)}</strong>
                   </div>
-                  <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-600 dark:text-slate-300">Office &amp; Administrative</span>
-                    <strong className="font-bold text-slate-900 dark:text-white">₹0.00</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Office &amp; Administrative</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(0)}</strong>
                   </div>
-                  <div className="flex justify-between pt-2 text-sm font-extrabold text-rose-600 dark:text-rose-400">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', fontSize: '14px', fontWeight: 800, color: '#DC2626' }}>
                     <span>Total Expenses</span>
-                    <span>₹{totalExpenses.toLocaleString('en-IN')}</span>
+                    <span style={{ fontFamily: 'monospace' }}>₹{formatMoney(totalExpenses)}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Bottom Net Profit Banner */}
-            <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-primary-500/10 border border-emerald-500/20 flex items-center justify-between">
+            {/* Net Operating Profit Banner */}
+            <div
+              style={{
+                padding: '20px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(23, 107, 82, 0.1) 0%, rgba(20, 184, 166, 0.1) 100%)',
+                border: '1px solid rgba(23, 107, 82, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap'
+              }}
+            >
               <div>
-                <div className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--primary, #176B52)' }}>
                   Net Operating Profit
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '3px 0 0 0' }}>
                   Total revenue surplus after operational cost subtractions
                 </p>
               </div>
-              <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
-                ₹{netProfit.toLocaleString('en-IN')}
+              <div style={{ fontSize: '28px', fontWeight: 900, fontFamily: 'monospace', color: 'var(--primary, #176B52)' }}>
+                ₹{formatMoney(netProfit)}
               </div>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
       {/* BALANCE SHEET TAB */}
       {activeTab === 'balance-sheet' && (
-        <Card
-          title="Balance Sheet"
-          subtitle="Financial structure of assets, liabilities, and retained capital reserves"
+        <div
+          className="card"
+          style={{
+            backgroundColor: 'var(--surface, #FFFFFF)',
+            border: '1px solid var(--border, #E2E8E5)',
+            borderRadius: '14px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            padding: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-              <h4 className="text-sm font-bold text-primary-600 dark:text-primary-400 uppercase tracking-wide">
-                Assets Portfolio
-              </h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Active Gold Loan Advances</span>
-                  <strong className="font-bold text-slate-900 dark:text-white">₹{totalGoldLoansOutstanding.toLocaleString('en-IN')}</strong>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Cash In Vault</span>
-                  <strong className="font-bold text-slate-900 dark:text-white">₹{Math.max(0, cashInHand).toLocaleString('en-IN')}</strong>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Pledged Gold Collateral Value</span>
-                  <strong className="font-bold text-slate-900 dark:text-white">₹{loans.reduce((acc, l) => acc + l.marketValue, 0).toLocaleString('en-IN')}</strong>
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-subtle, #EDF2EE)',
+              backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Landmark size={18} style={{ color: 'var(--primary, #176B52)' }} />
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary, #1A2E26)', margin: 0 }}>
+                  Balance Sheet
+                </h3>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted, #8A9E95)', margin: '3px 0 0 0' }}>
+                Financial structure of assets, liabilities, and retained capital reserves
+              </p>
+            </div>
+          </div>
+
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--primary, #176B52)', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+                  Assets Portfolio
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Active Gold Loan Advances</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(totalGoldLoansOutstanding)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Cash In Vault</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(Math.max(0, cashInHand))}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Pledged Gold Collateral Value</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(loans.reduce((acc, l) => acc + l.marketValue, 0))}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-              <h4 className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
-                Liabilities &amp; Capital
-              </h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Depositor Fixed Deposits Liability</span>
-                  <strong className="font-bold text-slate-900 dark:text-white">₹{totalFDPrincipal.toLocaleString('en-IN')}</strong>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Branch Capital &amp; Reserves</span>
-                  <strong className="font-bold text-slate-900 dark:text-white">₹5,00,000</strong>
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)',
+                  border: '1px solid var(--border, #E2E8E5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.6px', margin: 0 }}>
+                  Liabilities &amp; Capital
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Depositor Fixed Deposits Liability</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(totalFDPrincipal)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Branch Capital &amp; Reserves</span>
+                    <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>₹{formatMoney(500000)}</strong>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Add Day Book Entry Modal */}
+      {/* Record Manual Day Book Entry Modal */}
       {showAddEntryModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Day Book Entry</h3>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--surface, #FFFFFF)',
+              border: '1px solid var(--border, #E2E8E5)',
+              borderRadius: '16px',
+              maxWidth: '520px',
+              width: '100%',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '90vh',
+              boxSizing: 'border-box'
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-subtle, #EDF2EE)',
+                backgroundColor: 'var(--surface-secondary, #F4F7F5)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(23, 107, 82, 0.1)',
+                    color: 'var(--primary, #176B52)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Plus size={16} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                    Record Manual Day Book Entry
+                  </h3>
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                    Post direct debit or credit to general ledger
+                  </p>
+                </div>
+              </div>
               <button
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+                type="button"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                 onClick={() => setShowAddEntryModal(false)}
               >
-                <X className="w-5 h-5" />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateEntry} className="space-y-4 pt-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Transaction Type <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={entryType}
-                  onChange={(e) => setEntryType(e.target.value as any)}
-                >
-                  <option value="CASH_IN">Cash In (Credit Vault)</option>
-                  <option value="CASH_OUT">Cash Out (Expense / Debit Vault)</option>
-                  <option value="BANK_IN">Bank In (Bank Credit)</option>
-                  <option value="BANK_OUT">Bank Out (Bank Transfer / Debit)</option>
-                </select>
-              </div>
+            {/* Modal Body */}
+            <form onSubmit={handleCreateEntry} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', flex: 1 }}>
+                <div className="form-group">
+                  <label className="form-label required">Transaction Type</label>
+                  <select
+                    className="select-control"
+                    value={entryType}
+                    onChange={(e) => setEntryType(e.target.value as any)}
+                  >
+                    <option value="CASH_IN">Cash In (Credit Vault)</option>
+                    <option value="CASH_OUT">Cash Out (Expense / Debit Vault)</option>
+                    <option value="BANK_IN">Bank In (Bank Credit / Inflow)</option>
+                    <option value="BANK_OUT">Bank Out (Bank Transfer / Outflow)</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Particulars / Description <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="e.g. Tea & Refreshments / Office Rent / Bank Deposit"
-                  value={particulars}
-                  onChange={(e) => setParticulars(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Account Head <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={accountHead}
-                  onChange={(e) => setAccountHead(e.target.value)}
-                >
-                  <option value="Office Expenses">Office Expenses</option>
-                  <option value="Staff Salary">Staff Salary</option>
-                  <option value="Stationery & Printing">Stationery &amp; Printing</option>
-                  <option value="Rent & Maintenance">Rent &amp; Maintenance</option>
-                  <option value="Owner Capital">Owner Capital Inflow</option>
-                  <option value="Bank Contra Transfer">Bank Contra Transfer</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Amount (₹) <span className="text-rose-500">*</span>
-                  </label>
+                <div className="form-group">
+                  <label className="form-label required">Particulars / Description</label>
                   <input
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 546.75"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    type="text"
+                    className="input-control"
+                    placeholder="e.g. Tea &amp; Refreshments / Office Rent / Bank Deposit"
+                    value={particulars}
+                    onChange={(e) => setParticulars(e.target.value)}
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    value={entryDate}
-                    onChange={(e) => setEntryDate(e.target.value)}
-                  />
+
+                <div className="form-group">
+                  <label className="form-label required">Account Head</label>
+                  <select
+                    className="select-control"
+                    value={accountHead}
+                    onChange={(e) => setAccountHead(e.target.value)}
+                  >
+                    <option value="Office Expenses">Office Expenses</option>
+                    <option value="Staff Salary">Staff Salary</option>
+                    <option value="Stationery & Printing">Stationery &amp; Printing</option>
+                    <option value="Rent & Maintenance">Rent &amp; Maintenance</option>
+                    <option value="Owner Capital">Owner Capital Inflow</option>
+                    <option value="Bank Contra Transfer">Bank Contra Transfer</option>
+                    <option value="Electricity & Utilities">Electricity &amp; Utilities</option>
+                    <option value="Miscellaneous">Miscellaneous</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label required">Amount (₹)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      placeholder="e.g. 1500.00"
+                      className="input-control"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      required
+                      style={{ fontFamily: 'monospace', fontWeight: 600 }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label required">Date</label>
+                    <input
+                      type="text"
+                      className="input-control"
+                      value={entryDate}
+                      onChange={(e) => setEntryDate(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3">
+              {/* Modal Footer */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  padding: '16px 20px',
+                  borderTop: '1px solid var(--border-subtle, #EDF2EE)',
+                  backgroundColor: 'var(--surface-secondary, #F4F7F5)'
+                }}
+              >
                 <Button variant="outline" type="button" onClick={() => setShowAddEntryModal(false)}>
                   Cancel
                 </Button>
@@ -724,3 +1497,5 @@ export const Accounts: React.FC = () => {
     </div>
   );
 };
+
+export default Accounts;

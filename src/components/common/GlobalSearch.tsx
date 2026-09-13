@@ -15,7 +15,7 @@ export interface GlobalSearchResultItem {
 }
 
 export const GlobalSearch: React.FC = () => {
-  const { customers, loans, receipts, setCurrentPage, isRentalPortal } = useApp();
+  const { customers, loans, receipts, currentPage, setCurrentPage, isRentalPortal } = useApp();
 
   const [query, setQuery] = useState<string>('');
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -189,6 +189,12 @@ export const GlobalSearch: React.FC = () => {
   };
 
   const hasResults = allFlattenedResults.length > 0;
+  const isAccountsPage = ['day-book', 'trial-balance', 'profit-loss', 'balance-sheet', 'accounts'].includes(currentPage);
+  const searchPlaceholder = isRentalPortal
+    ? 'Search shops, tenants, complexes...'
+    : isAccountsPage
+    ? 'Search transactions, customers, receipts...'
+    : 'Search customers, loans, receipts...';
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
@@ -196,7 +202,7 @@ export const GlobalSearch: React.FC = () => {
         value={query}
         onChange={setQuery}
         onDebouncedChange={performSearch}
-        placeholder={isRentalPortal ? "Search shops, tenants, complexes..." : "Search customers, loans..."}
+        placeholder={searchPlaceholder}
         loading={loading}
         onFocus={() => {
           if (query.trim()) setIsOpen(true);

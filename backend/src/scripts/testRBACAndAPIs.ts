@@ -36,7 +36,7 @@ async function stopTestServer(): Promise<void> {
   });
 }
 
-async function postJson(url: string, data: any, token?: string) {
+async function postJson(url: string, data: any, token?: string): Promise<{ status: number; ok: boolean; json: any }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, {
@@ -44,18 +44,18 @@ async function postJson(url: string, data: any, token?: string) {
     headers,
     body: JSON.stringify(data)
   });
-  const json = await res.json().catch(() => ({}));
+  const json: any = await res.json().catch(() => ({}));
   return { status: res.status, ok: res.ok, json };
 }
 
-async function getJson(url: string, token?: string) {
+async function getJson(url: string, token?: string): Promise<{ status: number; ok: boolean; json: any }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, {
     method: 'GET',
     headers
   });
-  const json = await res.json().catch(() => ({}));
+  const json: any = await res.json().catch(() => ({}));
   return { status: res.status, ok: res.ok, json };
 }
 

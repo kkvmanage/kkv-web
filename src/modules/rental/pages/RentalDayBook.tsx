@@ -1175,7 +1175,7 @@ export const RentalDayBook: React.FC = () => {
       {/* Manual Entry Modal */}
       {showManualModal && (
         <div
-          className="modal-overlay"
+          className="modal-backdrop"
           style={{
             position: 'fixed',
             top: 0,
@@ -1187,7 +1187,8 @@ export const RentalDayBook: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 1000,
-            backdropFilter: 'blur(2px)'
+            backdropFilter: 'blur(2px)',
+            padding: '16px'
           }}
         >
           <div
@@ -1197,6 +1198,9 @@ export const RentalDayBook: React.FC = () => {
               borderRadius: '16px',
               width: '100%',
               maxWidth: '540px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
               border: '1px solid var(--border-subtle)',
               boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
               overflow: 'hidden'
@@ -1205,6 +1209,7 @@ export const RentalDayBook: React.FC = () => {
             {/* Modal Header */}
             <div
               style={{
+                flexShrink: 0,
                 padding: '16px 20px',
                 borderBottom: '1px solid var(--border-subtle)',
                 display: 'flex',
@@ -1236,8 +1241,26 @@ export const RentalDayBook: React.FC = () => {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleManualSubmit}>
-              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <form
+              onSubmit={handleManualSubmit}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minHeight: 0,
+                overflow: 'hidden'
+              }}
+            >
+              <div
+                style={{
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  overflowY: 'auto',
+                  flex: 1
+                }}
+              >
                 {/* Date & Type */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
@@ -1295,7 +1318,7 @@ export const RentalDayBook: React.FC = () => {
                     <input
                       type="number"
                       required
-                      min="0"
+                      min="0.01"
                       step="any"
                       placeholder="0.00"
                       value={manualAmount}
@@ -1443,6 +1466,7 @@ export const RentalDayBook: React.FC = () => {
               {/* Modal Actions */}
               <div
                 style={{
+                  flexShrink: 0,
                   padding: '14px 20px',
                   borderTop: '1px solid var(--border-subtle)',
                   display: 'flex',

@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "seed:admin": "tsx src/scripts/seedAdmin.ts"
+    "seed:admin": "tsx src/scripts/seedAdmin.ts",
+    "reset:rental": "tsx src/scripts/resetRentalData.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

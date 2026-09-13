@@ -345,8 +345,10 @@ export class RentalController {
       const complexId = (req.query.complexId as string) || undefined;
       const status = (req.query.status as string) || undefined;
       const search = (req.query.search as string) || undefined;
+      const page = req.query.page ? Number(req.query.page) : undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
 
-      const data = await rentalService.getPendingRentList({ month, complexId, status, search });
+      const data = await rentalService.getPendingRentList({ month, complexId, status, search, page, limit });
       res.json({ success: true, data });
     } catch (err: any) {
       console.error('[RentalController] getPendingRent error:', err);

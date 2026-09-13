@@ -77,9 +77,10 @@ export class RentalService {
     const unpaidBalance = Math.max(0, monthlyRent - totalCovered);
     const isFullyPaid = (totalCovered >= monthlyRent && monthlyRent > 0) || (monthlyRent === 0);
     const isDue = today.getTime() >= dueDate.getTime();
+    const isDueToday = todayStr === dueDateStr;
 
-    let isPending = false;
-    let pendingAmount = 0;
+    let isPending = unpaidBalance > 0;
+    let pendingAmount = unpaidBalance;
     let daysOverdue = 0;
     let statusText: 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE' | 'DUE TODAY' | 'UPCOMING' = 'UPCOMING';
 
@@ -88,26 +89,28 @@ export class RentalService {
       isPending = false;
       pendingAmount = 0;
     } else {
-      if (isDue) {
-        isPending = unpaidBalance > 0;
-        pendingAmount = unpaidBalance;
+      if (today.getTime() > dueDate.getTime()) {
         const diffMs = today.getTime() - dueDate.getTime();
         daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-        statusText = daysOverdue > 0 ? 'OVERDUE' : (totalCovered > 0 ? 'PARTIAL' : 'DUE TODAY');
+        statusText = 'OVERDUE';
+      } else if (isDueToday) {
+        daysOverdue = 0;
+        statusText = 'DUE TODAY';
+      } else if (totalCovered > 0) {
+        statusText = 'PARTIAL';
       } else {
-        // Future / not due yet in this selected month
-        isPending = false;
-        pendingAmount = 0;
-        statusText = totalCovered > 0 ? 'PARTIAL' : 'UPCOMING';
+        statusText = isDue ? 'PENDING' : 'UPCOMING';
       }
     }
 
     return {
       shopId: shop.shopId,
       shopNumber: shop.shopNumber,
-      shopName: shop.shopName,
-      tenantName: shop.tenantName,
-      mobileNumber: shop.mobileNumber,
+      shopName: shop.shopName || '',
+      tenantName: shop.tenantName || '',
+      mobileNumber: shop.mobileNumber || '',
+      doorNumber: shop.doorNumber || '',
+      ebNumber: shop.ebNumber || '',
       complexId: shop.complexId,
       monthlyRent,
       rentDueDay: shop.rentDueDay || 10,
@@ -115,6 +118,7 @@ export class RentalService {
       dueDateStr,
       dueDate,
       isDue,
+      isDueToday,
       isFullyPaid,
       isPending,
       daysOverdue,
@@ -126,7 +130,7 @@ export class RentalService {
       outstandingBalance: unpaidBalance,
       pendingAmount,
       availableAdvance: Number(shop.availableAdvance) || 0,
-      status: isFullyPaid ? 'PAID' : totalCovered > 0 ? 'PARTIAL' : 'PENDING',
+      status: isFullyPaid ? 'PAID' : daysOverdue > 0 ? 'OVERDUE' : isDueToday ? 'DUE' : totalCovered > 0 ? 'PARTIAL' : 'PENDING',
       statusText,
       payments: monthPayments
     };
@@ -1698,6 +1702,8 @@ export class RentalService {
     complexId?: string;
     status?: string;
     search?: string;
+    page?: number;
+    limit?: number;
   }): Promise<PendingRentResponse> {
     const selectedMonth = params?.month ? params.month.slice(0, 7) : this.getCurrentMonth();
 
@@ -1712,32 +1718,25 @@ export class RentalService {
     const allPayments = rentalRepository.getPayments();
     const monthPayments = allPayments.filter((p) => p.paymentMonth === selectedMonth);
 
-    const pendingItems: PendingRentItem[] = [];
-
-    for (const shop of shops) {
+    // Calculate metrics for every active shop
+    const allShopItems: PendingRentItem[] = shops.map((shop) => {
+      const complex = complexMap.get(shop.complexId);
       const metrics = this.getShopRentDueMetrics(shop, selectedMonth, monthPayments);
 
-      // CRITICAL RULE: Only include if rent is due (dueDate <= today) AND unpaid balance exists (pendingAmount > 0)
-      if (!metrics.isDue || metrics.pendingAmount <= 0) {
-        continue;
-      }
-
-      const complex = complexMap.get(shop.complexId);
-
-      // Determine Status:
-      // dueDate === today AND unpaid -> DUE
-      // dueDate < today AND unpaid -> OVERDUE
-      // paid > 0 AND pending > 0 -> PARTIAL
-      let rowStatus: 'DUE' | 'OVERDUE' | 'PARTIAL';
-      if (metrics.totalCovered > 0 && metrics.pendingAmount > 0) {
-        rowStatus = 'PARTIAL';
+      let rowStatus: 'DUE' | 'OVERDUE' | 'PARTIAL' | 'PENDING' | 'PAID';
+      if (metrics.isFullyPaid) {
+        rowStatus = 'PAID';
       } else if (metrics.daysOverdue > 0) {
         rowStatus = 'OVERDUE';
-      } else {
+      } else if (metrics.isDueToday) {
         rowStatus = 'DUE';
+      } else if (metrics.totalCovered > 0) {
+        rowStatus = 'PARTIAL';
+      } else {
+        rowStatus = 'PENDING';
       }
 
-      const item: PendingRentItem = {
+      return {
         id: shop.id || shop.shopId,
         complexId: shop.complexId,
         complexName: complex?.complexName || shop.complexName || 'Unknown Complex',
@@ -1760,63 +1759,96 @@ export class RentalService {
         status: rowStatus,
         availableAdvance: Number(shop.availableAdvance) || 0
       };
+    });
 
-      // Search filter if provided
-      if (params?.search) {
-        const q = params.search.toLowerCase().trim();
-        const matches =
-          item.complexName.toLowerCase().includes(q) ||
-          (item.location && item.location.toLowerCase().includes(q)) ||
-          item.shopNumber.toLowerCase().includes(q) ||
-          (item.doorNumber && item.doorNumber.toLowerCase().includes(q)) ||
-          (item.shopName && item.shopName.toLowerCase().includes(q)) ||
-          item.tenantName.toLowerCase().includes(q) ||
-          item.mobileNumber.includes(q) ||
-          (item.ebNumber && item.ebNumber.toLowerCase().includes(q));
+    // ── Summary Metrics (Calculated across all active shops in scope) ────────
+    const pendingShopsList = allShopItems.filter((i) => i.pendingAmount > 0);
+    const overdueShopsList = allShopItems.filter((i) => i.daysOverdue > 0 && i.pendingAmount > 0);
+    const dueTodayShopsList = allShopItems.filter((i) => i.status === 'DUE' && i.pendingAmount > 0);
+    const partialShopsList = allShopItems.filter((i) => i.totalCovered > 0 && i.pendingAmount > 0);
 
-        if (!matches) continue;
-      }
+    const totalPendingRent = pendingShopsList.reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalOverdueRent = overdueShopsList.reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalDueTodayRent = dueTodayShopsList.reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalPartialRent = partialShopsList.reduce((sum, item) => sum + item.pendingAmount, 0);
 
-      // Status filter if provided (and not 'ALL')
-      if (params?.status && params.status !== 'ALL') {
-        if (item.status !== params.status) continue;
-      }
+    const summary: PendingRentSummary = {
+      totalPendingRent,
+      totalPendingAmount: totalPendingRent,
+      totalPendingShops: pendingShopsList.length,
+      pendingShops: pendingShopsList.length,
+      totalOverdueRent,
+      overdueAmount: totalOverdueRent,
+      totalOverdueShops: overdueShopsList.length,
+      overdueShops: overdueShopsList.length,
+      totalDueTodayRent,
+      dueTodayAmount: totalDueTodayRent,
+      totalDueTodayShops: dueTodayShopsList.length,
+      dueTodayShops: dueTodayShopsList.length,
+      totalPartialRent,
+      partiallyPaidAmount: totalPartialRent,
+      totalPartialShops: partialShopsList.length,
+      partiallyPaidShops: partialShopsList.length
+    };
 
-      pendingItems.push(item);
+    // ── Filter Display Items ────────────────────────────────────────────────
+    let displayedItems = [...allShopItems];
+
+    // Status filter
+    const statusFilter = (params?.status || 'ALL').toUpperCase();
+    if (statusFilter === 'PAID') {
+      displayedItems = displayedItems.filter((i) => i.status === 'PAID');
+    } else if (statusFilter === 'OVERDUE') {
+      displayedItems = displayedItems.filter((i) => i.status === 'OVERDUE');
+    } else if (statusFilter === 'DUE' || statusFilter === 'DUE_TODAY') {
+      displayedItems = displayedItems.filter((i) => i.status === 'DUE');
+    } else if (statusFilter === 'PARTIAL' || statusFilter === 'PARTIALLY_PAID') {
+      displayedItems = displayedItems.filter((i) => i.totalCovered > 0 && i.pendingAmount > 0);
+    } else if (statusFilter === 'PENDING') {
+      displayedItems = displayedItems.filter((i) => i.pendingAmount > 0 && i.totalCovered === 0);
+    } else {
+      // 'ALL': by default displays all shops with pending unpaid/partial balance
+      displayedItems = displayedItems.filter((i) => i.pendingAmount > 0);
     }
 
-    // Default Sorting: Most urgent first
-    // 1. Overdue with highest daysOverdue descending
-    // 2. Due today
-    // 3. Highest pending amount descending
-    pendingItems.sort((a, b) => {
+    // Search filter
+    if (params?.search) {
+      const q = params.search.toLowerCase().trim();
+      displayedItems = displayedItems.filter((item) =>
+        item.complexName.toLowerCase().includes(q) ||
+        (item.location && item.location.toLowerCase().includes(q)) ||
+        item.shopNumber.toLowerCase().includes(q) ||
+        (item.doorNumber && item.doorNumber.toLowerCase().includes(q)) ||
+        (item.shopName && item.shopName.toLowerCase().includes(q)) ||
+        item.tenantName.toLowerCase().includes(q) ||
+        item.mobileNumber.includes(q) ||
+        (item.ebNumber && item.ebNumber.toLowerCase().includes(q))
+      );
+    }
+
+    // Default Sorting: Overdue highest days first, then highest pending amount
+    displayedItems.sort((a, b) => {
       if (a.daysOverdue !== b.daysOverdue) {
         return b.daysOverdue - a.daysOverdue;
       }
       return b.pendingAmount - a.pendingAmount;
     });
 
-    // Calculate Summary
-    const totalPendingRent = pendingItems.reduce((sum, item) => sum + item.pendingAmount, 0);
-    const totalOverdueRent = pendingItems.filter((i) => i.status === 'OVERDUE').reduce((sum, item) => sum + item.pendingAmount, 0);
-    const totalDueTodayRent = pendingItems.filter((i) => i.status === 'DUE').reduce((sum, item) => sum + item.pendingAmount, 0);
-    const totalPendingShops = pendingItems.length;
-    const totalOverdueShops = pendingItems.filter((i) => i.status === 'OVERDUE').length;
-    const totalDueTodayShops = pendingItems.filter((i) => i.status === 'DUE').length;
-    const totalPartialShops = pendingItems.filter((i) => i.status === 'PARTIAL').length;
+    const page = Number(params?.page) || 1;
+    const limit = Number(params?.limit) || 100;
+    const total = displayedItems.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
 
     return {
-      summary: {
-        totalPendingRent,
-        totalOverdueRent,
-        totalDueTodayRent,
-        totalPendingShops,
-        totalOverdueShops,
-        totalDueTodayShops,
-        totalPartialShops
-      },
-      items: pendingItems,
-      month: selectedMonth
+      summary,
+      items: displayedItems,
+      month: selectedMonth,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages
+      }
     };
   }
 

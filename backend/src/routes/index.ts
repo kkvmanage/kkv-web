@@ -48,6 +48,7 @@ router.use('/config', configRoutes);
 router.use('/loan-types', configRoutes);
 router.use('/files', fileRoutes);
 router.use('/rental', rentalRoutes);
+router.use('/rent', rentalRoutes);
 router.get('/rental-summary', authenticateUser, authorizeRoles('ADMIN'), getRentalSummary);
 router.use('/search', searchRoutes);
 router.use('/location', locationRoutes);

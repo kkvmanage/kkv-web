@@ -436,24 +436,39 @@ export interface PendingRentItem {
   totalCovered: number;
   pendingAmount: number;
   daysOverdue: number;
-  status: 'DUE' | 'OVERDUE' | 'PARTIAL';
+  status: 'DUE' | 'OVERDUE' | 'PARTIAL' | 'PENDING' | 'PAID';
   availableAdvance: number;
 }
 
 export interface PendingRentSummary {
   totalPendingRent: number;
-  totalOverdueRent: number;
-  totalDueTodayRent: number;
+  totalPendingAmount?: number;
   totalPendingShops: number;
+  pendingShops?: number;
+  totalOverdueRent: number;
+  overdueAmount?: number;
   totalOverdueShops: number;
+  overdueShops?: number;
+  totalDueTodayRent: number;
+  dueTodayAmount?: number;
   totalDueTodayShops: number;
+  dueTodayShops?: number;
+  totalPartialRent?: number;
+  partiallyPaidAmount?: number;
   totalPartialShops: number;
+  partiallyPaidShops?: number;
 }
 
 export interface PendingRentResponse {
   summary: PendingRentSummary;
   items: PendingRentItem[];
   month: string;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
 }
 
 export interface ComplexDeleteCheck {

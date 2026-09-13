@@ -17,6 +17,7 @@ import { FDRenewalModel } from '../models/FDRenewal.js';
 import { DayBookModel } from '../models/DayBook.js';
 import { FileAttachmentModel } from '../models/FileAttachment.js';
 import { UserModel } from '../models/User.js';
+import { StaffAuditModel } from '../models/StaffAudit.js';
 import { seedUsers } from './seedAdmin.js';
 import { backupPackageService } from '../services/backupPackage.service.js';
 import { env } from '../config/env.js';
@@ -157,7 +158,8 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
       FDWithdrawalModel.deleteMany({}),
       FDRenewalModel.deleteMany({}),
       DayBookModel.deleteMany({}),
-      FileAttachmentModel.deleteMany({})
+      FileAttachmentModel.deleteMany({}),
+      StaffAuditModel.deleteMany({})
     ]);
 
     if (db) {
@@ -171,7 +173,10 @@ export async function executeDevelopmentDataReset(): Promise<ResetReport> {
         'rental_expenses',
         'rental_daybook',
         'rental_audit_logs',
-        'rental_sync_queue'
+        'rental_sync_queue',
+        'staff_audits',
+        'staffaudits',
+        'audit_logs'
       ];
 
       for (const col of mongoOperationalCollections) {

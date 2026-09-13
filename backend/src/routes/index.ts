@@ -53,7 +53,23 @@ router.use('/search', searchRoutes);
 router.use('/location', locationRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/sync', syncRoutes);
-router.use('/telegram', telegramRoutes);
 router.use('/reminders', reminderRoutes);
+
+// Global Notifications endpoint with module scoping
+router.get('/notifications', authenticateUser, async (req, res) => {
+  try {
+    const moduleQuery = (req.query.module as string)?.toUpperCase();
+    if (moduleQuery === 'RENTAL') {
+      const { rentalService } = await import('../modules/rental/services/rental.service.js');
+      const readIds = typeof req.query.readIds === 'string' ? req.query.readIds.split(',') : [];
+      const data = await rentalService.getRentalNotifications(readIds);
+      return res.json({ success: true, data });
+    }
+    // For non-rental or global finance notifications:
+    return res.json({ success: true, data: [] });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message || 'Error fetching notifications' });
+  }
+});
 
 export default router;

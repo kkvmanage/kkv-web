@@ -19,7 +19,8 @@ import {
   PendingRentResponse,
   ShopSettlementSummary,
   ComplexDeleteCheck,
-  ShopDeleteCheck
+  ShopDeleteCheck,
+  RentalNotification
 } from '../types/rental.types.js';
 
 export class RentalService {
@@ -1163,11 +1164,11 @@ export class RentalService {
     const shopMap = new Map(shops.map((s) => [s.shopId, s.shopNumber]));
 
     list = list.map((e) => {
-      const scope: ExpenseScope = e.expenseScope || (e.shopId ? 'SHOP' : 'COMPLEX');
+      const scope: ExpenseScope = e.expenseScope || (e.shopId ? 'SHOP' : e.complexId ? 'COMPLEX' : 'RENTAL');
       return {
         ...e,
         expenseScope: scope,
-        complexName: complexMap.get(e.complexId) || 'Unknown Complex',
+        complexName: e.complexName || (e.complexId ? complexMap.get(e.complexId) : '') || 'General Rental',
         shopNumber: e.shopId ? shopMap.get(e.shopId) || '' : undefined
       };
     });
@@ -1185,7 +1186,7 @@ export class RentalService {
         (e) =>
           e.expenseId.toLowerCase().includes(q) ||
           e.expenseReason.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q) ||
+          (e.category ? e.category.toLowerCase().includes(q) : false) ||
           (e.complexName && e.complexName.toLowerCase().includes(q)) ||
           (e.notes && e.notes.toLowerCase().includes(q))
       );
@@ -1196,11 +1197,11 @@ export class RentalService {
 
   public async createExpense(
     data: {
-      complexId: string;
+      complexId?: string | null;
       expenseScope?: ExpenseScope;
       shopId?: string | null;
       expenseDate: string;
-      category: ExpenseCategory;
+      category?: ExpenseCategory | string;
       expenseReason: string;
       expenseAmount: number;
       paymentMode: PaymentMode;
@@ -1211,39 +1212,40 @@ export class RentalService {
     },
     userId: string = 'SYSTEM'
   ): Promise<RentalExpense> {
-    if (!data.complexId || !data.complexId.trim()) {
-      throw new Error('Complex selection is required');
-    }
-
-    const complex = rentalRepository.getComplexById(data.complexId);
-    if (!complex) throw new Error(`Complex ${data.complexId} not found`);
-
-    const scope: ExpenseScope = data.expenseScope || (data.shopId ? 'SHOP' : 'COMPLEX');
-
-    let resolvedShopId: string | undefined = undefined;
-    if (scope === 'SHOP') {
-      if (!data.shopId || !data.shopId.trim()) {
-        throw new Error('Shop/Tenant selection is required for Shop/Tenant Expenses');
-      }
-      const shop = rentalRepository.getShopById(data.shopId);
-      if (!shop) throw new Error(`Shop ${data.shopId} not found`);
-      if (shop.complexId !== complex.complexId) {
-        throw new Error(`Shop ${data.shopId} does not belong to complex ${complex.complexName}`);
-      }
-      resolvedShopId = shop.shopId;
-    }
-
-    if (!data.category || !data.category.trim()) {
-      throw new Error('Expense category is required');
-    }
     if (!data.expenseReason || !data.expenseReason.trim()) {
-      throw new Error('Expense description/reason is required');
+      throw new Error('Expense description / reason is required');
     }
 
     const expenseAmount = Number(data.expenseAmount);
     if (isNaN(expenseAmount) || expenseAmount <= 0) {
       throw new Error('Expense amount must be a positive number greater than zero');
     }
+
+    let complexId: string | null = null;
+    let complexName: string = 'General Rental';
+    if (data.complexId && data.complexId.trim()) {
+      const complex = rentalRepository.getComplexById(data.complexId.trim());
+      if (complex) {
+        complexId = complex.complexId;
+        complexName = complex.complexName;
+      }
+    }
+
+    const scope: ExpenseScope = data.expenseScope || (data.shopId ? 'SHOP' : complexId ? 'COMPLEX' : 'RENTAL');
+
+    let resolvedShopId: string | undefined = undefined;
+    if (scope === 'SHOP' && data.shopId && data.shopId.trim()) {
+      const shop = rentalRepository.getShopById(data.shopId.trim());
+      if (shop) {
+        resolvedShopId = shop.shopId;
+        if (!complexId) {
+          complexId = shop.complexId;
+          complexName = shop.complexName || 'General Rental';
+        }
+      }
+    }
+
+    const category = data.category?.trim() || 'General';
 
     const mode = data.paymentMode || 'CASH';
     let cashAmount = 0;
@@ -1258,9 +1260,12 @@ export class RentalService {
     } else if (mode === 'BOTH') {
       cashAmount = Number(data.cashAmount || 0);
       gpayAmount = Number(data.gpayAmount || 0);
+      if (cashAmount < 0 || gpayAmount < 0) {
+        throw new Error('Split cash and GPay amounts cannot be negative');
+      }
       if (Math.abs(cashAmount + gpayAmount - expenseAmount) > 0.01) {
         throw new Error(
-          `Cash amount (₹${cashAmount}) + GPay amount (₹${gpayAmount}) must equal total expense amount (₹${expenseAmount})`
+          `Cash amount (₹${cashAmount.toLocaleString('en-IN')}) + GPay amount (₹${gpayAmount.toLocaleString('en-IN')}) must equal total expense amount (₹${expenseAmount.toLocaleString('en-IN')})`
         );
       }
     }
@@ -1271,12 +1276,12 @@ export class RentalService {
     const expense: RentalExpense = {
       id: expenseId,
       expenseId,
-      complexId: complex.complexId,
-      complexName: complex.complexName,
+      complexId,
+      complexName,
       expenseScope: scope,
       shopId: resolvedShopId,
       expenseDate: data.expenseDate || this.getTodayDate(),
-      category: data.category,
+      category: category as ExpenseCategory,
       expenseReason: data.expenseReason.trim(),
       expenseAmount,
       paymentMode: mode,
@@ -1310,11 +1315,11 @@ export class RentalService {
   public async updateExpense(
     expenseId: string,
     data: Partial<{
-      complexId: string;
+      complexId?: string | null;
       expenseScope?: ExpenseScope;
       shopId?: string | null;
       expenseDate: string;
-      category: ExpenseCategory;
+      category?: ExpenseCategory | string;
       expenseReason: string;
       expenseAmount: number;
       paymentMode: PaymentMode;
@@ -1328,21 +1333,32 @@ export class RentalService {
     const existing = rentalRepository.getExpenseById(expenseId);
     if (!existing) throw new Error(`Expense ${expenseId} not found`);
 
-    const complexId = data.complexId || existing.complexId;
-    const complex = rentalRepository.getComplexById(complexId);
-    if (!complex) throw new Error(`Complex ${complexId} not found`);
+    let complexId = existing.complexId;
+    let complexName = existing.complexName || 'General Rental';
 
-    const scope: ExpenseScope = data.expenseScope || existing.expenseScope || (existing.shopId ? 'SHOP' : 'COMPLEX');
-
-    let resolvedShopId: string | undefined = undefined;
-    if (scope === 'SHOP') {
-      const targetShopId = data.shopId !== undefined ? data.shopId : existing.shopId;
-      if (!targetShopId || !targetShopId.trim()) {
-        throw new Error('Shop/Tenant selection is required for Shop/Tenant Expenses');
+    if (data.complexId !== undefined) {
+      if (data.complexId && data.complexId.trim()) {
+        const complex = rentalRepository.getComplexById(data.complexId.trim());
+        if (complex) {
+          complexId = complex.complexId;
+          complexName = complex.complexName;
+        }
+      } else {
+        complexId = null;
+        complexName = 'General Rental';
       }
-      const shop = rentalRepository.getShopById(targetShopId);
-      if (!shop) throw new Error(`Shop ${targetShopId} not found`);
-      resolvedShopId = shop.shopId;
+    }
+
+    const scope: ExpenseScope = data.expenseScope || existing.expenseScope || (existing.shopId ? 'SHOP' : complexId ? 'COMPLEX' : 'RENTAL');
+
+    let resolvedShopId: string | undefined = existing.shopId || undefined;
+    if (data.shopId !== undefined) {
+      if (data.shopId && data.shopId.trim()) {
+        const shop = rentalRepository.getShopById(data.shopId.trim());
+        if (shop) resolvedShopId = shop.shopId;
+      } else {
+        resolvedShopId = undefined;
+      }
     }
 
     const expenseAmount = data.expenseAmount !== undefined ? Number(data.expenseAmount) : existing.expenseAmount;
@@ -1361,9 +1377,12 @@ export class RentalService {
       cashAmount = 0;
       gpayAmount = expenseAmount;
     } else if (mode === 'BOTH') {
+      if (cashAmount < 0 || gpayAmount < 0) {
+        throw new Error('Split cash and GPay amounts cannot be negative');
+      }
       if (Math.abs(cashAmount + gpayAmount - expenseAmount) > 0.01) {
         throw new Error(
-          `Cash amount (₹${cashAmount}) + GPay amount (₹${gpayAmount}) must equal total expense amount (₹${expenseAmount})`
+          `Cash amount (₹${cashAmount.toLocaleString('en-IN')}) + GPay amount (₹${gpayAmount.toLocaleString('en-IN')}) must equal total expense amount (₹${expenseAmount.toLocaleString('en-IN')})`
         );
       }
     }
@@ -1371,12 +1390,12 @@ export class RentalService {
     const now = new Date().toISOString();
     const updated: RentalExpense = {
       ...existing,
-      complexId: complex.complexId,
-      complexName: complex.complexName,
+      complexId,
+      complexName,
       expenseScope: scope,
       shopId: resolvedShopId,
       expenseDate: data.expenseDate || existing.expenseDate,
-      category: data.category || existing.category,
+      category: (data.category !== undefined ? data.category : existing.category) as ExpenseCategory,
       expenseReason: data.expenseReason !== undefined ? data.expenseReason.trim() : existing.expenseReason,
       expenseAmount,
       paymentMode: mode,
@@ -1851,19 +1870,19 @@ export class RentalService {
 
     // 2. Convert Expenses to Day Book Debit Entries
     const expenseEntries: RentalDayBookEntry[] = allExpenses.map(e => {
-      const cName = e.complexName || complexMap.get(e.complexId) || e.complexId;
-      const scope = e.expenseScope || (e.shopId ? 'SHOP' : 'COMPLEX');
+      const cName = e.complexName || (e.complexId ? complexMap.get(e.complexId) : '') || 'General Rental';
+      const scope = e.expenseScope || (e.shopId ? 'SHOP' : e.complexId ? 'COMPLEX' : 'RENTAL');
       return {
         id: `rdb_exp_${e.expenseId || e.id}`,
         voucherNo: e.expenseId || `EXP-${e.id}`,
         date: e.expenseDate || e.createdAt?.slice(0, 10) || this.getTodayDate(),
         transactionType: 'MAINTENANCE_EXPENSE',
-        category: e.category || 'Expense',
+        category: e.category || 'Rental Expense',
         description: e.expenseReason || `${e.category || 'Rental'} Expense`,
-        complexId: e.complexId,
+        complexId: e.complexId || undefined,
         complexName: cName,
         shopId: e.shopId || undefined,
-        shopNumber: e.shopNumber || (scope === 'COMPLEX' ? 'General Complex' : undefined),
+        shopNumber: e.shopNumber || (scope === 'COMPLEX' ? 'General Complex' : scope === 'RENTAL' || !e.shopId ? 'General Rental' : undefined),
         paymentMode: e.paymentMode,
         debit: Number(e.expenseAmount || 0),
         credit: 0,
@@ -2123,6 +2142,219 @@ export class RentalService {
       entryId: entry.voucherNo,
       particulars: entry.description
     } as any;
+  }
+
+  // ── Rental-Scoped Notifications ───────────────────────────────────────────
+  public async getRentalNotifications(readNotificationIds: string[] = []): Promise<RentalNotification[]> {
+    const notificationsMap = new Map<string, RentalNotification>();
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const selectedMonth = this.getCurrentMonth();
+
+    // 1. Pending & Overdue Rent Notifications
+    const pendingRentResponse = await this.getPendingRentList({ month: selectedMonth });
+    for (const item of pendingRentResponse.items) {
+      if (item.status === 'OVERDUE') {
+        const notifId = `rental_${item.shopId}_overdue_${selectedMonth}`;
+        notificationsMap.set(notifId, {
+          id: notifId,
+          module: 'RENTAL',
+          category: 'RENTAL',
+          type: 'RENT_OVERDUE',
+          priority: item.daysOverdue > 15 ? 'CRITICAL' : 'HIGH',
+          customerId: item.tenantName,
+          customerName: item.tenantName,
+          customerPhone: item.mobileNumber,
+          entityId: item.shopNumber,
+          shopId: item.shopId,
+          complexId: item.complexId,
+          complexName: item.complexName,
+          title: `⚠ Rent Overdue — ${item.shopNumber}`,
+          message: `Rent overdue for ${item.shopNumber} (${item.tenantName}) — ₹${item.pendingAmount.toLocaleString('en-IN')} pending since ${item.dueDate} (${item.daysOverdue} days overdue).`,
+          amount: item.pendingAmount,
+          dueDate: item.dueDate,
+          periodKey: selectedMonth,
+          daysOverdue: item.daysOverdue,
+          read: readNotificationIds.includes(notifId),
+          actionLabel: 'Collect Rent',
+          createdAt: item.dueDate || todayStr
+        });
+      } else if (item.status === 'DUE') {
+        const notifId = `rental_${item.shopId}_due_${selectedMonth}`;
+        notificationsMap.set(notifId, {
+          id: notifId,
+          module: 'RENTAL',
+          category: 'RENTAL',
+          type: 'RENT_DUE',
+          priority: 'MEDIUM',
+          customerId: item.tenantName,
+          customerName: item.tenantName,
+          customerPhone: item.mobileNumber,
+          entityId: item.shopNumber,
+          shopId: item.shopId,
+          complexId: item.complexId,
+          complexName: item.complexName,
+          title: `🔔 Rent Due Today — ${item.shopNumber}`,
+          message: `Rent due today for ${item.shopNumber} (${item.tenantName}) — ₹${item.pendingAmount.toLocaleString('en-IN')}.`,
+          amount: item.pendingAmount,
+          dueDate: item.dueDate,
+          periodKey: selectedMonth,
+          daysRemaining: 0,
+          read: readNotificationIds.includes(notifId),
+          actionLabel: 'Collect Rent',
+          createdAt: todayStr
+        });
+      } else if (item.status === 'PARTIAL') {
+        const notifId = `rental_${item.shopId}_partial_${selectedMonth}`;
+        notificationsMap.set(notifId, {
+          id: notifId,
+          module: 'RENTAL',
+          category: 'RENTAL',
+          type: 'RENT_PARTIAL',
+          priority: 'MEDIUM',
+          customerId: item.tenantName,
+          customerName: item.tenantName,
+          customerPhone: item.mobileNumber,
+          entityId: item.shopNumber,
+          shopId: item.shopId,
+          complexId: item.complexId,
+          complexName: item.complexName,
+          title: `⏳ Partial Rent Pending — ${item.shopNumber}`,
+          message: `${item.tenantName} paid ₹${item.totalCovered.toLocaleString('en-IN')}. ₹${item.pendingAmount.toLocaleString('en-IN')} rent remains pending for ${item.shopNumber}.`,
+          amount: item.pendingAmount,
+          dueDate: item.dueDate,
+          periodKey: selectedMonth,
+          daysOverdue: item.daysOverdue,
+          read: readNotificationIds.includes(notifId),
+          actionLabel: 'Collect Rent',
+          createdAt: todayStr
+        });
+      }
+    }
+
+    // 2. Pending Security Deposit Refunds (Closed shops with security deposit balance)
+    const allShops = rentalRepository.getShops();
+    const closedShopsWithDeposit = allShops.filter(
+      (s) => s.status === 'CLOSED' && Number(s.availableAdvance) > 0
+    );
+    for (const shop of closedShopsWithDeposit) {
+      const notifId = `rental_${shop.shopId}_deposit_refund_pending`;
+      notificationsMap.set(notifId, {
+        id: notifId,
+        module: 'RENTAL',
+        category: 'RENTAL',
+        type: 'SECURITY_DEPOSIT_REFUND_PENDING',
+        priority: 'HIGH',
+        customerId: shop.tenantName,
+        customerName: shop.tenantName,
+        customerPhone: shop.mobileNumber,
+        entityId: shop.shopNumber,
+        shopId: shop.shopId,
+        complexId: shop.complexId,
+        complexName: shop.complexName,
+        title: `🛡 Security Deposit Refund Pending — ${shop.shopNumber}`,
+        message: `₹${Number(shop.availableAdvance).toLocaleString('en-IN')} security deposit is pending settlement for ${shop.shopNumber} (${shop.tenantName}).`,
+        amount: Number(shop.availableAdvance),
+        read: readNotificationIds.includes(notifId),
+        actionLabel: 'Refund Deposit',
+        createdAt: shop.closedAt ? shop.closedAt.slice(0, 10) : todayStr
+      });
+    }
+
+    // 3. Recent Security Deposits Received (from Day Book)
+    const dayBookEntries = await rentalDayBookRepository.getManualEntries();
+    const recentDepositEntries = dayBookEntries.filter((e: RentalDayBookEntry) => e.transactionType === 'SECURITY_DEPOSIT').slice(-10);
+    for (const entry of recentDepositEntries) {
+      const notifId = `rental_sec_dep_${entry.id}`;
+      notificationsMap.set(notifId, {
+        id: notifId,
+        module: 'RENTAL',
+        category: 'RENTAL',
+        type: 'SECURITY_DEPOSIT_RECEIVED',
+        priority: 'LOW',
+        customerId: entry.tenantName || 'Tenant',
+        customerName: entry.tenantName || 'Tenant',
+        entityId: entry.shopNumber || entry.voucherNo,
+        shopId: entry.shopId,
+        complexId: entry.complexId,
+        complexName: entry.complexName,
+        title: `💰 Security Deposit Received`,
+        message: `Security deposit of ₹${Number(entry.credit).toLocaleString('en-IN')} received for ${entry.shopNumber || entry.description}.`,
+        amount: Number(entry.credit),
+        read: readNotificationIds.includes(notifId) || true, // info only
+        actionLabel: 'View Details',
+        createdAt: entry.date || todayStr
+      });
+    }
+
+    // 4. Recent Security Deposit Refunds Completed (from Day Book)
+    const recentRefundEntries = dayBookEntries.filter((e: RentalDayBookEntry) => e.transactionType === 'SECURITY_DEPOSIT_REFUND').slice(-10);
+    for (const entry of recentRefundEntries) {
+      const notifId = `rental_sec_refund_${entry.id}`;
+      notificationsMap.set(notifId, {
+        id: notifId,
+        module: 'RENTAL',
+        category: 'RENTAL',
+        type: 'SECURITY_DEPOSIT_REFUND',
+        priority: 'LOW',
+        customerId: entry.tenantName || 'Tenant',
+        customerName: entry.tenantName || 'Tenant',
+        entityId: entry.shopNumber || entry.voucherNo,
+        shopId: entry.shopId,
+        complexId: entry.complexId,
+        complexName: entry.complexName,
+        title: `✓ Security Deposit Refunded`,
+        message: `Security deposit refund of ₹${Number(entry.debit).toLocaleString('en-IN')} completed for ${entry.shopNumber || entry.description}.`,
+        amount: Number(entry.debit),
+        read: readNotificationIds.includes(notifId) || true,
+        actionLabel: 'View Day Book',
+        createdAt: entry.date || todayStr
+      });
+    }
+
+    // 5. Recent Shop Closures
+    const recentlyClosedShops = allShops.filter((s) => s.status === 'CLOSED' && s.closedAt).slice(-5);
+    for (const shop of recentlyClosedShops) {
+      const notifId = `rental_shop_closed_${shop.shopId}`;
+      if (!notificationsMap.has(notifId)) {
+        notificationsMap.set(notifId, {
+          id: notifId,
+          module: 'RENTAL',
+          category: 'RENTAL',
+          type: 'SHOP_CLOSED',
+          priority: 'LOW',
+          customerId: shop.tenantName,
+          customerName: shop.tenantName,
+          customerPhone: shop.mobileNumber,
+          entityId: shop.shopNumber,
+          shopId: shop.shopId,
+          complexId: shop.complexId,
+          complexName: shop.complexName,
+          title: `📦 Shop Closed — ${shop.shopNumber}`,
+          message: `${shop.shopNumber} (${shop.shopName}) was closed successfully.`,
+          read: readNotificationIds.includes(notifId) || true,
+          actionLabel: 'View Shops',
+          createdAt: shop.closedAt ? shop.closedAt.slice(0, 10) : todayStr
+        });
+      }
+    }
+
+    // Sort by priority and date
+    const PRIORITY_ORDER: Record<string, number> = {
+      CRITICAL: 4,
+      HIGH: 3,
+      MEDIUM: 2,
+      LOW: 1
+    };
+
+    const notifList = Array.from(notificationsMap.values());
+    notifList.sort((a, b) => {
+      const pDiff = (PRIORITY_ORDER[b.priority] || 1) - (PRIORITY_ORDER[a.priority] || 1);
+      if (pDiff !== 0) return pDiff;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+
+    return notifList;
   }
 }
 

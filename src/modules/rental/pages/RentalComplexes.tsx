@@ -402,7 +402,7 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
             showToast(`Complex ${complexToDelete.complexName} permanently deleted`, 'success');
             fetchComplexes();
           }}
-          onDisableComplex={async (complexId) => {
+          onDisableComplex={async () => {
             await handleToggleStatus(complexToDelete);
           }}
         />

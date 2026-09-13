@@ -133,13 +133,13 @@ export interface RentalPayment {
 export interface RentalExpense {
   id: string;
   expenseId: string; // EXP-0001
-  complexId: string;
+  complexId?: string | null;
   complexName?: string;
   expenseScope?: ExpenseScope;
   shopId?: string | null;
   shopNumber?: string;
   expenseDate: string; // YYYY-MM-DD
-  category: ExpenseCategory;
+  category?: ExpenseCategory | string;
   expenseReason: string;
   expenseAmount: number;
   paymentMode: PaymentMode;
@@ -309,7 +309,7 @@ export interface RentalDayBookEntry {
   transactionType: RentalTransactionType;
   category: string;
   description: string;
-  complexId: string;
+  complexId?: string;
   complexName?: string;
   shopId?: string;
   shopNumber?: string;
@@ -399,5 +399,47 @@ export interface ShopDeleteCheck {
     pendingRent: number;
     status: RentalStatus;
   };
+}
+
+export type RentalNotificationCategory = 'RENTAL';
+export type RentalNotificationType =
+  | 'RENT_DUE'
+  | 'RENT_OVERDUE'
+  | 'RENT_PARTIAL'
+  | 'RENT_PAYMENT'
+  | 'SECURITY_DEPOSIT_RECEIVED'
+  | 'SECURITY_DEPOSIT_REFUND'
+  | 'SECURITY_DEPOSIT_REFUND_PENDING'
+  | 'SHOP_CREATED'
+  | 'SHOP_CLOSED'
+  | 'SHOP_SETTLEMENT'
+  | 'RENTAL_EXPENSE'
+  | 'COMPLEX_STATUS'
+  | 'RENTAL_SYSTEM';
+
+export interface RentalNotification {
+  id: string;
+  module: 'RENTAL';
+  category: 'RENTAL';
+  type: RentalNotificationType;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  entityId: string;
+  entityDbId?: string;
+  complexId?: string;
+  complexName?: string;
+  shopId?: string;
+  title: string;
+  message: string;
+  amount?: number;
+  dueDate?: string;
+  periodKey?: string;
+  daysOverdue?: number;
+  daysRemaining?: number;
+  read: boolean;
+  actionLabel: string;
+  createdAt: string;
 }
 

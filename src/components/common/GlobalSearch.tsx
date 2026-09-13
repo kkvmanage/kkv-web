@@ -15,7 +15,7 @@ export interface GlobalSearchResultItem {
 }
 
 export const GlobalSearch: React.FC = () => {
-  const { customers, loans, receipts, setCurrentPage } = useApp();
+  const { customers, loans, receipts, setCurrentPage, isRentalPortal } = useApp();
 
   const [query, setQuery] = useState<string>('');
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -83,18 +83,16 @@ export const GlobalSearch: React.FC = () => {
         .filter((l) =>
           l.loanNo.toLowerCase().includes(q) ||
           l.customerName.toLowerCase().includes(q) ||
-          l.customerPhone.includes(q) ||
-          l.id.toLowerCase().includes(q) ||
-          l.principal.toString().includes(q)
+          l.customerId.toLowerCase().includes(q) ||
+          ((l as any).phone && String((l as any).phone).includes(q))
         )
         .slice(0, 5);
 
       const rHits = receipts
         .filter((r) =>
-          r.receiptNo.toString().includes(q) ||
-          r.loanNo.toLowerCase().includes(q) ||
-          r.customerName.toLowerCase().includes(q) ||
-          r.kind.toLowerCase().includes(q)
+          (r.receiptNo && String(r.receiptNo).toLowerCase().includes(q)) ||
+          (r.customerName && r.customerName.toLowerCase().includes(q)) ||
+          (r.loanNo && String(r.loanNo).toLowerCase().includes(q))
         )
         .slice(0, 5);
 
@@ -198,7 +196,7 @@ export const GlobalSearch: React.FC = () => {
         value={query}
         onChange={setQuery}
         onDebouncedChange={performSearch}
-        placeholder="Search customers, loans..."
+        placeholder={isRentalPortal ? "Search shops, tenants, complexes..." : "Search customers, loans..."}
         loading={loading}
         onFocus={() => {
           if (query.trim()) setIsOpen(true);

@@ -53,6 +53,9 @@ router.get('/reports/payment-modes', authorizePermission('rental', 'view'), rent
 // Pending Rent
 router.get('/pending', authorizePermission('rental', 'view'), rentalController.getPendingRent.bind(rentalController));
 
+// Rental Notifications
+router.get('/notifications', authorizePermission('rental', 'view'), rentalController.getNotifications.bind(rentalController));
+
 // Sync Status & Control (ADMIN, RENTAL_STAFF, or staff with rental permissions)
 router.get('/sync/status', authorizePermission('rental', 'view'), rentalController.getSyncStatus.bind(rentalController));
 router.get('/sync-status', authorizePermission('rental', 'view'), rentalController.getSyncStatus.bind(rentalController));

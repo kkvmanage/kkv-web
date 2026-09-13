@@ -435,6 +435,21 @@ export class RentalController {
       res.status(500).json({ success: false, message: err.message });
     }
   }
+
+  // ── Rental Notifications ──────────────────────────────────────────────────
+  public async getNotifications(req: Request, res: Response): Promise<void> {
+    try {
+      const readIds = typeof req.query.readIds === 'string' ? req.query.readIds.split(',') : [];
+      const notifications = await rentalService.getRentalNotifications(readIds);
+      res.json({
+        success: true,
+        data: notifications
+      });
+    } catch (err: any) {
+      console.error('[RentalController] getNotifications error:', err);
+      res.status(500).json({ success: false, message: err.message || 'Error fetching rental notifications' });
+    }
+  }
 }
 
 export const rentalController = new RentalController();

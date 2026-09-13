@@ -35,9 +35,10 @@ import {
 } from '../config/permissions';
 import { detectCurrentDeviceInfo, generateSessionId } from '../utils/deviceUtils';
 import { apiService, getStoredAuthToken, setStoredAuthToken } from '../services/api';
-import { calculateFDInterestSchedule, normalizeDateString, calculateInterestPeriodKey, addCalendarMonths, formatFDDate } from '../utils/fdInterestUtils';
 import { generateAllNotifications } from '../utils/notificationUtils';
 import { calculateNextDueDate, parseLoanDate, formatLoanDate, addMonthsToLoanDate } from '../utils/loanCalculationUtils';
+import { calculateFDInterestSchedule, normalizeDateString, calculateInterestPeriodKey, formatFDDate, addCalendarMonths } from '../utils/fdInterestUtils';
+import { rentalApi } from '../modules/rental/services/rentalApi';
 
 interface Toast {
   id: string;
@@ -409,6 +410,7 @@ interface AppContextType {
   notifications: AppNotification[];
   unreadNotificationCount: number;
   isNotificationOpen: boolean;
+  isRentalPortal: boolean;
   setIsNotificationOpen: (open: boolean) => void;
   toggleNotificationOpen: () => void;
   markNotificationAsRead: (id: string) => void;
@@ -3077,7 +3079,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ── Centralized Notifications Derivation & Handlers ────────────────────────
-  const notifications = useMemo(() => {
+  const [rentalNotifications, setRentalNotifications] = useState<AppNotification[]>([]);
+
+  const isRentalPortal = useMemo(() => {
+    return typeof currentPage === 'string' && (currentPage.startsWith('rental') || currentPage === 'rental');
+  }, [currentPage]);
+
+  const fetchRentalNotifications = async () => {
+    try {
+      const res = await rentalApi.getRentalNotifications(readNotificationIds);
+      if (res.success && res.data) {
+        setRentalNotifications(res.data as AppNotification[]);
+      }
+    } catch {
+      // Ignore network errors on notifications
+    }
+  };
+
+  useEffect(() => {
+    fetchRentalNotifications();
+    const interval = setInterval(fetchRentalNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [readNotificationIds, currentPage]);
+
+  const financeNotifications = useMemo(() => {
     return generateAllNotifications({
       loans,
       receipts,
@@ -3088,6 +3113,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       readNotificationIds
     });
   }, [loans, receipts, fixedDeposits, fdInterestPayouts, customers, fdCustomers, readNotificationIds]);
+
+  const notifications = useMemo(() => {
+    if (isRentalPortal) {
+      return rentalNotifications.map((n) => ({
+        ...n,
+        read: readNotificationIds.includes(n.id)
+      }));
+    }
+    return financeNotifications;
+  }, [isRentalPortal, rentalNotifications, financeNotifications, readNotificationIds]);
 
   const unreadNotificationCount = useMemo(() => {
     return notifications.filter((n) => !n.read && n.type !== 'PAID').length;
@@ -3100,7 +3135,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const markAllNotificationsAsRead = () => {
     const allIds = notifications.map((n) => n.id);
     setReadNotificationIds((prev) => Array.from(new Set([...prev, ...allIds])));
-    showToast('All notifications marked as read.', 'info');
+    showToast(isRentalPortal ? 'All rental notifications marked as read.' : 'All notifications marked as read.', 'info');
   };
 
   return (
@@ -3224,6 +3259,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notifications,
         unreadNotificationCount,
         isNotificationOpen,
+        isRentalPortal,
         setIsNotificationOpen,
         toggleNotificationOpen,
         markNotificationAsRead,

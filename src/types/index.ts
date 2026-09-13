@@ -804,7 +804,9 @@ export interface DeviceSession {
 
 // ── Notification Center Models ────────────────────────────────────────────────
 
-export type NotificationCategory = 'LOAN' | 'FIXED_DEPOSIT';
+export type NotificationModule = 'FINANCE' | 'RENTAL';
+
+export type NotificationCategory = 'LOAN' | 'FIXED_DEPOSIT' | 'RENTAL';
 
 export type NotificationEventType =
   | 'UPCOMING'
@@ -812,24 +814,41 @@ export type NotificationEventType =
   | 'OVERDUE'
   | 'PAID'
   | 'MATURITY'
-  | 'RENEWAL';
+  | 'RENEWAL'
+  | 'RENT_DUE'
+  | 'RENT_OVERDUE'
+  | 'RENT_PARTIAL'
+  | 'RENT_PAYMENT'
+  | 'SECURITY_DEPOSIT_RECEIVED'
+  | 'SECURITY_DEPOSIT_REFUND'
+  | 'SECURITY_DEPOSIT_REFUND_PENDING'
+  | 'SHOP_CREATED'
+  | 'SHOP_CLOSED'
+  | 'SHOP_SETTLEMENT'
+  | 'RENTAL_EXPENSE'
+  | 'COMPLEX_STATUS'
+  | 'RENTAL_SYSTEM';
 
 export type NotificationPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export interface AppNotification {
-  id: string; // e.g. "loan_GL-001_due_2026-10", "fd_FD-001_interest_2026-10"
+  id: string; // e.g. "loan_GL-001_due_2026-10", "fd_FD-001_interest_2026-10", "rental_SH-01_overdue_2026-09"
+  module?: NotificationModule;
   category: NotificationCategory;
   type: NotificationEventType;
   priority: NotificationPriority;
   customerId: string;
   customerName: string;
   customerPhone?: string;
-  entityId: string; // Loan No (e.g. "GL-001") or FD No (e.g. "FD-001")
+  entityId: string; // Loan No (e.g. "GL-001"), FD No (e.g. "FD-001"), or Shop No (e.g. "SHOP-08")
   entityDbId?: string;
+  complexId?: string;
+  complexName?: string;
+  shopId?: string;
   title: string;
   message: string;
   amount?: number;
-  dueDate?: string; // DD-MM-YYYY
+  dueDate?: string; // DD-MM-YYYY or YYYY-MM-DD
   periodKey?: string; // e.g. "2026-10"
   daysOverdue?: number;
   daysRemaining?: number;

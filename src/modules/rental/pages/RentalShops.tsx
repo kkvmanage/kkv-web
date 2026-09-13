@@ -630,8 +630,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
                             >
                               <CheckCircle2 size={11} />
                             </button>
-
-                            {isAdmin && (
+                            {isAdmin && (
                               <button
                                 type="button"
                                 className="btn btn-sm btn-secondary"
@@ -705,7 +704,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
             showToast(`Shop ${shopToDelete.shopNumber} permanently deleted`, 'success');
             fetchShops();
           }}
-          onCloseShop={(shopId) => {
+          onCloseShop={() => {
             setShopToClose(shopToDelete);
             setIsCloseModalOpen(true);
           }}

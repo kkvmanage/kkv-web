@@ -18,7 +18,8 @@ import {
   PendingRentResponse,
   ShopSettlementSummary,
   ComplexDeleteCheck,
-  ShopDeleteCheck
+  ShopDeleteCheck,
+  RentalNotification
 } from '../types/rental.types';
 import { getApiBaseUrl, getStoredAuthToken } from '../../../services/api';
 
@@ -251,11 +252,11 @@ export const rentalApi = {
   },
 
   createExpense: async (data: {
-    complexId: string;
+    complexId?: string | null;
     expenseScope?: ExpenseScope;
     shopId?: string | null;
     expenseDate: string;
-    category: ExpenseCategory;
+    category?: ExpenseCategory | string;
     expenseReason: string;
     expenseAmount: number;
     paymentMode: PaymentMode;
@@ -273,11 +274,11 @@ export const rentalApi = {
   updateExpense: async (
     id: string,
     data: Partial<{
-      complexId: string;
+      complexId?: string | null;
       expenseScope?: ExpenseScope;
       shopId?: string | null;
       expenseDate: string;
-      category: ExpenseCategory;
+      category?: ExpenseCategory | string;
       expenseReason: string;
       expenseAmount: number;
       paymentMode: PaymentMode;
@@ -453,5 +454,11 @@ export const rentalApi = {
     return request<{ processed: number; succeeded: number; failed: number }>('/rental/sync/retry', {
       method: 'POST',
     });
+  },
+
+  // ── Rental Notifications ──────────────────────────────────────────────────
+  getRentalNotifications: async (readIds?: string[]) => {
+    const query = readIds && readIds.length > 0 ? `?readIds=${encodeURIComponent(readIds.join(','))}` : '';
+    return request<RentalNotification[]>(`/rental/notifications${query}`);
   },
 };

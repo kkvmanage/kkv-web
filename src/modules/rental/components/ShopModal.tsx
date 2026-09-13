@@ -240,8 +240,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                 >
                   <option value="">-- Select Complex --</option>
                   {complexes.map((c) => (
-                    <option key={c.complexId} value={c.complexId}>
-                      {c.complexName} ({c.location}) - {c.complexId}
+                    <option
+                      key={c.complexId}
+                      value={c.complexId}
+                      disabled={!isEditMode && c.status === 'INACTIVE'}
+                    >
+                      {c.complexName} ({c.location}) - {c.complexId} {c.status === 'INACTIVE' ? '⚠️ [DISABLED]' : ''}
                     </option>
                   ))}
                 </select>
@@ -380,7 +384,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
 
                 <div>
                   <label className="form-label" style={{ fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    ADVANCE AMOUNT (₹)
+                    SECURITY DEPOSIT (₹)
                     {isEditMode && <Lock size={10} color="var(--text-muted)" />}
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -390,7 +394,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       placeholder="e.g. 50000"
                       min="0"
                       step="any"
+                      inputMode="decimal"
                       value={advanceAmount}
+                      onChange={(e) => setAdvanceAmount(e.target.value)}
                       readOnly={isEditMode}
                       disabled={isEditMode}
                       style={isEditMode ? {
@@ -400,9 +406,13 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                       } : undefined}
                     />
                   </div>
-                  {isEditMode && (
+                  {isEditMode ? (
                     <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
-                      Original advance — locked after creation
+                      Original security deposit — locked after creation
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
+                      Refundable security deposit collected at the start of tenancy.
                     </span>
                   )}
                 </div>
@@ -421,7 +431,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                     <IndianRupee size={14} color="#2563eb" />
                     <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#2563eb' }}>
-                      ADVANCE PAYMENT METHOD (₹{parsedAdvance.toLocaleString('en-IN')})
+                      SECURITY DEPOSIT PAYMENT METHOD (₹{parsedAdvance.toLocaleString('en-IN')})
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -438,7 +448,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({
                     ))}
                   </div>
                   <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
-                    * This advance will be safely logged as a Security Deposit in the Rental Day Book.
+                    * This security deposit will be safely logged in the Rental Day Book.
                   </span>
                 </div>
               )}

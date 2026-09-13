@@ -33,6 +33,7 @@ export interface NotificationSummaryCounts {
   total: number;
   loans: number;
   fixedDeposits: number;
+  rental: number;
   overdue: number;
   unread: number;
 }
@@ -402,30 +403,23 @@ export const generateAllNotifications = ({
     }
   });
 
-  const allNotifications = Array.from(notifMap.values());
+  const allNotifications = Array.from(notifMap.values()).map((n) => ({
+    ...n,
+    module: n.module || ('FINANCE' as const)
+  }));
 
-  // ── 3. SORTING ─────────────────────────────────────────────────────────────
-  // Order: CRITICAL > HIGH > MEDIUM > LOW
-  // Within same priority: Overdue highest days first, then Due, then nearest Upcoming, then Paid
+  // Sort: Priority DESC > Days Remaining ASC / Overdue DESC > CreatedAt DESC
   return allNotifications.sort((a, b) => {
     const pA = PRIORITY_ORDER[a.priority] || 1;
     const pB = PRIORITY_ORDER[b.priority] || 1;
-    if (pA !== pB) return pB - pA;
+    if (pB !== pA) return pB - pA;
 
-    // If both are OVERDUE, higher daysOverdue first
+    // Overdue items sorted by daysOverdue DESC
     if (a.type === 'OVERDUE' && b.type === 'OVERDUE') {
       return (b.daysOverdue || 0) - (a.daysOverdue || 0);
     }
 
-    // If one is overdue and other is not
-    if (a.type === 'OVERDUE') return -1;
-    if (b.type === 'OVERDUE') return 1;
-
-    // If one is DUE and other is not
-    if (a.type === 'DUE' && b.type !== 'DUE') return -1;
-    if (b.type === 'DUE' && a.type !== 'DUE') return 1;
-
-    // Upcoming: nearest days remaining first
+    // Upcoming items sorted by daysRemaining ASC
     if (a.type === 'UPCOMING' && b.type === 'UPCOMING') {
       return (a.daysRemaining || 0) - (b.daysRemaining || 0);
     }
@@ -447,13 +441,15 @@ export const calculateNotificationCounts = (
 ): NotificationSummaryCounts => {
   let loans = 0;
   let fixedDeposits = 0;
+  let rental = 0;
   let overdue = 0;
   let unread = 0;
 
   notifications.forEach((n) => {
     if (n.category === 'LOAN') loans += 1;
     if (n.category === 'FIXED_DEPOSIT') fixedDeposits += 1;
-    if (n.type === 'OVERDUE') overdue += 1;
+    if (n.category === 'RENTAL' || n.module === 'RENTAL') rental += 1;
+    if (n.type === 'OVERDUE' || n.type === 'RENT_OVERDUE') overdue += 1;
     if (!n.read && n.type !== 'PAID') unread += 1;
   });
 
@@ -461,6 +457,7 @@ export const calculateNotificationCounts = (
     total: notifications.length,
     loans,
     fixedDeposits,
+    rental,
     overdue,
     unread
   };

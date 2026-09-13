@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { AppNotification, NotificationCategory } from '../../types';
+import { AppNotification } from '../../types';
 import {
   Bell,
   CheckCircle2,
@@ -31,10 +31,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     setIsNotificationOpen,
     setCurrentPage,
     setSelectedLoan,
-    loans
+    loans,
+    isRentalPortal
   } = useApp();
 
-  const [activeCategory, setActiveCategory] = useState<NotificationCategory | 'ALL' | 'UNREAD'>('ALL');
+  const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OVERDUE' | 'DUE' | 'UPCOMING' | 'PAID'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -43,17 +44,24 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   // Filtered notifications
   const filteredNotifications = useMemo(() => {
     return notifications.filter((n) => {
-      // Category / Unread filter
-      if (activeCategory === 'LOAN' && n.category !== 'LOAN') return false;
-      if (activeCategory === 'FIXED_DEPOSIT' && n.category !== 'FIXED_DEPOSIT') return false;
-      if (activeCategory === 'UNREAD' && (n.read || n.type === 'PAID')) return false;
+      // Category / Tab filter
+      if (isRentalPortal) {
+        if (activeCategory === 'OVERDUE' && n.type !== 'RENT_OVERDUE' && n.type !== 'OVERDUE') return false;
+        if (activeCategory === 'DUE' && n.type !== 'RENT_DUE' && n.type !== 'DUE') return false;
+        if (activeCategory === 'DEPOSIT' && !n.type.includes('DEPOSIT')) return false;
+        if (activeCategory === 'UNREAD' && (n.read || n.type === 'PAID' || n.type === 'RENT_PAYMENT')) return false;
+      } else {
+        if (activeCategory === 'LOAN' && n.category !== 'LOAN') return false;
+        if (activeCategory === 'FIXED_DEPOSIT' && n.category !== 'FIXED_DEPOSIT') return false;
+        if (activeCategory === 'UNREAD' && (n.read || n.type === 'PAID')) return false;
+      }
 
       // Status filter
       if (statusFilter !== 'ALL') {
-        if (statusFilter === 'OVERDUE' && n.type !== 'OVERDUE') return false;
-        if (statusFilter === 'DUE' && n.type !== 'DUE') return false;
+        if (statusFilter === 'OVERDUE' && n.type !== 'OVERDUE' && n.type !== 'RENT_OVERDUE') return false;
+        if (statusFilter === 'DUE' && n.type !== 'DUE' && n.type !== 'RENT_DUE') return false;
         if (statusFilter === 'UPCOMING' && n.type !== 'UPCOMING') return false;
-        if (statusFilter === 'PAID' && n.type !== 'PAID') return false;
+        if (statusFilter === 'PAID' && n.type !== 'PAID' && n.type !== 'RENT_PAYMENT') return false;
       }
 
       // Search query
@@ -62,21 +70,49 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         const match =
           n.title.toLowerCase().includes(q) ||
           n.message.toLowerCase().includes(q) ||
-          n.customerName.toLowerCase().includes(q) ||
-          n.customerId.toLowerCase().includes(q) ||
-          n.entityId.toLowerCase().includes(q) ||
+          (n.customerName && n.customerName.toLowerCase().includes(q)) ||
+          (n.customerId && n.customerId.toLowerCase().includes(q)) ||
+          (n.entityId && n.entityId.toLowerCase().includes(q)) ||
+          (n.complexName && n.complexName.toLowerCase().includes(q)) ||
           (n.dueDate && n.dueDate.includes(q));
         if (!match) return false;
       }
 
       return true;
     });
-  }, [notifications, activeCategory, statusFilter, searchQuery]);
+  }, [notifications, activeCategory, statusFilter, searchQuery, isRentalPortal]);
 
   const handleAction = (n: AppNotification) => {
     markNotificationAsRead(n.id);
     if (onClose) onClose();
     setIsNotificationOpen(false);
+
+    if (n.category === 'RENTAL' || n.module === 'RENTAL') {
+      if (n.type === 'RENT_DUE' || n.type === 'RENT_OVERDUE' || n.type === 'RENT_PARTIAL') {
+        if (n.shopId) (window as any).__selectedRentalShopId = n.shopId;
+        setCurrentPage('rental-pending-rent' as any);
+      } else if (n.type === 'RENT_PAYMENT') {
+        if (n.shopId) (window as any).__selectedRentalShopId = n.shopId;
+        setCurrentPage('rental-payments' as any);
+      } else if (n.type === 'SECURITY_DEPOSIT_RECEIVED' || n.type === 'SECURITY_DEPOSIT_REFUND') {
+        setCurrentPage('rental-day-book' as any);
+      } else if (
+        n.type === 'SECURITY_DEPOSIT_REFUND_PENDING' ||
+        n.type === 'SHOP_CLOSED' ||
+        n.type === 'SHOP_CREATED' ||
+        n.type === 'SHOP_SETTLEMENT'
+      ) {
+        if (n.shopId) (window as any).__selectedRentalShopId = n.shopId;
+        setCurrentPage('rental-shops' as any);
+      } else if (n.type === 'RENTAL_EXPENSE') {
+        setCurrentPage('rental-expenses' as any);
+      } else if (n.type === 'COMPLEX_STATUS') {
+        setCurrentPage('rental-complexes' as any);
+      } else {
+        setCurrentPage('rental-dashboard' as any);
+      }
+      return;
+    }
 
     if (n.category === 'LOAN') {
       const matchedLoan = loans.find((l) => l.loanNo === n.entityId || l.id === n.entityDbId);
@@ -111,6 +147,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const getTypeBadge = (n: AppNotification) => {
     switch (n.type) {
       case 'OVERDUE':
+      case 'RENT_OVERDUE':
         return (
           <span
             className="badge badge-danger"
@@ -121,6 +158,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           </span>
         );
       case 'DUE':
+      case 'RENT_DUE':
         return (
           <span
             className="badge badge-warning"
@@ -128,6 +166,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           >
             <Clock size={12} />
             DUE TODAY
+          </span>
+        );
+      case 'RENT_PARTIAL':
+        return (
+          <span
+            className="badge badge-warning"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}
+          >
+            <Clock size={12} />
+            PARTIAL DUE
           </span>
         );
       case 'UPCOMING':
@@ -141,6 +189,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           </span>
         );
       case 'PAID':
+      case 'RENT_PAYMENT':
         return (
           <span
             className="badge badge-success"
@@ -148,6 +197,80 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           >
             <CheckCircle2 size={12} />
             PAID
+          </span>
+        );
+      case 'SECURITY_DEPOSIT_RECEIVED':
+        return (
+          <span
+            className="badge badge-info"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}
+          >
+            <CheckCircle2 size={12} />
+            DEPOSIT RECEIVED
+          </span>
+        );
+      case 'SECURITY_DEPOSIT_REFUND':
+        return (
+          <span
+            className="badge badge-success"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}
+          >
+            <CheckCircle2 size={12} />
+            DEPOSIT REFUNDED
+          </span>
+        );
+      case 'SECURITY_DEPOSIT_REFUND_PENDING':
+        return (
+          <span
+            className="badge badge-warning"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}
+          >
+            <Clock size={12} />
+            REFUND PENDING
+          </span>
+        );
+      case 'SHOP_CLOSED':
+      case 'SHOP_SETTLEMENT':
+        return (
+          <span
+            className="badge"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: '#64748b',
+              color: '#ffffff'
+            }}
+          >
+            CLOSED
+          </span>
+        );
+      case 'SHOP_CREATED':
+        return (
+          <span
+            className="badge badge-info"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 800 }}
+          >
+            NEW SHOP
+          </span>
+        );
+      case 'RENTAL_EXPENSE':
+        return (
+          <span
+            className="badge"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: '#94a3b8',
+              color: '#ffffff'
+            }}
+          >
+            EXPENSE
           </span>
         );
       case 'MATURITY':
@@ -232,7 +355,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h2 style={{ margin: 0, fontSize: isFullPage ? '20px' : '17px', fontWeight: 800 }}>
-                Notification Center
+                {isRentalPortal ? 'Rental Notification Center' : 'Notification Center'}
               </h2>
               {unreadNotificationCount > 0 && (
                 <span
@@ -250,7 +373,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               )}
             </div>
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-              Real-time due events, interest schedules, renewals, and collections
+              {isRentalPortal
+                ? 'Real-time rent dues, overdue alerts, security deposits, and settlements'
+                : 'Real-time due events, interest schedules, renewals, and collections'}
             </p>
           </div>
         </div>
@@ -314,36 +439,59 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
             {counts.total}
           </div>
         </div>
-        <div
-          style={{
-            padding: '8px 12px',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            border: '1px solid var(--border-light)',
-            textAlign: 'center'
-          }}
-        >
-          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            LOANS
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: '#0284c7' }}>{counts.loans}</div>
-        </div>
-        <div
-          style={{
-            padding: '8px 12px',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            border: '1px solid var(--border-light)',
-            textAlign: 'center'
-          }}
-        >
-          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
-            FIXED DEPOSITS
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-accent, #059669)' }}>
-            {counts.fixedDeposits}
-          </div>
-        </div>
+
+        {isRentalPortal ? (
+          <>
+            <div
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid var(--border-light)',
+                textAlign: 'center'
+              }}
+            >
+              <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+                RENTAL
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#6366f1' }}>{counts.total}</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid var(--border-light)',
+                textAlign: 'center'
+              }}
+            >
+              <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+                LOANS
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#0284c7' }}>{counts.loans}</div>
+            </div>
+            <div
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid var(--border-light)',
+                textAlign: 'center'
+              }}
+            >
+              <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+                FIXED DEPOSITS
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--color-primary-accent, #059669)' }}>
+                {counts.fixedDeposits}
+              </div>
+            </div>
+          </>
+        )}
+
         <div
           style={{
             padding: '8px 12px',
@@ -387,18 +535,26 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       >
         {/* Main Category Tabs */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'ALL', label: 'All', count: counts.total },
-            { id: 'LOAN', label: 'Loans', count: counts.loans },
-            { id: 'FIXED_DEPOSIT', label: 'Fixed Deposits', count: counts.fixedDeposits },
-            { id: 'UNREAD', label: 'Unread', count: counts.unread }
-          ].map((tab) => {
+          {(isRentalPortal
+            ? [
+                { id: 'ALL', label: 'All', count: counts.total },
+                { id: 'OVERDUE', label: 'Overdue Rent', count: counts.overdue },
+                { id: 'DEPOSIT', label: 'Security Deposits', count: counts.rental },
+                { id: 'UNREAD', label: 'Unread', count: counts.unread }
+              ]
+            : [
+                { id: 'ALL', label: 'All', count: counts.total },
+                { id: 'LOAN', label: 'Loans', count: counts.loans },
+                { id: 'FIXED_DEPOSIT', label: 'Fixed Deposits', count: counts.fixedDeposits },
+                { id: 'UNREAD', label: 'Unread', count: counts.unread }
+              ]
+          ).map((tab) => {
             const isActive = activeCategory === tab.id;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveCategory(tab.id as any)}
+                onClick={() => setActiveCategory(tab.id)}
                 style={{
                   padding: '7px 14px',
                   borderRadius: '20px',
@@ -440,7 +596,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               type="text"
               className="input-control"
               style={{ height: '34px', paddingLeft: '32px', fontSize: '12.5px' }}
-              placeholder="Search notifications by name, loan, FD, customer ID..."
+              placeholder={
+                isRentalPortal
+                  ? 'Search rental notifications by shop, tenant, complex...'
+                  : 'Search notifications by name, loan, FD, customer ID...'
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -537,17 +697,19 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <CheckCircle2 size={24} color="var(--color-primary-accent, #059669)" />
             </div>
             <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-dark, #1e293b)' }}>
-              No notifications to display
+              {isRentalPortal ? 'No Rental Notifications' : 'No notifications to display'}
             </div>
             <div style={{ fontSize: '12px', marginTop: '4px' }}>
-              {activeCategory === 'UNREAD'
+              {isRentalPortal
+                ? "You're all caught up. No rental alerts or pending items."
+                : activeCategory === 'UNREAD'
                 ? 'All alerts have been read and reviewed.'
                 : 'No alerts match your current filter criteria.'}
             </div>
           </div>
         ) : (
           filteredNotifications.map((n) => {
-            const isUnread = !n.read && n.type !== 'PAID';
+            const isUnread = !n.read && n.type !== 'PAID' && n.type !== 'RENT_PAYMENT';
             return (
               <div
                 key={n.id}
@@ -578,12 +740,22 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                         borderRadius: '4px',
                         fontSize: '10.5px',
                         fontWeight: 800,
-                        backgroundColor: n.category === 'LOAN' ? 'rgba(2, 132, 199, 0.12)' : 'rgba(5, 150, 105, 0.12)',
-                        color: n.category === 'LOAN' ? '#0284c7' : 'var(--color-primary-accent, #059669)',
+                        backgroundColor:
+                          n.category === 'RENTAL' || n.module === 'RENTAL'
+                            ? 'rgba(99, 102, 241, 0.12)'
+                            : n.category === 'LOAN'
+                            ? 'rgba(2, 132, 199, 0.12)'
+                            : 'rgba(5, 150, 105, 0.12)',
+                        color:
+                          n.category === 'RENTAL' || n.module === 'RENTAL'
+                            ? '#6366f1'
+                            : n.category === 'LOAN'
+                            ? '#0284c7'
+                            : 'var(--color-primary-accent, #059669)',
                         letterSpacing: '0.04em'
                       }}
                     >
-                      {n.category === 'LOAN' ? 'LOAN' : 'FIXED DEPOSIT'}
+                      {n.category === 'RENTAL' || n.module === 'RENTAL' ? 'RENTAL' : n.category === 'LOAN' ? 'LOAN' : 'FIXED DEPOSIT'}
                     </span>
                     {getTypeBadge(n)}
                   </div>
@@ -630,7 +802,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom Row: Customer & Entity Info + Action Button */}
+                {/* Bottom Row: Customer / Tenant & Entity Info + Action Button */}
                 <div
                   style={{
                     display: 'flex',
@@ -644,12 +816,32 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   }}
                 >
                   <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <span>
-                      Customer: <strong style={{ color: 'var(--text-dark)' }}>{n.customerName}</strong> ({n.customerId})
-                    </span>
-                    <span>
-                      Ref: <strong style={{ color: 'var(--color-primary-dark)' }}>{n.entityId}</strong>
-                    </span>
+                    {n.category === 'RENTAL' || n.module === 'RENTAL' ? (
+                      <>
+                        <span>
+                          Shop: <strong style={{ color: 'var(--text-dark)' }}>{n.entityId}</strong>
+                        </span>
+                        {n.customerName && (
+                          <span>
+                            Tenant: <strong style={{ color: 'var(--text-dark)' }}>{n.customerName}</strong>
+                          </span>
+                        )}
+                        {n.complexName && (
+                          <span>
+                            Complex: <strong>{n.complexName}</strong>
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          Customer: <strong style={{ color: 'var(--text-dark)' }}>{n.customerName}</strong> ({n.customerId})
+                        </span>
+                        <span>
+                          Ref: <strong style={{ color: 'var(--color-primary-dark)' }}>{n.entityId}</strong>
+                        </span>
+                      </>
+                    )}
                     {n.dueDate && (
                       <span>
                         Due: <strong>{n.dueDate}</strong>

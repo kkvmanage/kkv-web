@@ -9,7 +9,8 @@ import {
   closeLoan,
   getLoanPayments,
   addLoanPayment,
-  getLoansByCustomerId
+  getLoansByCustomerId,
+  getPendingLoans
 } from '../controllers/loan.controller.js';
 import { authenticateUser, authorizePermission, authorizeRoles } from '../middleware/auth.middleware.js';
 
@@ -20,6 +21,7 @@ router.use(authenticateUser);
 
 // Operational Endpoints: Module-action permissions
 router.get('/next-sequence', authorizePermission('loans', 'view'), getNextSequence);
+router.get('/pending', authorizePermission('loans', 'view'), getPendingLoans);
 router.get('/', authorizePermission('loans', 'view'), getLoans);
 router.get('/customer/:customerId', authorizePermission('loans', 'view'), getLoansByCustomerId);
 router.get('/:loanNo', authorizePermission('loans', 'view'), getLoanByNo);

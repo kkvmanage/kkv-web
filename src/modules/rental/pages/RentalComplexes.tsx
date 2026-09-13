@@ -246,7 +246,7 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
                         style={{
                           fontSize: '10px',
                           fontWeight: 700,
-                          color: 'var(--color-gold-light)',
+                          color: 'var(--color-gold)',
                           letterSpacing: '0.5px',
                           display: 'block'
                         }}
@@ -298,7 +298,7 @@ export const RentalComplexes: React.FC<RentalComplexesProps> = ({ onSelectComple
                     </div>
                     <div>
                       <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px' }}>MONTHLY RENT</span>
-                      <strong style={{ color: '#176B52' }}>₹{totalRent.toLocaleString('en-IN')}</strong>
+                      <strong style={{ color: 'var(--text-brand, #176B52)' }}>₹{totalRent.toLocaleString('en-IN')}</strong>
                     </div>
                   </div>
                 </div>

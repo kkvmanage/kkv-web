@@ -27,10 +27,12 @@ export const roundCurrency = (amount: number): number => {
 /**
  * Parse a DD-MM-YYYY or YYYY-MM-DD date string into a Date object
  */
-export const parseLoanDate = (dateStr: string): Date => {
+export const parseLoanDate = (dateStr?: string): Date => {
   if (!dateStr) return new Date();
-  if (dateStr.includes('-')) {
-    const parts = dateStr.split('-');
+  const clean = dateStr.trim();
+  const separator = clean.includes('-') ? '-' : clean.includes('/') ? '/' : null;
+  if (separator) {
+    const parts = clean.split(separator);
     if (parts[0].length === 4) {
       // YYYY-MM-DD
       return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -39,7 +41,8 @@ export const parseLoanDate = (dateStr: string): Date => {
       return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
     }
   }
-  return new Date(dateStr);
+  const parsed = new Date(clean);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 
 /**
@@ -53,11 +56,41 @@ export const formatLoanDate = (date: Date): string => {
 };
 
 /**
- * Calculate the next due date (default +1 month from reference date)
+ * Adds N calendar months to a Date object, properly clamping to month-end
+ * (e.g., Jan 31 + 1 mo -> Feb 28/29, Jan 31 + 2 mo -> Mar 31).
  */
-export const calculateNextDueDate = (issueDateStr?: string): string => {
+export const addMonthsToLoanDate = (baseDate: Date, monthsToAdd: number): Date => {
+  const origDay = baseDate.getDate();
+  const origMonth = baseDate.getMonth();
+  const origYear = baseDate.getFullYear();
+
+  const totalMonths = origMonth + monthsToAdd;
+  const targetYear = origYear + Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+
+  const maxDaysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const targetDay = Math.min(origDay, maxDaysInTargetMonth);
+
+  return new Date(targetYear, targetMonth, targetDay);
+};
+
+/**
+ * Calculate the next due date based on issue date and advance interest prepaid days.
+ * When advance interest is deducted (e.g. 30 days), the first period is already covered,
+ * so the next interest due date moves to the next billing cycle (e.g. +2 months).
+ */
+export const calculateNextDueDate = (
+  issueDateStr?: string,
+  deductAdvanceInterest: boolean = false,
+  advanceDays: number = 0
+): string => {
   const baseDate = issueDateStr ? parseLoanDate(issueDateStr) : new Date();
-  const nextDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, baseDate.getDate());
+  if (deductAdvanceInterest && advanceDays > 0) {
+    const monthsCovered = Math.max(1, Math.round(advanceDays / 30));
+    const nextDate = addMonthsToLoanDate(baseDate, monthsCovered + 1);
+    return formatLoanDate(nextDate);
+  }
+  const nextDate = addMonthsToLoanDate(baseDate, 1);
   return formatLoanDate(nextDate);
 };
 
@@ -270,6 +303,10 @@ export interface LoanTermsCalculation {
   cardFeeConfig: { enabled: boolean; amount: number };
   effectiveCardFee: number;
   advanceInterestAmount: number;
+  isAdvanceInterestCovered: boolean;
+  advanceDays: number;
+  coveredInterestStartDate?: string;
+  coveredInterestEndDate?: string;
   netDisbursed: number;
   nextDueDate: string;
   contractSnapshot: {
@@ -335,12 +372,22 @@ export const calculateLoanTerms = (params: {
   const cardFeeVal = customCardFeeAmount !== undefined ? customCardFeeAmount : productFeeConfig.amount;
   const effectiveCardFee = isCardFeeActive ? cardFeeVal : 0;
 
-  const advanceInterestAmount = deductAdvanceInterest
-    ? Math.round((monthlyInterest / 30) * (advanceDays || 30))
+  const effectiveAdvanceDays = advanceDays || (deductAdvanceInterest ? 30 : 0);
+  const isAdvanceInterestCovered = Boolean(deductAdvanceInterest && effectiveAdvanceDays > 0);
+
+  const advanceInterestAmount = isAdvanceInterestCovered
+    ? Math.round((monthlyInterest / 30) * effectiveAdvanceDays)
     : 0;
 
   const netDisbursed = Math.max(0, numericPrincipal - advanceInterestAmount - effectiveCardFee);
-  const nextDueDate = calculateNextDueDate(issueDate);
+  const nextDueDate = calculateNextDueDate(issueDate, deductAdvanceInterest, effectiveAdvanceDays);
+
+  const baseDate = parseLoanDate(issueDate);
+  const monthsCovered = isAdvanceInterestCovered ? Math.max(1, Math.round(effectiveAdvanceDays / 30)) : 0;
+  const coveredInterestStartDate = isAdvanceInterestCovered ? formatLoanDate(baseDate) : undefined;
+  const coveredInterestEndDate = isAdvanceInterestCovered
+    ? formatLoanDate(addMonthsToLoanDate(baseDate, monthsCovered))
+    : undefined;
 
   const contractSnapshot = {
     interestRate,
@@ -367,6 +414,10 @@ export const calculateLoanTerms = (params: {
     cardFeeConfig: productFeeConfig,
     effectiveCardFee,
     advanceInterestAmount,
+    isAdvanceInterestCovered,
+    advanceDays: effectiveAdvanceDays,
+    coveredInterestStartDate,
+    coveredInterestEndDate,
     netDisbursed,
     nextDueDate,
     contractSnapshot
@@ -607,7 +658,7 @@ export const calculateLoanOverdueAndDues = (params: {
   const today = asOfDate ? parseLoanDate(asOfDate) : new Date();
 
   // Derive due date
-  const dueDateStr = loan.nextDueDate || calculateNextDueDate(loan.date);
+  const dueDateStr = loan.nextDueDate || calculateNextDueDate(loan.date, loan.deductAdvanceInterest, loan.advanceDays);
   const dueDate = parseLoanDate(dueDateStr);
 
   // Compute interest payments for this period

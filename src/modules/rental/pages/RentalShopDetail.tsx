@@ -122,7 +122,7 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
 
       <RentalHeader
         title={`${shop?.shopNumber || ''} — ${shop?.shopName || 'Shop Detail'}`}
-        subtitle={`Tenant: ${shop?.tenantName || ''} • Complex: ${shop?.complexName || ''}`}
+        subtitle={`Tenant: ${shop?.tenantName || ''} • Complex: ${shop?.complexName || ''}${shop?.doorNumber ? ` • Door No: ${shop.doorNumber}` : ''}${shop?.ebNumber ? ` • EB No: ${shop.ebNumber}` : ''}`}
         actions={
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
@@ -159,7 +159,7 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
           gap: '12px',
           marginBottom: '20px'
         }}
@@ -168,7 +168,7 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
           <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
             MONTHLY RENT
           </span>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: '#176B52', marginTop: '4px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-brand, #176B52)', marginTop: '4px' }}>
             ₹{shop?.monthlyRent.toLocaleString('en-IN')}
           </div>
         </div>
@@ -180,6 +180,11 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#2563eb', marginTop: '4px' }}>
             ₹{shop?.availableAdvance.toLocaleString('en-IN')}
           </div>
+          {shop?.advanceAmount !== undefined && shop.advanceAmount !== shop.availableAdvance && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              Initial: ₹{shop.advanceAmount.toLocaleString('en-IN')}
+            </span>
+          )}
         </div>
 
         <div className="card" style={{ padding: '14px 16px', backgroundColor: 'rgba(34, 197, 94, 0.08)' }}>
@@ -202,12 +207,19 @@ export const RentalShopDetail: React.FC<RentalShopDetailProps> = ({
 
         <div className="card" style={{ padding: '14px 16px', backgroundColor: 'var(--bg-card)' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            TENANT CONTACT
+            TENANT & UNIT
           </span>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+          <div style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
             {shop?.tenantName}
           </div>
-          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>📞 {shop?.mobileNumber}</span>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            📞 {shop?.mobileNumber}
+          </div>
+          {shop?.doorNumber && (
+            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              🚪 Door: {shop.doorNumber} {shop.ebNumber ? `• ⚡ EB: ${shop.ebNumber}` : ''}
+            </div>
+          )}
         </div>
       </div>
 

@@ -135,6 +135,46 @@ export class RentalController {
     }
   }
 
+  public async getShopSettlement(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = await rentalService.getShopSettlementSummary(id);
+      res.json({ success: true, data });
+    } catch (err: any) {
+      res.status(404).json({ success: false, message: err.message });
+    }
+  }
+
+  public async closeShop(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).user?.uid || (req as any).user?.email || 'STAFF';
+      const result = await rentalService.closeShop(id, req.body, userId);
+      res.json({
+        success: true,
+        message: `Shop "${result.shop.shopNumber}" successfully closed and archived`,
+        data: result
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
+  public async deleteShop(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).user?.uid || (req as any).user?.email || 'ADMIN';
+      const success = await rentalService.deleteShop(id, userId);
+      if (!success) {
+        res.status(404).json({ success: false, message: `Shop ${id} not found` });
+        return;
+      }
+      res.json({ success: true, message: `Shop ${id} permanently deleted` });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+
   // ── Rent Payments ──────────────────────────────────────────────────────────
   public async getPayments(req: Request, res: Response): Promise<void> {
     try {
@@ -245,6 +285,22 @@ export class RentalController {
       res.json({ success: true, data });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // ── Pending Rent ───────────────────────────────────────────────────────────
+  public async getPendingRent(req: Request, res: Response): Promise<void> {
+    try {
+      const month = (req.query.month as string) || undefined;
+      const complexId = (req.query.complexId as string) || undefined;
+      const status = (req.query.status as string) || undefined;
+      const search = (req.query.search as string) || undefined;
+
+      const data = await rentalService.getPendingRentList({ month, complexId, status, search });
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error('[RentalController] getPendingRent error:', err);
+      res.status(500).json({ success: false, message: err.message || 'Error fetching pending rent' });
     }
   }
 

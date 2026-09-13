@@ -1,0 +1,46 @@
+[
+  {
+    "id": "CMP-0001",
+    "complexId": "CMP-0001",
+    "complexName": "Test Plaza",
+    "location": "Main Road",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-13T07:27:55.852Z",
+    "updatedAt": "2026-09-13T07:27:55.935Z",
+    "syncStatus": "SYNCED",
+    "lastSyncedAt": "2026-09-13T07:27:55.934Z"
+  },
+  {
+    "id": "CMP-0002",
+    "complexId": "CMP-0002",
+    "complexName": "Test Commercial Plaza 6457",
+    "location": "Main Road",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-13T07:31:56.457Z",
+    "updatedAt": "2026-09-13T07:31:56.513Z",
+    "syncStatus": "SYNCED",
+    "lastSyncedAt": "2026-09-13T07:31:56.512Z"
+  },
+  {
+    "id": "CMP-0003",
+    "complexId": "CMP-0003",
+    "complexName": "Test Commercial Plaza 2282",
+    "location": "Main Road",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-13T07:32:42.282Z",
+    "updatedAt": "2026-09-13T07:32:42.339Z",
+    "syncStatus": "SYNCED",
+    "lastSyncedAt": "2026-09-13T07:32:42.338Z"
+  },
+  {
+    "id": "CMP-0004",
+    "complexId": "CMP-0004",
+    "complexName": "Test Commercial Plaza 3880",
+    "location": "Main Road",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-13T07:33:23.881Z",
+    "updatedAt": "2026-09-13T07:33:23.951Z",
+    "syncStatus": "SYNCED",
+    "lastSyncedAt": "2026-09-13T07:33:23.950Z"
+  }
+]

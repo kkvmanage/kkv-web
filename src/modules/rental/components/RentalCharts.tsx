@@ -27,8 +27,8 @@ export const RentalCharts: React.FC<RentalChartsProps> = ({ data }) => {
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 6 Months Performance</span>
           </div>
           <div style={{ display: 'flex', gap: '10px', fontSize: '10px', fontWeight: 700 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#176B52' }}>
-              <span style={{ width: '8px', height: '8px', backgroundColor: '#176B52', borderRadius: '2px' }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-brand, #176B52)' }}>
+              <span style={{ width: '8px', height: '8px', backgroundColor: 'var(--color-primary-accent, #176B52)', borderRadius: '2px' }} />
               Collected
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626' }}>
@@ -62,7 +62,7 @@ export const RentalCharts: React.FC<RentalChartsProps> = ({ data }) => {
                     style={{
                       width: '14px',
                       height: `${collectedHeight}px`,
-                      backgroundColor: '#176B52',
+                      backgroundColor: 'var(--color-primary-accent, #176B52)',
                       borderRadius: '3px 3px 0 0',
                       transition: 'height 0.3s ease'
                     }}
@@ -113,7 +113,7 @@ export const RentalCharts: React.FC<RentalChartsProps> = ({ data }) => {
             <div
               style={{
                 width: `${cashPercent}%`,
-                backgroundColor: '#176B52',
+                backgroundColor: 'var(--color-primary-accent, #176B52)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -148,13 +148,13 @@ export const RentalCharts: React.FC<RentalChartsProps> = ({ data }) => {
             <div
               style={{
                 padding: '10px 12px',
-                backgroundColor: 'rgba(23, 107, 82, 0.06)',
+                backgroundColor: 'var(--primary-soft)',
                 borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(23, 107, 82, 0.2)'
+                border: '1px solid var(--border-subtle)'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#176B52', fontWeight: 700 }}>
-                <span style={{ width: '8px', height: '8px', backgroundColor: '#176B52', borderRadius: '50%' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-brand, #176B52)', fontWeight: 700 }}>
+                <span style={{ width: '8px', height: '8px', backgroundColor: 'var(--color-primary-accent, #176B52)', borderRadius: '50%' }} />
                 Cash Collections
               </div>
               <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
@@ -166,13 +166,13 @@ export const RentalCharts: React.FC<RentalChartsProps> = ({ data }) => {
             <div
               style={{
                 padding: '10px 12px',
-                backgroundColor: 'rgba(37, 99, 235, 0.06)',
+                backgroundColor: 'rgba(37, 99, 235, 0.10)',
                 borderRadius: 'var(--radius-md)',
-                border: '1px solid rgba(37, 99, 235, 0.2)'
+                border: '1px solid rgba(37, 99, 235, 0.25)'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#2563eb', fontWeight: 700 }}>
-                <span style={{ width: '8px', height: '8px', backgroundColor: '#2563eb', borderRadius: '50%' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#3b82f6', fontWeight: 700 }}>
+                <span style={{ width: '8px', height: '8px', backgroundColor: '#3b82f6', borderRadius: '50%' }} />
                 GPay / UPI Collections
               </div>
               <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>

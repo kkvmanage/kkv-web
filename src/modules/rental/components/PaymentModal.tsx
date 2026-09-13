@@ -329,7 +329,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10px', textTransform: 'uppercase' }}>
                     Monthly Rent / Avail. Advance
                   </span>
-                  <span style={{ color: '#176B52', fontWeight: 800 }}>₹{selectedShop.monthlyRent.toLocaleString('en-IN')}</span>
+                  <span style={{ color: 'var(--text-brand, #176B52)', fontWeight: 800 }}>₹{selectedShop.monthlyRent.toLocaleString('en-IN')}</span>
                   {selectedShop.availableAdvance > 0 && (
                     <span style={{ color: '#2563eb', fontWeight: 700, marginLeft: '6px', fontSize: '11px' }}>
                       (Adv: ₹{selectedShop.availableAdvance.toLocaleString('en-IN')})

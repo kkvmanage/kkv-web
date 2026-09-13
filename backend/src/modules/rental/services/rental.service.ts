@@ -13,7 +13,11 @@ import {
   ExpenseCategory,
   RentalStatus,
   RentalDayBookEntry,
-  ExpenseScope
+  ExpenseScope,
+  PendingRentItem,
+  PendingRentSummary,
+  PendingRentResponse,
+  ShopSettlementSummary
 } from '../types/rental.types.js';
 
 export class RentalService {
@@ -31,6 +35,98 @@ export class RentalService {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  // ── Date-Based Rent Due Helpers ──────────────────────────────────────────
+  public calculateRentDueDate(monthStr: string, rentDueDay: number = 10): { dueDateStr: string; dueDate: Date } {
+    const cleanMonth = (monthStr || this.getCurrentMonth()).slice(0, 7);
+    const [yearStr, monthPart] = cleanMonth.split('-');
+    const year = parseInt(yearStr, 10) || new Date().getFullYear();
+    const monthIndex = (parseInt(monthPart, 10) || (new Date().getMonth() + 1)) - 1;
+    const maxDays = new Date(year, monthIndex + 1, 0).getDate();
+    const dueDay = Math.min(Math.max(1, Math.round(Number(rentDueDay) || 10)), maxDays);
+    const dueDateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+    const dueDate = new Date(year, monthIndex, dueDay);
+    dueDate.setHours(0, 0, 0, 0);
+    return { dueDateStr, dueDate };
+  }
+
+  public getShopRentDueMetrics(
+    shop: RentalShop,
+    monthStr: string,
+    payments: RentalPayment[],
+    asOfDate?: string | Date
+  ) {
+    const today = asOfDate ? (typeof asOfDate === 'string' ? new Date(asOfDate) : new Date(asOfDate)) : new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const cleanMonth = (monthStr || this.getCurrentMonth()).slice(0, 7);
+    const { dueDateStr, dueDate } = this.calculateRentDueDate(cleanMonth, shop.rentDueDay || 10);
+
+    const monthPayments = payments.filter((p) => p.shopId === shop.shopId && p.paymentMonth === cleanMonth);
+    const amountReceived = monthPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
+    const advanceUsed = monthPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
+    const advanceGenerated = monthPayments.reduce((sum, p) => sum + (Number(p.advanceGenerated) || 0), 0);
+    const totalCovered = amountReceived + advanceUsed;
+
+    const monthlyRent = Number(shop.monthlyRent) || 0;
+    const unpaidBalance = Math.max(0, monthlyRent - totalCovered);
+    const isFullyPaid = (totalCovered >= monthlyRent && monthlyRent > 0) || (monthlyRent === 0);
+    const isDue = today.getTime() >= dueDate.getTime();
+
+    let isPending = false;
+    let pendingAmount = 0;
+    let daysOverdue = 0;
+    let statusText: 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE' | 'DUE TODAY' | 'UPCOMING' = 'UPCOMING';
+
+    if (isFullyPaid) {
+      statusText = 'PAID';
+      isPending = false;
+      pendingAmount = 0;
+    } else {
+      if (isDue) {
+        isPending = unpaidBalance > 0;
+        pendingAmount = unpaidBalance;
+        const diffMs = today.getTime() - dueDate.getTime();
+        daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        statusText = daysOverdue > 0 ? 'OVERDUE' : (totalCovered > 0 ? 'PARTIAL' : 'DUE TODAY');
+      } else {
+        // Future / not due yet in this selected month
+        isPending = false;
+        pendingAmount = 0;
+        statusText = totalCovered > 0 ? 'PARTIAL' : 'UPCOMING';
+      }
+    }
+
+    return {
+      shopId: shop.shopId,
+      shopNumber: shop.shopNumber,
+      shopName: shop.shopName,
+      tenantName: shop.tenantName,
+      mobileNumber: shop.mobileNumber,
+      complexId: shop.complexId,
+      monthlyRent,
+      rentDueDay: shop.rentDueDay || 10,
+      month: cleanMonth,
+      dueDateStr,
+      dueDate,
+      isDue,
+      isFullyPaid,
+      isPending,
+      daysOverdue,
+      amountPaid: amountReceived,
+      advanceUsed,
+      advanceGenerated,
+      totalCovered,
+      unpaidBalance,
+      outstandingBalance: unpaidBalance,
+      pendingAmount,
+      availableAdvance: Number(shop.availableAdvance) || 0,
+      status: isFullyPaid ? 'PAID' : totalCovered > 0 ? 'PARTIAL' : 'PENDING',
+      statusText,
+      payments: monthPayments
+    };
   }
 
   // ── Complexes ──────────────────────────────────────────────────────────────
@@ -145,9 +241,11 @@ export class RentalService {
       list = list.filter(
         (s) =>
           s.shopNumber.toLowerCase().includes(q) ||
+          (s.doorNumber && s.doorNumber.toLowerCase().includes(q)) ||
           s.shopName.toLowerCase().includes(q) ||
           s.tenantName.toLowerCase().includes(q) ||
           s.mobileNumber.includes(q) ||
+          (s.ebNumber && s.ebNumber.toLowerCase().includes(q)) ||
           (s.complexName && s.complexName.toLowerCase().includes(q))
       );
     }
@@ -168,10 +266,15 @@ export class RentalService {
     data: {
       complexId: string;
       shopNumber: string;
+      doorNumber: string;
       shopName: string;
       tenantName: string;
       mobileNumber: string;
+      ebNumber?: string;
       monthlyRent: number;
+      rentDueDay?: number;
+      advanceAmount?: number;
+      advancePaymentMode?: PaymentMode | string;
       status?: RentalStatus;
     },
     userId: string = 'SYSTEM'
@@ -183,6 +286,9 @@ export class RentalService {
 
     if (!data.shopNumber || !data.shopNumber.trim()) {
       throw new Error('Shop number cannot be empty');
+    }
+    if (!data.doorNumber || !data.doorNumber.trim()) {
+      throw new Error('Door number cannot be empty');
     }
     if (!data.shopName || !data.shopName.trim()) {
       throw new Error('Shop name cannot be empty');
@@ -201,13 +307,44 @@ export class RentalService {
       throw new Error('Monthly rent must be a non-negative number');
     }
 
+    const advanceAmount = data.advanceAmount !== undefined ? Number(data.advanceAmount) : 0;
+    if (isNaN(advanceAmount) || advanceAmount < 0) {
+      throw new Error('Advance amount must be a non-negative number');
+    }
+
+    const rentDueDay = data.rentDueDay !== undefined
+      ? Math.min(31, Math.max(1, Math.round(Number(data.rentDueDay))))
+      : 10;
+
+    const cleanDoor = data.doorNumber.trim();
+    const cleanEB = data.ebNumber ? data.ebNumber.trim() : '';
+
     // Check duplicate shop number in same complex
     const existingShops = rentalRepository.getShopsByComplexId(data.complexId);
-    const isDuplicate = existingShops.some(
+    const isDuplicateShop = existingShops.some(
       (s) => s.shopNumber.trim().toLowerCase() === data.shopNumber.trim().toLowerCase()
     );
-    if (isDuplicate) {
+    if (isDuplicateShop) {
       throw new Error(`Shop number "${data.shopNumber}" already exists in ${complex.complexName}`);
+    }
+
+    // Check duplicate door number in same complex
+    const isDuplicateDoor = existingShops.some(
+      (s) => s.doorNumber && s.doorNumber.trim().toLowerCase() === cleanDoor.toLowerCase()
+    );
+    if (isDuplicateDoor) {
+      throw new Error(`Door number "${cleanDoor}" already exists in ${complex.complexName}`);
+    }
+
+    // Check duplicate EB number if provided
+    if (cleanEB) {
+      const allShops = rentalRepository.getShops();
+      const isDuplicateEB = allShops.some(
+        (s) => s.ebNumber && s.ebNumber.trim().toLowerCase() === cleanEB.toLowerCase()
+      );
+      if (isDuplicateEB) {
+        throw new Error(`EB number "${cleanEB}" is already registered to another shop`);
+      }
     }
 
     const now = new Date().toISOString();
@@ -218,11 +355,15 @@ export class RentalService {
       complexId: data.complexId,
       complexName: complex.complexName,
       shopNumber: data.shopNumber.trim(),
+      doorNumber: cleanDoor,
       shopName: data.shopName.trim(),
       tenantName: data.tenantName.trim(),
       mobileNumber: cleanMobile,
+      ebNumber: cleanEB || undefined,
       monthlyRent,
-      availableAdvance: 0,
+      rentDueDay,
+      advanceAmount,
+      availableAdvance: advanceAmount,
       status: data.status || 'ACTIVE',
       createdAt: now,
       updatedAt: now,
@@ -230,6 +371,35 @@ export class RentalService {
     };
 
     rentalRepository.saveShop(shop);
+
+    // If advance amount is collected, record a traceable Security Deposit entry in Day Book
+    if (advanceAmount > 0) {
+      const advanceEntry: RentalDayBookEntry = {
+        id: `rdb_adv_${shopId}`,
+        voucherNo: `ADV-${shopId}`,
+        date: now.slice(0, 10),
+        transactionType: 'SECURITY_DEPOSIT',
+        category: 'Advance / Security Deposit',
+        description: `Advance Security Deposit - ${shop.tenantName} (${shop.shopNumber})`,
+        complexId: shop.complexId,
+        complexName: complex.complexName,
+        shopId: shop.shopId,
+        shopNumber: shop.shopNumber,
+        shopName: shop.shopName,
+        tenantName: shop.tenantName,
+        paymentMode: data.advancePaymentMode || 'CASH',
+        debit: 0,
+        credit: advanceAmount,
+        referenceType: 'MANUAL',
+        referenceId: shop.shopId,
+        entrySource: 'SYSTEM',
+        notes: `Advance Security Deposit collected on shop creation (${cleanDoor ? 'Door: ' + cleanDoor : ''})`,
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now
+      };
+      await rentalDayBookRepository.saveManualEntry(advanceEntry);
+    }
 
     rentalRepository.saveAuditLog({
       id: rentalRepository.nextAuditId(),
@@ -251,12 +421,16 @@ export class RentalService {
     data: Partial<{
       complexId: string;
       shopNumber: string;
+      doorNumber: string;
       shopName: string;
       tenantName: string;
       mobileNumber: string;
+      ebNumber: string;
       monthlyRent: number;
-      status: RentalStatus;
+      rentDueDay: number;
+      advanceAmount: number;
       availableAdvance: number;
+      status: RentalStatus;
     }>,
     userId: string = 'SYSTEM'
   ): Promise<RentalShop> {
@@ -279,6 +453,29 @@ export class RentalService {
       }
     }
 
+    // Check duplicate door number if changed
+    if (data.doorNumber && data.doorNumber.trim().toLowerCase() !== (existing.doorNumber || '').toLowerCase()) {
+      const existingShops = rentalRepository.getShopsByComplexId(targetComplexId);
+      const isDuplicateDoor = existingShops.some(
+        (s) => s.shopId !== shopId && s.doorNumber && s.doorNumber.trim().toLowerCase() === data.doorNumber!.trim().toLowerCase()
+      );
+      if (isDuplicateDoor) {
+        throw new Error(`Door number "${data.doorNumber}" already exists in complex`);
+      }
+    }
+
+    // Check duplicate EB number if changed and non-empty
+    if (data.ebNumber && data.ebNumber.trim().toLowerCase() !== (existing.ebNumber || '').toLowerCase()) {
+      const cleanEB = data.ebNumber.trim().toLowerCase();
+      const allShops = rentalRepository.getShops();
+      const isDuplicateEB = allShops.some(
+        (s) => s.shopId !== shopId && s.ebNumber && s.ebNumber.trim().toLowerCase() === cleanEB
+      );
+      if (isDuplicateEB) {
+        throw new Error(`EB number "${data.ebNumber}" is already registered to another shop`);
+      }
+    }
+
     let cleanMobile = existing.mobileNumber;
     if (data.mobileNumber !== undefined) {
       cleanMobile = data.mobileNumber.replace(/\D/g, '');
@@ -293,10 +490,14 @@ export class RentalService {
       complexId: targetComplexId,
       complexName: complex?.complexName || existing.complexName,
       shopNumber: data.shopNumber !== undefined ? data.shopNumber.trim() : existing.shopNumber,
+      doorNumber: data.doorNumber !== undefined ? data.doorNumber.trim() : existing.doorNumber,
       shopName: data.shopName !== undefined ? data.shopName.trim() : existing.shopName,
       tenantName: data.tenantName !== undefined ? data.tenantName.trim() : existing.tenantName,
       mobileNumber: cleanMobile,
+      ebNumber: data.ebNumber !== undefined ? data.ebNumber.trim() : existing.ebNumber,
       monthlyRent: data.monthlyRent !== undefined ? Number(data.monthlyRent) : existing.monthlyRent,
+      rentDueDay: data.rentDueDay !== undefined ? Math.min(31, Math.max(1, Math.round(Number(data.rentDueDay)))) : (existing.rentDueDay || 10),
+      advanceAmount: data.advanceAmount !== undefined ? Number(data.advanceAmount) : existing.advanceAmount,
       availableAdvance: data.availableAdvance !== undefined ? Number(data.availableAdvance) : existing.availableAdvance,
       status: data.status !== undefined ? data.status : existing.status,
       updatedAt: now,
@@ -327,42 +528,142 @@ export class RentalService {
     if (!shop) throw new Error(`Shop ${shopId} not found`);
 
     const allPayments = rentalRepository.getPaymentsByShopId(shopId);
-    const monthPayments = allPayments.filter((p) => p.paymentMonth === month);
+    return this.getShopRentDueMetrics(shop, month, allPayments);
+  }
 
-    const totalPaidInCashAndGpay = monthPayments.reduce((sum, p) => sum + p.amountReceived, 0);
-    const totalAdvanceUsed = monthPayments.reduce((sum, p) => sum + p.advanceUsed, 0);
-    const totalAdvanceGenerated = monthPayments.reduce((sum, p) => sum + p.advanceGenerated, 0);
+  // ── Shop Settlement & Lifecycle ───────────────────────────────────────────
+  public async getShopSettlementSummary(shopId: string): Promise<ShopSettlementSummary> {
+    const shop = rentalRepository.getShopById(shopId);
+    if (!shop) throw new Error(`Shop ${shopId} not found`);
 
-    const totalCovered = totalPaidInCashAndGpay + totalAdvanceUsed;
-    const requiredRent = shop.monthlyRent;
-    const outstandingBalance = Math.max(0, requiredRent - totalCovered);
+    const complex = rentalRepository.getComplexById(shop.complexId);
+    const currentMonth = this.getCurrentMonth();
+    const payments = rentalRepository.getPaymentsByShopId(shopId);
+    const expenses = rentalRepository.getExpenses().filter((e) => e.shopId === shopId);
 
-    let status: 'PAID' | 'PARTIAL' | 'PENDING' = 'PENDING';
-    if (totalCovered >= requiredRent && requiredRent > 0) {
-      status = 'PAID';
-    } else if (totalCovered > 0) {
-      status = 'PARTIAL';
-    } else if (requiredRent === 0) {
-      status = 'PAID';
-    }
+    const metrics = this.getShopRentDueMetrics(shop, currentMonth, payments);
+    const originalAdvance = Number(shop.advanceAmount) || 0;
+    const advanceUsed = payments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
+    const availableAdvance = Number(shop.availableAdvance) || 0;
+    const pendingRent = metrics.pendingAmount || 0;
+    const outstandingBalance = pendingRent;
+    const refundableAdvance = Math.max(0, availableAdvance - pendingRent);
+    const financialTransactionCount = payments.length + expenses.length;
 
     return {
       shopId: shop.shopId,
       shopNumber: shop.shopNumber,
+      doorNumber: shop.doorNumber,
       shopName: shop.shopName,
       tenantName: shop.tenantName,
       mobileNumber: shop.mobileNumber,
-      monthlyRent: requiredRent,
-      month,
-      amountPaid: totalPaidInCashAndGpay,
-      advanceUsed: totalAdvanceUsed,
-      advanceGenerated: totalAdvanceGenerated,
-      totalCovered,
+      ebNumber: shop.ebNumber,
+      complexId: shop.complexId,
+      complexName: complex?.complexName || shop.complexName || 'Unknown Complex',
+      location: complex?.location,
+      monthlyRent: shop.monthlyRent,
+      rentDueDay: shop.rentDueDay || 10,
+      pendingRent,
+      originalAdvance,
+      advanceUsed,
+      availableAdvance,
       outstandingBalance,
-      availableAdvance: shop.availableAdvance,
-      status,
-      payments: monthPayments
+      refundableAdvance,
+      financialTransactionCount,
+      canClose: shop.status !== 'CLOSED',
+      canDelete: financialTransactionCount === 0 && availableAdvance === 0 && pendingRent === 0,
+      status: shop.status
     };
+  }
+
+  public async closeShop(
+    shopId: string,
+    data: {
+      reason?: string;
+      notes?: string;
+    },
+    userId: string = 'STAFF'
+  ): Promise<{ shop: RentalShop; settlement: ShopSettlementSummary }> {
+    const shop = rentalRepository.getShopById(shopId);
+    if (!shop) throw new Error(`Shop ${shopId} not found`);
+
+    if (shop.status === 'CLOSED') {
+      throw new Error(`Shop "${shop.shopNumber}" (${shopId}) is already closed`);
+    }
+
+    const settlement = await this.getShopSettlementSummary(shopId);
+    const now = new Date().toISOString();
+
+    const updatedShop: RentalShop = {
+      ...shop,
+      status: 'CLOSED',
+      closedAt: now,
+      closedBy: userId,
+      closingReason: data.reason || 'Tenancy ended',
+      settlementNotes: data.notes || '',
+      refundableAdvanceAtClose: settlement.refundableAdvance,
+      closingPendingRent: settlement.pendingRent,
+      updatedAt: now,
+      syncStatus: 'PENDING'
+    };
+
+    rentalRepository.saveShop(updatedShop);
+
+    rentalRepository.saveAuditLog({
+      id: rentalRepository.nextAuditId(),
+      auditId: rentalRepository.nextAuditId(),
+      userId,
+      action: 'CLOSE_SHOP',
+      entityType: 'Shop',
+      entityId: shopId,
+      oldValue: shop,
+      newValue: {
+        ...updatedShop,
+        settlementSummary: settlement
+      },
+      timestamp: now
+    });
+
+    await syncService.enqueue('Shop', shopId, 'UPDATE', updatedShop);
+
+    return {
+      shop: updatedShop,
+      settlement
+    };
+  }
+
+  public async deleteShop(shopId: string, userId: string = 'SYSTEM'): Promise<boolean> {
+    const shop = rentalRepository.getShopById(shopId);
+    if (!shop) throw new Error(`Shop ${shopId} not found`);
+
+    const payments = rentalRepository.getPaymentsByShopId(shopId);
+    const expenses = rentalRepository.getExpenses().filter((e) => e.shopId === shopId);
+    const availableAdvance = Number(shop.availableAdvance) || 0;
+
+    const currentMonth = this.getCurrentMonth();
+    const metrics = this.getShopRentDueMetrics(shop, currentMonth, payments);
+    const pendingRent = metrics.pendingAmount || 0;
+
+    if (payments.length > 0 || expenses.length > 0 || availableAdvance > 0 || pendingRent > 0) {
+      throw new Error(
+        `Cannot permanently delete shop "${shop.shopNumber}" (${shop.shopId}) because it has active/historical financial records (${payments.length} payment(s), ${expenses.length} expense(s), ₹${availableAdvance} advance). Please use "Close Shop" to safely archive it.`
+      );
+    }
+
+    const success = rentalRepository.deleteShop(shopId);
+    if (success) {
+      rentalRepository.saveAuditLog({
+        id: rentalRepository.nextAuditId(),
+        auditId: rentalRepository.nextAuditId(),
+        userId,
+        action: 'DELETE_SHOP',
+        entityType: 'Shop',
+        entityId: shopId,
+        oldValue: shop,
+        timestamp: new Date().toISOString()
+      });
+    }
+    return success;
   }
 
   // ── Rent Payments ──────────────────────────────────────────────────────────
@@ -889,14 +1190,11 @@ export class RentalService {
     const monthPayments = payments.filter((p) => p.paymentMonth === selectedMonth);
     const collectedThisMonth = monthPayments.reduce((sum, p) => sum + p.amountReceived, 0);
 
-    // Calculate pending rent for each active shop for selected month
+    // Calculate date-based pending rent for each active shop for selected month
     let pendingRent = 0;
     activeShops.forEach((s) => {
-      const sPayments = monthPayments.filter((p) => p.shopId === s.shopId);
-      const sPaid = sPayments.reduce((sum, p) => sum + p.amountReceived, 0);
-      const sAdvanceUsed = sPayments.reduce((sum, p) => sum + p.advanceUsed, 0);
-      const sCovered = sPaid + sAdvanceUsed;
-      pendingRent += Math.max(0, s.monthlyRent - sCovered);
+      const metrics = this.getShopRentDueMetrics(s, selectedMonth, monthPayments);
+      pendingRent += metrics.pendingAmount;
     });
 
     const availableAdvance = shops.reduce((sum, s) => sum + s.availableAdvance, 0);
@@ -912,7 +1210,7 @@ export class RentalService {
 
     const netCollection = collectedThisMonth - thisMonthExpenses;
 
-    // Monthly Trend (Last 6 Months)
+    // Monthly Trend (Last 6 Months) - Date-Aware
     const monthlyTrend: RentalDashboardData['monthlyTrend'] = [];
     const baseDate = new Date(`${selectedMonth}-01`);
     for (let i = 5; i >= 0; i--) {
@@ -927,9 +1225,8 @@ export class RentalService {
 
       let mPending = 0;
       activeShops.forEach((s) => {
-        const sPayments = mPayments.filter((p) => p.shopId === s.shopId);
-        const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-        mPending += Math.max(0, s.monthlyRent - sCovered);
+        const metrics = this.getShopRentDueMetrics(s, mStr, mPayments);
+        mPending += metrics.pendingAmount;
       });
 
       monthlyTrend.push({
@@ -942,7 +1239,7 @@ export class RentalService {
       });
     }
 
-    // Complex Stats
+    // Complex Stats - Date-Aware
     const allComplexes = rentalRepository.getComplexes();
     const complexStats = allComplexes.map((c) => {
       const cShops = rentalRepository.getShopsByComplexId(c.complexId).filter((s) => s.status === 'ACTIVE');
@@ -953,9 +1250,8 @@ export class RentalService {
 
       let cPending = 0;
       cShops.forEach((s) => {
-        const sPayments = cPayments.filter((p) => p.shopId === s.shopId);
-        const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-        cPending += Math.max(0, s.monthlyRent - sCovered);
+        const metrics = this.getShopRentDueMetrics(s, selectedMonth, cPayments);
+        cPending += metrics.pendingAmount;
       });
 
       return {
@@ -1013,9 +1309,8 @@ export class RentalService {
 
     let pendingRent = 0;
     activeShops.forEach((s) => {
-      const sPayments = payments.filter((p) => p.shopId === s.shopId);
-      const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-      pendingRent += Math.max(0, s.monthlyRent - sCovered);
+      const metrics = this.getShopRentDueMetrics(s, selectedMonth, payments);
+      pendingRent += metrics.pendingAmount;
     });
 
     const complexPerformance = complexes.map((c) => {
@@ -1027,9 +1322,8 @@ export class RentalService {
 
       let cPending = 0;
       cShops.forEach((s) => {
-        const sPayments = cPayments.filter((p) => p.shopId === s.shopId);
-        const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-        cPending += Math.max(0, s.monthlyRent - sCovered);
+        const metrics = this.getShopRentDueMetrics(s, selectedMonth, cPayments);
+        cPending += metrics.pendingAmount;
       });
 
       return {
@@ -1075,9 +1369,8 @@ export class RentalService {
 
       let pending = 0;
       cShops.forEach((s) => {
-        const sPayments = cPayments.filter((p) => p.shopId === s.shopId);
-        const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-        pending += Math.max(0, s.monthlyRent - sCovered);
+        const metrics = this.getShopRentDueMetrics(s, month, cPayments);
+        pending += metrics.pendingAmount;
       });
 
       return {
@@ -1117,6 +1410,134 @@ export class RentalService {
       },
       totalAmount: totalCash + totalGPay,
       totalTransactions: payments.length
+    };
+  }
+
+  // ── Pending Rent List ──────────────────────────────────────────────────────
+  public async getPendingRentList(params?: {
+    month?: string;
+    complexId?: string;
+    status?: string;
+    search?: string;
+  }): Promise<PendingRentResponse> {
+    const selectedMonth = params?.month ? params.month.slice(0, 7) : this.getCurrentMonth();
+
+    const complexes = rentalRepository.getComplexes();
+    const complexMap = new Map(complexes.map((c) => [c.complexId, c]));
+
+    let shops = rentalRepository.getShops().filter((s) => s.status === 'ACTIVE');
+    if (params?.complexId) {
+      shops = shops.filter((s) => s.complexId === params.complexId);
+    }
+
+    const allPayments = rentalRepository.getPayments();
+    const monthPayments = allPayments.filter((p) => p.paymentMonth === selectedMonth);
+
+    const pendingItems: PendingRentItem[] = [];
+
+    for (const shop of shops) {
+      const metrics = this.getShopRentDueMetrics(shop, selectedMonth, monthPayments);
+
+      // CRITICAL RULE: Only include if rent is due (dueDate <= today) AND unpaid balance exists (pendingAmount > 0)
+      if (!metrics.isDue || metrics.pendingAmount <= 0) {
+        continue;
+      }
+
+      const complex = complexMap.get(shop.complexId);
+
+      // Determine Status:
+      // dueDate === today AND unpaid -> DUE
+      // dueDate < today AND unpaid -> OVERDUE
+      // paid > 0 AND pending > 0 -> PARTIAL
+      let rowStatus: 'DUE' | 'OVERDUE' | 'PARTIAL';
+      if (metrics.totalCovered > 0 && metrics.pendingAmount > 0) {
+        rowStatus = 'PARTIAL';
+      } else if (metrics.daysOverdue > 0) {
+        rowStatus = 'OVERDUE';
+      } else {
+        rowStatus = 'DUE';
+      }
+
+      const item: PendingRentItem = {
+        id: shop.id || shop.shopId,
+        complexId: shop.complexId,
+        complexName: complex?.complexName || shop.complexName || 'Unknown Complex',
+        location: complex?.location || '',
+        shopId: shop.shopId,
+        shopNumber: shop.shopNumber,
+        doorNumber: shop.doorNumber || '',
+        shopName: shop.shopName || '',
+        tenantName: shop.tenantName || '',
+        mobileNumber: shop.mobileNumber || '',
+        ebNumber: shop.ebNumber || '',
+        dueDate: metrics.dueDateStr,
+        rentDueDay: shop.rentDueDay || 10,
+        monthlyRent: metrics.monthlyRent,
+        paidAmount: metrics.amountPaid,
+        advanceUsed: metrics.advanceUsed,
+        totalCovered: metrics.totalCovered,
+        pendingAmount: metrics.pendingAmount,
+        daysOverdue: metrics.daysOverdue,
+        status: rowStatus,
+        availableAdvance: Number(shop.availableAdvance) || 0
+      };
+
+      // Search filter if provided
+      if (params?.search) {
+        const q = params.search.toLowerCase().trim();
+        const matches =
+          item.complexName.toLowerCase().includes(q) ||
+          (item.location && item.location.toLowerCase().includes(q)) ||
+          item.shopNumber.toLowerCase().includes(q) ||
+          (item.doorNumber && item.doorNumber.toLowerCase().includes(q)) ||
+          (item.shopName && item.shopName.toLowerCase().includes(q)) ||
+          item.tenantName.toLowerCase().includes(q) ||
+          item.mobileNumber.includes(q) ||
+          (item.ebNumber && item.ebNumber.toLowerCase().includes(q));
+
+        if (!matches) continue;
+      }
+
+      // Status filter if provided (and not 'ALL')
+      if (params?.status && params.status !== 'ALL') {
+        if (item.status !== params.status) continue;
+      }
+
+      pendingItems.push(item);
+    }
+
+    // Default Sorting: Most urgent first
+    // 1. Overdue with highest daysOverdue descending
+    // 2. Due today
+    // 3. Highest pending amount descending
+    pendingItems.sort((a, b) => {
+      if (a.daysOverdue !== b.daysOverdue) {
+        return b.daysOverdue - a.daysOverdue;
+      }
+      return b.pendingAmount - a.pendingAmount;
+    });
+
+    // Calculate Summary
+    const totalPendingRent = pendingItems.reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalOverdueRent = pendingItems.filter((i) => i.status === 'OVERDUE').reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalDueTodayRent = pendingItems.filter((i) => i.status === 'DUE').reduce((sum, item) => sum + item.pendingAmount, 0);
+    const totalPendingShops = pendingItems.length;
+    const totalOverdueShops = pendingItems.filter((i) => i.status === 'OVERDUE').length;
+    const totalDueTodayShops = pendingItems.filter((i) => i.status === 'DUE').length;
+    const totalPartialShops = pendingItems.filter((i) => i.status === 'PARTIAL').length;
+
+    return {
+      summary: {
+        totalPendingRent,
+        totalOverdueRent,
+        totalDueTodayRent,
+        totalPendingShops,
+        totalOverdueShops,
+        totalDueTodayShops,
+        totalPartialShops
+      },
+      items: pendingItems,
+      month: selectedMonth
     };
   }
 

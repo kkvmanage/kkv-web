@@ -324,7 +324,13 @@ export const LoanIssue: React.FC = () => {
     return getProductCardFeeConfig(selectedLoanTypeConfig?.name || selectedLoanTypeConfig?.id, masterControlSettings);
   }, [selectedLoanTypeConfig?.id, selectedLoanTypeConfig?.name, masterControlSettings]);
 
-  const cardFeeEnabled = cardFeeConfig.enabled;
+  const [cardFeeEnabled, setCardFeeEnabled] = useState<boolean>(true);
+
+  // Sync card fee enabled default when product configuration or loan type changes
+  useEffect(() => {
+    setCardFeeEnabled(cardFeeConfig.enabled);
+  }, [selectedLoanTypeConfig?.id, selectedLoanTypeConfig?.name, cardFeeConfig.enabled]);
+
   const cardFeeAmount = cardFeeConfig.amount;
   const [cardFeeMode, setCardFeeMode] = useState<'Cash' | 'Bank'>('Bank');
   const [cardFeeBankMode, setCardFeeBankMode] = useState<string>('UPI');
@@ -977,6 +983,9 @@ export const LoanIssue: React.FC = () => {
         advanceDays,
         advanceInterestAmount,
         advanceInterestReceivingMethod: deductAdvanceInterest ? advanceReceivingMethod : undefined,
+        coveredInterestStartDate: loanTerms.coveredInterestStartDate,
+        coveredInterestEndDate: loanTerms.coveredInterestEndDate,
+        advanceInterestCollectedAt: loanTerms.isAdvanceInterestCovered ? new Date().toISOString() : undefined,
         cardFee: loanTerms.effectiveCardFee,
         cardFeeEnabled: loanTerms.contractSnapshot.cardFeeEnabled,
         cardFeePaymentMode: cardFeeMode,
@@ -2295,6 +2304,7 @@ export const LoanIssue: React.FC = () => {
             advanceReceivingMethod={advanceReceivingMethod}
             onAdvanceReceivingMethodChange={setAdvanceReceivingMethod}
             cardFeeEnabled={cardFeeEnabled}
+            onCardFeeEnabledChange={setCardFeeEnabled}
             cardFeeAmount={cardFeeAmount}
             cardFeeMode={cardFeeMode}
             onCardFeeModeChange={setCardFeeMode}
@@ -2802,8 +2812,10 @@ export const LoanIssue: React.FC = () => {
                     : `Master Control active rate for ${selectedLoanTypeConfig?.name || 'Gold Loan'} (${loanTerms.interestRate}%/mo)`}
                 </span>
               </div>
-              <span className="badge badge-success" style={{ fontSize: '11px', padding: '4px 10px', fontWeight: 700 }}>
-                {selectedRepaymentConfig?.name || 'Monthly Interest Only'}
+              <span className={`badge ${loanTerms.isAdvanceInterestCovered ? 'badge-gold' : 'badge-success'}`} style={{ fontSize: '11px', padding: '4px 10px', fontWeight: 700 }}>
+                {loanTerms.isAdvanceInterestCovered
+                  ? 'ADVANCE INTEREST COLLECTED'
+                  : (selectedRepaymentConfig?.name || 'Monthly Interest Only')}
               </span>
             </div>
 
@@ -2818,8 +2830,22 @@ export const LoanIssue: React.FC = () => {
                 <strong style={{ fontSize: '14.5px', color: 'var(--color-primary-dark, #163f35)' }}>{loanTerms.interestRate}% / mo</strong>
               </div>
 
+              {loanTerms.isAdvanceInterestCovered && (
+                <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-surface, #ffffff)', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Advance Interest</span>
+                  <strong style={{ fontSize: '14.5px', color: 'var(--color-primary-accent, #059669)' }}>
+                    ₹{loanTerms.advanceInterestAmount.toLocaleString('en-IN')}
+                  </strong>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                    ({loanTerms.advanceDays} days collected at disbursement)
+                  </span>
+                </div>
+              )}
+
               <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-surface, #ffffff)', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Monthly Interest</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>
+                  {loanTerms.isAdvanceInterestCovered ? 'Next Interest Due' : 'Monthly Interest'}
+                </span>
                 <strong style={{ fontSize: '14.5px', color: 'var(--color-primary-dark, #163f35)' }}>₹{loanTerms.monthlyInterest.toLocaleString('en-IN')}</strong>
               </div>
 
@@ -2838,12 +2864,21 @@ export const LoanIssue: React.FC = () => {
               <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-surface, #ffffff)', borderRadius: '8px', border: '1px solid var(--border-subtle, #e2e8f0)' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Next Due Date</span>
                 <strong style={{ fontSize: '14.5px', color: 'var(--text-primary)' }}>{loanTerms.nextDueDate}</strong>
+                {loanTerms.isAdvanceInterestCovered && (
+                  <span style={{ fontSize: '10px', color: 'var(--color-primary-accent, #059669)', display: 'block', marginTop: '2px', fontWeight: 600 }}>
+                    (First {loanTerms.advanceDays} days prepaid)
+                  </span>
+                )}
               </div>
             </div>
 
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>ℹ️</span>
-              <span>Interest is calculated using the active Master Control rate for this loan type. Contractual values lock upon issue.</span>
+              <span>
+                {loanTerms.isAdvanceInterestCovered
+                  ? `First ${loanTerms.advanceDays} days interest (₹${loanTerms.advanceInterestAmount.toLocaleString('en-IN')}) collected in advance at disbursement. Next payment due on ${loanTerms.nextDueDate}.`
+                  : 'Interest is calculated using the active Master Control rate for this loan type. Contractual values lock upon issue.'}
+              </span>
             </div>
           </div>
 

@@ -36,6 +36,7 @@ import { RentalPayments } from './modules/rental/pages/RentalPayments';
 import { RentalDayBook } from './modules/rental/pages/RentalDayBook';
 import { RentalExpenses } from './modules/rental/pages/RentalExpenses';
 import { RentalReports } from './modules/rental/pages/RentalReports';
+import { RentalPendingRent } from './modules/rental/pages/RentalPendingRent';
 
 import { LoginView } from './components/auth/LoginView';
 import { AccessDenied } from './components/auth/AccessDenied';
@@ -260,6 +261,12 @@ export const App: React.FC = () => {
           return <AccessDenied requestedArea="Rental Reports" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
         }
         return <RentalReports />;
+
+      case 'rental-pending-rent':
+        if (!hasPermission('rental', 'view')) {
+          return <AccessDenied requestedArea="Rental Pending Rent" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
+        }
+        return <RentalPendingRent />;
 
       // ── System & Admin Domain ──
       case 'backup-restore':

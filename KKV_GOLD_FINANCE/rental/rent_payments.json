@@ -1,0 +1,28 @@
+[
+  {
+    "id": "PAY-0001",
+    "paymentId": "PAY-0001",
+    "complexId": "CMP-0004",
+    "complexName": "Test Commercial Plaza 3880",
+    "shopId": "SHOP-0006",
+    "shopNumber": "SHOP-TEST-HIST-4118",
+    "shopName": "History Cafe",
+    "tenantName": "Cafe Owner",
+    "mobileNumber": "9876543211",
+    "paymentMonth": "2026-09",
+    "monthlyRent": 10000,
+    "amountReceived": 10000,
+    "cashAmount": 10000,
+    "gpayAmount": 0,
+    "paymentMode": "CASH",
+    "advanceUsed": 0,
+    "advanceGenerated": 0,
+    "balanceAfterPayment": 0,
+    "paymentDate": "2026-09-13",
+    "paymentStatus": "PAID",
+    "notes": "",
+    "createdAt": "2026-09-13T07:33:24.156Z",
+    "updatedAt": "2026-09-13T07:33:24.156Z",
+    "syncStatus": "PENDING"
+  }
+]

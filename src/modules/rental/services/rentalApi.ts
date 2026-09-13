@@ -14,7 +14,9 @@ import {
   PaymentMode,
   RentalDayBookFilter,
   RentalDayBookResponse,
-  RentalDayBookEntry
+  RentalDayBookEntry,
+  PendingRentResponse,
+  ShopSettlementSummary
 } from '../types/rental.types';
 import { getApiBaseUrl, getStoredAuthToken } from '../../../services/api';
 
@@ -93,13 +95,34 @@ export const rentalApi = {
     return request<any>(`/rental/shops/${id}/status${query}`);
   },
 
+  getShopSettlement: async (id: string) => {
+    return request<ShopSettlementSummary>(`/rental/shops/${id}/settlement`);
+  },
+
+  closeShop: async (id: string, data: { reason?: string; notes?: string }) => {
+    return request<RentalShop>(`/rental/shops/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteShop: async (id: string) => {
+    return request<{ success: boolean; message: string }>(`/rental/shops/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   createShop: async (data: {
     complexId: string;
     shopNumber: string;
+    doorNumber: string;
     shopName: string;
     tenantName: string;
     mobileNumber: string;
+    ebNumber?: string;
     monthlyRent: number;
+    advanceAmount?: number;
+    advancePaymentMode?: PaymentMode | string;
     status?: RentalStatus;
   }) => {
     return request<RentalShop>('/rental/shops', {
@@ -113,12 +136,15 @@ export const rentalApi = {
     data: Partial<{
       complexId: string;
       shopNumber: string;
+      doorNumber: string;
       shopName: string;
       tenantName: string;
       mobileNumber: string;
+      ebNumber: string;
       monthlyRent: number;
-      status: RentalStatus;
+      advanceAmount: number;
       availableAdvance: number;
+      status: RentalStatus;
     }>
   ) => {
     return request<RentalShop>(`/rental/shops/${id}`, {
@@ -270,6 +296,22 @@ export const rentalApi = {
     return request<PaymentModeReportData>(`/rental/reports/payment-modes${query}`);
   },
 
+  // ── Pending Rent ───────────────────────────────────────────────────────────
+  getPendingRent: async (params?: {
+    month?: string;
+    complexId?: string;
+    status?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.month) searchParams.append('month', params.month);
+    if (params?.complexId) searchParams.append('complexId', params.complexId);
+    if (params?.status) searchParams.append('status', params.status);
+    if (params?.search) searchParams.append('search', params.search);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request<PendingRentResponse>(`/rental/pending${query}`);
+  },
+
   // ── Day Book ───────────────────────────────────────────────────────────────
   getDayBook: async (filter?: RentalDayBookFilter) => {
     const searchParams = new URLSearchParams();
@@ -368,7 +410,7 @@ export const rentalApi = {
 
   // ── Sync Control ───────────────────────────────────────────────────────────
   getSyncStatus: async () => {
-    return request<SyncSummary>('/admin/rental/sync-status');
+    return request<SyncSummary>('/rental/sync/status');
   },
 
   retrySync: async () => {

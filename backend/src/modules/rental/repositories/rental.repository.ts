@@ -214,6 +214,23 @@ export class RentalRepository {
     return shop;
   }
 
+  public deleteShop(shopId: string): boolean {
+    const list = this.getShops();
+    const filtered = list.filter((s) => s.shopId !== shopId && s.id !== shopId);
+    if (filtered.length !== list.length) {
+      this.writeJson('shops.json', filtered);
+      getFinanceDb().then((db) => {
+        if (db) {
+          db.collection('rental_shops').deleteOne({
+            $or: [{ shopId }, { id: shopId }]
+          }).catch((err) => console.warn('[RentalRepository] Mongo deleteShop error:', err));
+        }
+      }).catch(() => {});
+      return true;
+    }
+    return false;
+  }
+
   // ── Rent Payments CRUD ───────────────────────────────────────────────────
   public getPayments(): RentalPayment[] {
     return this.readJson<RentalPayment[]>('rent_payments.json', []);

@@ -216,8 +216,10 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
               <RentalStatCard
                 label="PENDING RENT"
                 value={`₹${dashboardData.pendingRent.toLocaleString('en-IN')}`}
+                subValue={dashboardData.pendingRent > 0 ? "Click to view due shops" : undefined}
                 icon={<Clock size={20} />}
                 variant={dashboardData.pendingRent > 0 ? 'danger' : 'default'}
+                onClick={() => setCurrentPage('rental-pending-rent')}
               />
 
               <RentalStatCard
@@ -323,7 +325,7 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
                           <td style={{ textAlign: 'right', color: '#ea580c' }}>
                             ₹{c.expenses.toLocaleString('en-IN')}
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#176B52' }}>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--text-brand, #176B52)' }}>
                             ₹{c.net.toLocaleString('en-IN')}
                           </td>
                           <td style={{ textAlign: 'center' }}>
@@ -390,7 +392,7 @@ export const RentalDashboard: React.FC<RentalDashboardProps> = ({
                         {dashboardData.recentPayments.slice(0, 5).map((p) => (
                           <tr key={p.paymentId}>
                             <td
-                              style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--color-primary, #176B52)' }}
+                              style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--text-brand, #176B52)' }}
                               onClick={() => {
                                 if (onSelectShop) {
                                   onSelectShop(p.shopId);

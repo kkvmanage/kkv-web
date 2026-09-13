@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { apiService, getStoredAuthToken } from '../services/api';
 import { UserProfile, UserRole } from '../types';
 import { normalizeRole, getDefaultPermissionsForRole } from '../config/permissions';
+import { useApp } from './AppContext';
 
 export interface AuthContextType {
   user: UserProfile | null;
@@ -116,10 +117,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  if (context) return context;
+  try {
+    // Graceful fallback to AppContext for unified authentication
+    const app = useApp();
+    return {
+      user: app.currentUser,
+      currentUser: app.currentUser,
+      role: app.userRole || 'STAFF',
+      loading: app.authLoading,
+      login: async (email: string, password: string) => {
+        const res = await app.loginWithCredentials(email, password);
+        return { success: res.success, message: res.message, user: app.currentUser };
+      },
+      logout: async () => {
+        await app.logoutUser();
+      },
+      changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
+        return apiService.changePassword(payload);
+      }
+    };
+  } catch {
+    throw new Error('useAuth must be used within an AuthProvider or AppProvider');
   }
-  return context;
 };
 
 export default AuthContext;

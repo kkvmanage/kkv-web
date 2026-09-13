@@ -324,7 +324,7 @@ export const RentalReports: React.FC = () => {
                     <td style={{ textAlign: 'right', color: '#ea580c' }}>
                       ₹{item.expenses.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(item.expenses) ? 0 : 2 })}
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#176B52' }}>
+                    <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--text-brand, #176B52)' }}>
                       ₹{item.netCollection.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(item.netCollection) ? 0 : 2 })}
                     </td>
                   </tr>
@@ -340,7 +340,7 @@ export const RentalReports: React.FC = () => {
                   </td>
                   <td style={{ textAlign: 'right', color: '#2563eb' }}>₹{totalAdvance.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(totalAdvance) ? 0 : 2 })}</td>
                   <td style={{ textAlign: 'right', color: '#ea580c' }}>₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(totalExpenses) ? 0 : 2 })}</td>
-                  <td style={{ textAlign: 'right', color: '#176B52', fontSize: '13px' }}>
+                  <td style={{ textAlign: 'right', color: 'var(--text-brand, #176B52)', fontSize: '13px' }}>
                     ₹{totalNet.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(totalNet) ? 0 : 2 })}
                   </td>
                 </tr>
@@ -454,7 +454,7 @@ export const RentalReports: React.FC = () => {
               <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 16px 0', color: 'var(--text-primary)' }}>
                 Total Revenue
               </h3>
-              <div style={{ fontSize: '24px', fontWeight: 800, color: '#176B52' }}>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-brand, #176B52)' }}>
                 ₹{paymentModeData.totalAmount.toLocaleString('en-IN')}
               </div>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>

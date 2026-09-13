@@ -25,6 +25,7 @@ import {
   Receipt,
   FileSpreadsheet,
   PieChart,
+  Clock,
   Key
 } from 'lucide-react';
 
@@ -112,8 +113,10 @@ export const Sidebar: React.FC = () => {
         'rental-shops',
         'rental-shop-detail',
         'rental-payments',
+        'rental-daybook',
         'rental-expenses',
-        'rental-reports'
+        'rental-reports',
+        'rental-pending-rent'
       ].includes(currentPage)
     ) {
       setRentalOpen(true);
@@ -493,7 +496,8 @@ export const Sidebar: React.FC = () => {
                     'rental-payments',
                     'rental-daybook',
                     'rental-expenses',
-                    'rental-reports'
+                    'rental-reports',
+                    'rental-pending-rent'
                   ].includes(currentPage)
                     ? 'active'
                     : ''
@@ -564,6 +568,13 @@ export const Sidebar: React.FC = () => {
                     >
                       <PieChart size={14} style={{ marginRight: '6px' }} />
                       Rental Reports
+                    </button>
+                    <button
+                      className={`sidebar-sublink ${currentPage === 'rental-pending-rent' ? 'active' : ''}`}
+                      onClick={() => setCurrentPage('rental-pending-rent')}
+                    >
+                      <Clock size={14} style={{ marginRight: '6px' }} />
+                      Pending Rent
                     </button>
                   </div>
                 )}

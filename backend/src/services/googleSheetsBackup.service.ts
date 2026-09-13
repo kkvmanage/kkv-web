@@ -324,19 +324,22 @@ export class GoogleSheetsBackupService {
 
       // J. Rental Shops Tab
       const shopRows: any[][] = [
-        ['Shop ID', 'Complex ID', 'Shop Number', 'Floor', 'Tenant Name', 'Tenant Mobile', 'Monthly Rent (₹)', 'Advance Amount (₹)', 'Status']
+        ['Shop ID', 'Complex ID', 'Shop Number', 'Door Number', 'Shop Name', 'Tenant Name', 'Tenant Mobile', 'EB Number', 'Monthly Rent (₹)', 'Advance Amount (₹)', 'Available Advance (₹)', 'Status']
       ];
       data.rentalShops.forEach((s) => {
         shopRows.push([
           s.shopId || s.id || '',
           s.complexId || '',
           s.shopNumber || '',
-          s.floor || '',
+          s.doorNumber || '',
+          s.shopName || '',
           s.tenantName || '',
-          s.tenantMobile || '',
+          s.mobileNumber || s.tenantMobile || '',
+          s.ebNumber || '',
           s.monthlyRent || s.rentAmount || 0,
-          s.advanceAmount || 0,
-          s.status || 'VACANT'
+          s.advanceAmount || s.availableAdvance || 0,
+          s.availableAdvance || 0,
+          s.status || 'ACTIVE'
         ]);
       });
       valueData.push({ range: 'RentalShops!A1', values: shopRows.length > 1 ? shopRows : [['No rental shops recorded']] });

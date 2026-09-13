@@ -136,6 +136,17 @@ export const addLoanPayment = async (req: Request, res: Response) => {
 
 export const getLoansByCustomerId = async (req: Request, res: Response) => {
   const customerId = req.params.customerId || req.params.id;
+  const pendingOnly = req.query.pendingOnly === 'true' || req.query.pending === 'true';
+
+  if (pendingOnly) {
+    const pendingItems = await loanService.getPendingLoansAsync(customerId, req.query.asOfDate as string);
+    return res.json({
+      success: true,
+      data: pendingItems.map(p => p.loan),
+      pendingDetails: pendingItems
+    });
+  }
+
   const allLoans = await loanService.getAllAsync();
   const customerLoans = allLoans.filter(l => 
     l.customerId === customerId || 
@@ -147,3 +158,24 @@ export const getLoansByCustomerId = async (req: Request, res: Response) => {
     data: customerLoans
   });
 };
+
+export const getPendingLoans = async (req: Request, res: Response) => {
+  try {
+    const customerId = req.query.customerId as string | undefined;
+    const asOfDate = req.query.asOfDate as string | undefined;
+    const pendingItems = await loanService.getPendingLoansAsync(customerId, asOfDate);
+    return res.json({
+      success: true,
+      data: pendingItems.map(p => p.loan),
+      pendingDetails: pendingItems,
+      totalCount: pendingItems.length
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve pending loans',
+      error: err.message
+    });
+  }
+};
+

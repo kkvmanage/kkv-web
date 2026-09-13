@@ -16,11 +16,13 @@ export const RentalHeader: React.FC<RentalHeaderProps> = ({ title, subtitle, act
   const fetchSyncStatus = async () => {
     try {
       const res = await rentalApi.getSyncStatus();
-      if (res.success && res.data) {
+      if (res && res.success && res.data) {
         setSyncSummary(res.data);
+      } else {
+        setSyncSummary(null);
       }
-    } catch (e) {
-      console.warn('Sync status fetch failed:', e);
+    } catch {
+      setSyncSummary(null);
     }
   };
 

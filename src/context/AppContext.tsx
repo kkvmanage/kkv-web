@@ -37,6 +37,7 @@ import { detectCurrentDeviceInfo, generateSessionId } from '../utils/deviceUtils
 import { apiService, getStoredAuthToken, setStoredAuthToken } from '../services/api';
 import { calculateFDInterestSchedule, normalizeDateString, calculateInterestPeriodKey, addCalendarMonths, formatFDDate } from '../utils/fdInterestUtils';
 import { generateAllNotifications } from '../utils/notificationUtils';
+import { calculateNextDueDate, parseLoanDate, formatLoanDate, addMonthsToLoanDate } from '../utils/loanCalculationUtils';
 
 interface Toast {
   id: string;
@@ -461,7 +462,8 @@ const validNavPages: Set<NavPage> = new Set([
   'rental-payments',
   'rental-daybook',
   'rental-expenses',
-  'rental-reports'
+  'rental-reports',
+  'rental-pending-rent'
 ]);
 
 function isValidNavPage(page: string | null | undefined): page is NavPage {
@@ -476,6 +478,7 @@ function resolveInitialPage(): NavPage {
     const params = new URLSearchParams(window.location.search);
     const p = params.get('page') || params.get('view');
     if (isValidNavPage(p)) return p;
+    if (p === 'pending-rent' || p === 'rental-pending') return 'rental-pending-rent';
   } catch (e) {}
 
   // 2. URL pathname e.g. /customers, /search-customer, /rental-shops, /rental/complexes
@@ -491,6 +494,7 @@ function resolveInitialPage(): NavPage {
       if (rawPath.startsWith('rental-daybook') || rawPath.startsWith('rental/daybook')) return 'rental-daybook';
       if (rawPath.startsWith('rental-expense') || rawPath.startsWith('rental/expense')) return 'rental-expenses';
       if (rawPath.startsWith('rental-report') || rawPath.startsWith('rental/report')) return 'rental-reports';
+      if (rawPath.startsWith('rental-pending') || rawPath.startsWith('rental/pending') || rawPath === 'pending-rent') return 'rental-pending-rent';
       if (rawPath === 'admin' || rawPath === 'staff') return 'admin-panel';
       if (rawPath === 'customers/search' || rawPath === 'search') return 'search-customer';
       if (rawPath === 'loans' || rawPath === 'loan') return 'loan-display';
@@ -604,6 +608,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const [darkMode, setDarkMode] = useState<boolean>(() => getStored('darkMode', false));
+  const toggleDarkMode = () => setDarkMode((prev) => !prev);
   const [loans, setLoans] = useState<Loan[]>(() => getStored<Loan[]>('loans', []));
   const [customers, setCustomers] = useState<Customer[]>(() => getStored<Customer[]>('customers', []));
   const [receipts, setReceipts] = useState<Receipt[]>(() => getStored<Receipt[]>('receipts', []));
@@ -806,13 +811,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { safeSetStored('userRole', userRole); }, [userRole]);
   useEffect(() => { safeSetStored('currentUser', currentUser); }, [currentUser]);
 
-  // Sync document theme class — dark green is the PRIMARY theme (no class needed).
-  // Adding 'light-mode' class switches to the lighter variant.
+  // Sync document theme class — toggles dark-mode and light-mode classes on body and documentElement
   useEffect(() => {
     if (darkMode) {
+      document.body.classList.add('dark-mode');
       document.body.classList.remove('light-mode');
+      document.documentElement.classList.add('dark-mode');
+      document.documentElement.classList.remove('light-mode');
     } else {
+      document.body.classList.remove('dark-mode');
       document.body.classList.add('light-mode');
+      document.documentElement.classList.remove('dark-mode');
+      document.documentElement.classList.add('light-mode');
     }
   }, [darkMode]);
 
@@ -1365,8 +1375,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => clearInterval(interval);
   }, [userRole, currentSessionId]);
-
-  const toggleDarkMode = () => setDarkMode(prev => !prev);
 
   // Compute live balances
   const cashInHand = dayBookEntries.reduce((sum, e) => sum + (e.cashIn - e.cashOut), 0);
@@ -2180,6 +2188,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalDeductionWeight = Math.round(normalizedItems.reduce((sum, it) => sum + (it.deductionWeight || 0), 0) * 1000) / 1000;
     const totalNetWeight = Math.round(normalizedItems.reduce((sum, it) => sum + it.netWeight, 0) * 1000) / 1000;
 
+    const effectiveIssueDateStr = loanData.date || formatLoanDate(new Date());
+    const baseIssueDate = parseLoanDate(effectiveIssueDateStr);
+    const effectiveAdvanceDays = loanData.advanceDays || (loanData.deductAdvanceInterest ? 30 : 0);
+    const hasAdvance = Boolean(loanData.deductAdvanceInterest && effectiveAdvanceDays > 0);
+    const monthsCovered = hasAdvance ? Math.max(1, Math.round(effectiveAdvanceDays / 30)) : 0;
+
+    const authoritativeNextDueDate = loanData.nextDueDate && loanData.nextDueDate.trim().length > 0
+      ? loanData.nextDueDate
+      : calculateNextDueDate(effectiveIssueDateStr, loanData.deductAdvanceInterest, effectiveAdvanceDays);
+
+    const coveredInterestStartDate = hasAdvance ? formatLoanDate(baseIssueDate) : undefined;
+    const coveredInterestEndDate = hasAdvance ? formatLoanDate(addMonthsToLoanDate(baseIssueDate, monthsCovered)) : undefined;
+
+    const authoritativeLastInterestPaidDate = hasAdvance
+      ? (coveredInterestEndDate || formatLoanDate(baseIssueDate))
+      : formatLoanDate(baseIssueDate);
+
     const newLoan: Loan = {
       ...loanData,
       id: `L-${Date.now()}`,
@@ -2188,8 +2213,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalGrossWeight,
       totalDeductionWeight,
       totalNetWeight,
-      lastInterestPaidDate: loanData.date,
-      nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')
+      coveredInterestStartDate,
+      coveredInterestEndDate,
+      advanceInterestCollectedAt: hasAdvance ? new Date().toISOString() : undefined,
+      lastInterestPaidDate: authoritativeLastInterestPaidDate,
+      nextDueDate: authoritativeNextDueDate
     };
 
     setLoans((prev) => [newLoan, ...prev]);
@@ -2288,6 +2316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((l) => {
         if (l.loanNo === newReceipt.loanNo || l.id === newReceipt.loanId) {
           const isFullClosure = newReceipt.kind === 'LOAN CLOSURE' || newPrincipal === 0;
+          const isFullPeriodAdvance = Boolean(newReceipt.nextDueDate && newReceipt.nextDueDate !== l.nextDueDate);
           let calculatedNextDue = newReceipt.nextDueDate || l.nextDueDate;
           if (newReceipt.interestComponent > 0 && !newReceipt.nextDueDate && l.nextDueDate) {
             try {
@@ -2301,8 +2330,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...l,
             outstandingPrincipal: newPrincipal,
             status: isFullClosure ? 'CLOSED' : l.status,
-            lastInterestPaidDate: newReceipt.date,
-            nextDueDate: calculatedNextDue
+            lastInterestPaidDate: isFullPeriodAdvance || isFullClosure ? newReceipt.date : (l.lastInterestPaidDate || l.date),
+            nextDueDate: isFullClosure ? undefined : calculatedNextDue
           };
         }
         return l;

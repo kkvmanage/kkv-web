@@ -1071,8 +1071,11 @@ export const RentalAdminView: React.FC = () => {
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
                         ₹{(item.collectedThisMonth || 0).toLocaleString('en-IN')}
                       </td>
-                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#DC2626' }}>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: item.isDue === false ? 'var(--text-muted)' : '#DC2626' }}>
                         ₹{(item.pendingBalance || 0).toLocaleString('en-IN')}
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: item.isDue === false ? '#0284c7' : (item.daysOverdue && item.daysOverdue > 0 ? '#dc2626' : '#d97706') }}>
+                          {item.isDue === false ? `Upcoming (${item.dueDate || 'Not due'})` : (item.daysOverdue && item.daysOverdue > 0 ? `${item.daysOverdue}d Overdue` : 'Due Today')}
+                        </div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#2563EB' }}>
                         ₹{(item.availableAdvance || 0).toLocaleString('en-IN')}

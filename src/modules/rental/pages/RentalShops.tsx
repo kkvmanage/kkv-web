@@ -10,14 +10,18 @@ import {
   CheckCircle2,
   ArrowLeft,
   Building2,
-  X
+  X,
+  Archive,
+  Trash2
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
+import { isAdminRole } from '../../../config/permissions';
 import { rentalApi } from '../services/rentalApi';
 import { RentalShop, RentalComplex, RentalStatus } from '../types/rental.types';
 import { RentalHeader } from '../components/RentalHeader';
 import { ShopModal } from '../components/ShopModal';
 import { PaymentModal } from '../components/PaymentModal';
+import { CloseShopModal } from '../components/CloseShopModal';
 
 interface RentalShopsProps {
   onSelectShop?: (shopId: string) => void;
@@ -25,7 +29,8 @@ interface RentalShopsProps {
 }
 
 export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialComplexId }) => {
-  const { setCurrentPage, showToast } = useApp();
+  const { setCurrentPage, showToast, userRole, currentUser } = useApp();
+  const isAdmin = userRole === 'ADMIN' || currentUser?.role === 'ADMIN' || (userRole ? isAdminRole(userRole) : false);
 
   const getInitialComplexId = () => {
     if (initialComplexId) return initialComplexId;
@@ -53,6 +58,8 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
   const [editingShop, setEditingShop] = useState<RentalShop | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [targetShopIdForPayment, setTargetShopIdForPayment] = useState<string | undefined>(undefined);
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [shopToClose, setShopToClose] = useState<RentalShop | null>(null);
 
   const fetchShops = async () => {
     setLoading(true);
@@ -151,12 +158,33 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
     }
   };
 
+  const handleDeleteShop = async (shop: RentalShop) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete shop "${shop.shopNumber}" (${shop.shopName})?\n\nIMPORTANT: If this shop has any historical payments, receipts, or advance records, deletion will be blocked to protect accounting history. Use "Close Shop" instead.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const res = await rentalApi.deleteShop(shop.shopId);
+      if (res.success) {
+        showToast(res.message || 'Shop deleted successfully', 'success');
+        await fetchShops();
+      } else {
+        showToast(res.message || 'Failed to delete shop', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error deleting shop', 'error');
+    }
+  };
+
   const filtered = shops.filter((s) => {
     const matchesSearch =
       s.shopNumber.toLowerCase().includes(search.toLowerCase()) ||
+      (s.doorNumber && s.doorNumber.toLowerCase().includes(search.toLowerCase())) ||
       s.shopName.toLowerCase().includes(search.toLowerCase()) ||
       s.tenantName.toLowerCase().includes(search.toLowerCase()) ||
       s.mobileNumber.includes(search) ||
+      (s.ebNumber && s.ebNumber.toLowerCase().includes(search.toLowerCase())) ||
       (s.complexName && s.complexName.toLowerCase().includes(search.toLowerCase()));
 
     const matchesComplex = !selectedComplexFilter || s.complexId === selectedComplexFilter;
@@ -256,7 +284,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
           <input
             type="text"
             className="input-control"
-            placeholder="Search by shop no., name, tenant, mobile..."
+            placeholder="Search by shop no., door no., name, tenant, mobile, EB..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: '100%' }}
@@ -279,7 +307,7 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
           </select>
 
           <div style={{ display: 'flex', gap: '4px' }}>
-            {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((st) => (
+            {(['ALL', 'ACTIVE', 'CLOSED', 'INACTIVE'] as const).map((st) => (
               <button
                 key={st}
                 type="button"
@@ -358,11 +386,11 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
             <table className="table" style={{ fontSize: '12px' }}>
               <thead>
                 <tr>
-                  <th>SHOP NO.</th>
+                  <th>SHOP / DOOR NO.</th>
                   <th>COMPLEX</th>
                   <th>BUSINESS / SHOP NAME</th>
                   <th>TENANT NAME</th>
-                  <th>MOBILE</th>
+                  <th>CONTACT & EB</th>
                   <th style={{ textAlign: 'right' }}>MONTHLY RENT</th>
                   <th style={{ textAlign: 'right' }}>AVAIL. ADVANCE</th>
                   <th>STATUS</th>
@@ -372,8 +400,15 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
               <tbody>
                 {filtered.map((shop) => (
                   <tr key={shop.shopId}>
-                    <td style={{ fontWeight: 800, color: 'var(--color-gold-light)' }}>
-                      {shop.shopNumber}
+                    <td>
+                      <div style={{ fontWeight: 800, color: 'var(--color-gold-light)' }}>
+                        {shop.shopNumber}
+                      </div>
+                      {shop.doorNumber && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                          Door: {shop.doorNumber}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span style={{ fontWeight: 600 }}>{shop.complexName}</span>
@@ -381,13 +416,21 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
                     <td style={{ fontWeight: 600 }}>{shop.shopName}</td>
                     <td>{shop.tenantName}</td>
                     <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)' }}>
                         <Phone size={11} />
-                        {shop.mobileNumber}
-                      </span>
+                        <span>{shop.mobileNumber}</span>
+                      </div>
+                      {shop.ebNumber && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          ⚡ EB: {shop.ebNumber}
+                        </div>
+                      )}
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#176B52' }}>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-brand, #176B52)' }}>
                       ₹{shop.monthlyRent.toLocaleString('en-IN')}
+                      <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                        Due {shop.rentDueDay || 10}th
+                      </div>
                     </td>
                     <td
                       style={{
@@ -406,71 +449,202 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
                           borderRadius: '4px',
                           fontWeight: 700,
                           backgroundColor:
-                            shop.status === 'ACTIVE' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                          color: shop.status === 'ACTIVE' ? '#16a34a' : '#dc2626'
+                            shop.status === 'ACTIVE'
+                              ? 'rgba(34, 197, 94, 0.12)'
+                              : shop.status === 'CLOSED'
+                              ? 'rgba(100, 116, 139, 0.18)'
+                              : 'rgba(239, 68, 68, 0.12)',
+                          color:
+                            shop.status === 'ACTIVE'
+                              ? '#16a34a'
+                              : shop.status === 'CLOSED'
+                              ? '#94a3b8'
+                              : '#dc2626'
                         }}
+                        title={shop.status === 'CLOSED' && shop.closedAt ? `Closed on ${new Date(shop.closedAt).toLocaleDateString()}` : undefined}
                       >
                         {shop.status}
                       </span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          style={{ padding: '2px 8px', fontSize: '10.5px' }}
-                          onClick={() => {
-                            setTargetShopIdForPayment(shop.shopId);
-                            setIsPaymentModalOpen(true);
-                          }}
-                          title="Record Rent Payment"
-                        >
-                          <CreditCard size={11} />
-                          <span>Pay</span>
-                        </button>
+                        {shop.status === 'ACTIVE' && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                              onClick={() => {
+                                setTargetShopIdForPayment(shop.shopId);
+                                setIsPaymentModalOpen(true);
+                              }}
+                              title="Record Rent Payment"
+                            >
+                              <CreditCard size={11} />
+                              <span>Pay</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '2px 8px', fontSize: '10.5px' }}
-                          onClick={() => {
-                            if (onSelectShop) {
-                              onSelectShop(shop.shopId);
-                            } else {
-                              (window as any).__selectedRentalShopId = shop.shopId;
-                              setCurrentPage('rental-shop-detail' as any);
-                            }
-                          }}
-                          title="View Payment History"
-                        >
-                          History
-                        </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                              onClick={() => {
+                                if (onSelectShop) {
+                                  onSelectShop(shop.shopId);
+                                } else {
+                                  (window as any).__selectedRentalShopId = shop.shopId;
+                                  setCurrentPage('rental-shop-detail' as any);
+                                }
+                              }}
+                              title="View Payment History"
+                            >
+                              History
+                            </button>
 
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingShop(shop);
-                            setIsShopModalOpen(true);
-                          }}
-                          title="Edit Shop"
-                        >
-                          <Edit2 size={11} />
-                        </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '2px 6px' }}
+                              onClick={() => {
+                                setEditingShop(shop);
+                                setIsShopModalOpen(true);
+                              }}
+                              title="Edit Shop"
+                            >
+                              <Edit2 size={11} />
+                            </button>
 
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-secondary"
-                          style={{
-                            padding: '2px 6px',
-                            color: shop.status === 'ACTIVE' ? '#dc2626' : '#16a34a'
-                          }}
-                          onClick={() => handleToggleStatus(shop)}
-                          title={shop.status === 'ACTIVE' ? 'Deactivate Shop' : 'Activate Shop'}
-                        >
-                          {shop.status === 'ACTIVE' ? <Ban size={11} /> : <CheckCircle2 size={11} />}
-                        </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{
+                                padding: '2px 6px',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239, 68, 68, 0.25)'
+                              }}
+                              onClick={() => {
+                                setShopToClose(shop);
+                                setIsCloseModalOpen(true);
+                              }}
+                              title="Close Shop / Tenancy Settlement"
+                            >
+                              <Archive size={11} />
+                              <span style={{ fontSize: '10px', marginLeft: '2px' }}>Close</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{
+                                padding: '2px 6px',
+                                color: '#dc2626'
+                              }}
+                              onClick={() => handleToggleStatus(shop)}
+                              title="Deactivate Shop"
+                            >
+                              <Ban size={11} />
+                            </button>
+                          </>
+                        )}
+
+                        {shop.status === 'CLOSED' && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                              onClick={() => {
+                                if (onSelectShop) {
+                                  onSelectShop(shop.shopId);
+                                } else {
+                                  (window as any).__selectedRentalShopId = shop.shopId;
+                                  setCurrentPage('rental-shop-detail' as any);
+                                }
+                              }}
+                              title="View Payment History & Receipts"
+                            >
+                              History
+                            </button>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                style={{
+                                  padding: '2px 6px',
+                                  color: '#ef4444'
+                                }}
+                                onClick={() => handleDeleteShop(shop)}
+                                title="Delete Shop (Only allowed if no financial history exists)"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
+                          </>
+                        )}
+
+                        {shop.status === 'INACTIVE' && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                              onClick={() => {
+                                if (onSelectShop) {
+                                  onSelectShop(shop.shopId);
+                                } else {
+                                  (window as any).__selectedRentalShopId = shop.shopId;
+                                  setCurrentPage('rental-shop-detail' as any);
+                                }
+                              }}
+                              title="View Payment History"
+                            >
+                              History
+                            </button>
+
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{ padding: '2px 6px' }}
+                              onClick={() => {
+                                setEditingShop(shop);
+                                setIsShopModalOpen(true);
+                              }}
+                              title="Edit Shop"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              style={{
+                                padding: '2px 6px',
+                                color: '#16a34a'
+                              }}
+                              onClick={() => handleToggleStatus(shop)}
+                              title="Activate Shop"
+                            >
+                              <CheckCircle2 size={11} />
+                            </button>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                style={{
+                                  padding: '2px 6px',
+                                  color: '#ef4444'
+                                }}
+                                onClick={() => handleDeleteShop(shop)}
+                                title="Delete Shop (Only allowed if no financial history exists)"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -501,6 +675,19 @@ export const RentalShops: React.FC<RentalShopsProps> = ({ onSelectShop, initialC
         complexes={complexes}
         shops={shops}
         defaultShopId={targetShopIdForPayment}
+      />
+
+      <CloseShopModal
+        isOpen={isCloseModalOpen}
+        onClose={() => {
+          setIsCloseModalOpen(false);
+          setShopToClose(null);
+        }}
+        onSuccess={async () => {
+          showToast('Shop closed and archived successfully', 'success');
+          await fetchShops();
+        }}
+        shop={shopToClose}
       />
     </div>
   );

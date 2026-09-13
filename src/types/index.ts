@@ -43,7 +43,8 @@ export type NavPage =
   | 'rental-payments'
   | 'rental-daybook'
   | 'rental-expenses'
-  | 'rental-reports';
+  | 'rental-reports'
+  | 'rental-pending-rent';
 
 export type PurityCategory = 'GOLD' | 'SILVER' | 'OTHER';
 
@@ -300,6 +301,9 @@ export interface Loan {
   advanceDays: number;
   advanceInterestAmount: number;
   advanceInterestReceivingMethod?: 'Cash' | 'Bank' | 'Cash + Bank';
+  coveredInterestStartDate?: string;
+  coveredInterestEndDate?: string;
+  advanceInterestCollectedAt?: string;
   cardFee: number;
   cardFeeEnabled?: boolean;
   cardFeePaymentMode: 'Cash' | 'Bank';

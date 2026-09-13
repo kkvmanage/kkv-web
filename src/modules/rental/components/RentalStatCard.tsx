@@ -6,6 +6,8 @@ interface RentalStatCardProps {
   subValue?: string;
   icon: React.ReactNode;
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'primary';
+  onClick?: () => void;
+  style?: React.CSSProperties;
 }
 
 export const RentalStatCard: React.FC<RentalStatCardProps> = ({
@@ -13,44 +15,46 @@ export const RentalStatCard: React.FC<RentalStatCardProps> = ({
   value,
   subValue,
   icon,
-  variant = 'default'
+  variant = 'default',
+  onClick,
+  style
 }) => {
   const getColors = () => {
     switch (variant) {
       case 'primary':
         return {
-          bg: 'rgba(23, 107, 82, 0.08)',
-          border: 'rgba(23, 107, 82, 0.25)',
-          iconColor: '#176B52',
-          text: '#176B52'
+          bg: 'var(--primary-soft)',
+          border: 'var(--border-subtle)',
+          iconColor: 'var(--text-brand, #176B52)',
+          text: 'var(--text-brand, #176B52)'
         };
       case 'success':
         return {
-          bg: 'rgba(34, 197, 94, 0.08)',
+          bg: 'rgba(34, 197, 94, 0.10)',
           border: 'rgba(34, 197, 94, 0.25)',
-          iconColor: '#16a34a',
-          text: '#16a34a'
+          iconColor: '#22c55e',
+          text: '#22c55e'
         };
       case 'warning':
         return {
-          bg: 'rgba(234, 179, 8, 0.08)',
+          bg: 'rgba(234, 179, 8, 0.10)',
           border: 'rgba(234, 179, 8, 0.25)',
-          iconColor: '#ca8a04',
-          text: '#ca8a04'
+          iconColor: '#f59e0b',
+          text: '#f59e0b'
         };
       case 'danger':
         return {
-          bg: 'rgba(239, 68, 68, 0.08)',
+          bg: 'rgba(239, 68, 68, 0.10)',
           border: 'rgba(239, 68, 68, 0.25)',
-          iconColor: '#dc2626',
-          text: '#dc2626'
+          iconColor: '#ef4444',
+          text: '#ef4444'
         };
       case 'info':
         return {
-          bg: 'rgba(59, 130, 246, 0.08)',
+          bg: 'rgba(59, 130, 246, 0.10)',
           border: 'rgba(59, 130, 246, 0.25)',
-          iconColor: '#2563eb',
-          text: '#2563eb'
+          iconColor: '#3b82f6',
+          text: '#3b82f6'
         };
       default:
         return {
@@ -67,6 +71,9 @@ export const RentalStatCard: React.FC<RentalStatCardProps> = ({
   return (
     <div
       className="card"
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       style={{
         padding: '16px 18px',
         display: 'flex',
@@ -74,7 +81,10 @@ export const RentalStatCard: React.FC<RentalStatCardProps> = ({
         justifyContent: 'space-between',
         backgroundColor: colors.bg,
         borderColor: colors.border,
-        boxShadow: 'var(--shadow-sm)'
+        boxShadow: 'var(--shadow-sm)',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all var(--transition-fast)',
+        ...style
       }}
     >
       <div>
@@ -106,7 +116,7 @@ export const RentalStatCard: React.FC<RentalStatCardProps> = ({
           width: '42px',
           height: '42px',
           borderRadius: 'var(--radius-md)',
-          backgroundColor: 'rgba(255, 255, 255, 0.5)',
+          backgroundColor: 'var(--bg-surface-secondary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

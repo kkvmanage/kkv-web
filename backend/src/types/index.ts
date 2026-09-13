@@ -260,6 +260,9 @@ export interface Loan {
   advanceDays: number;
   advanceInterestAmount: number;
   advanceInterestReceivingMethod?: 'Cash' | 'Bank' | 'Cash + Bank';
+  coveredInterestStartDate?: string;
+  coveredInterestEndDate?: string;
+  advanceInterestCollectedAt?: string;
   cardFee: number;
   cardFeeEnabled?: boolean;
   cardFeePaymentMode: 'Cash' | 'Bank';

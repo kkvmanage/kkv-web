@@ -143,11 +143,27 @@ export const RentalComplexDetail: React.FC<RentalComplexDetailProps> = ({
   const collectedRent = payments.reduce((sum, p) => sum + p.amountReceived, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.expenseAmount, 0);
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   let pendingRent = 0;
   activeShops.forEach((s) => {
     const sPayments = payments.filter((p) => p.shopId === s.shopId);
     const sCovered = sPayments.reduce((sum, p) => sum + p.amountReceived + p.advanceUsed, 0);
-    pendingRent += Math.max(0, s.monthlyRent - sCovered);
+    const unpaid = Math.max(0, s.monthlyRent - sCovered);
+
+    const cleanMonth = selectedMonth.slice(0, 7);
+    const [yearStr, monthPart] = cleanMonth.split('-');
+    const year = parseInt(yearStr, 10) || today.getFullYear();
+    const monthIndex = (parseInt(monthPart, 10) || (today.getMonth() + 1)) - 1;
+    const maxDays = new Date(year, monthIndex + 1, 0).getDate();
+    const dueDay = Math.min(Math.max(1, Math.round(Number(s.rentDueDay) || 10)), maxDays);
+    const dueDate = new Date(year, monthIndex, dueDay);
+    dueDate.setHours(0, 0, 0, 0);
+
+    if (today.getTime() >= dueDate.getTime()) {
+      pendingRent += unpaid;
+    }
   });
 
   const netRevenue = collectedRent - totalExpenses;
@@ -264,11 +280,11 @@ export const RentalComplexDetail: React.FC<RentalComplexDetailProps> = ({
           </div>
         </div>
 
-        <div className="card" style={{ padding: '14px 16px', backgroundColor: 'rgba(23, 107, 82, 0.1)' }}>
-          <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#176B52', textTransform: 'uppercase' }}>
+        <div className="card" style={{ padding: '14px 16px', backgroundColor: 'var(--primary-soft)' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-brand, #176B52)', textTransform: 'uppercase' }}>
             NET REVENUE
           </span>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: '#176B52', marginTop: '4px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-brand, #176B52)', marginTop: '4px' }}>
             ₹{netRevenue.toLocaleString('en-IN')}
           </div>
         </div>

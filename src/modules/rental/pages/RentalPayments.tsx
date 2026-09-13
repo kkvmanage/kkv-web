@@ -117,11 +117,11 @@ export const RentalPayments: React.FC = () => {
           marginBottom: '16px'
         }}
       >
-        <div className="card" style={{ padding: '12px 16px', backgroundColor: 'rgba(23, 107, 82, 0.06)' }}>
+        <div className="card" style={{ padding: '12px 16px', backgroundColor: 'var(--primary-soft)' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
             FILTERED TOTAL COLLECTED
           </span>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: '#176B52', marginTop: '2px' }}>
+          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-brand, #176B52)', marginTop: '2px' }}>
             ₹{totalCollected.toLocaleString('en-IN')}
           </div>
         </div>

@@ -21,7 +21,11 @@ router.get('/shops', authorizePermission('rental', 'view'), rentalController.get
 router.post('/shops', authorizePermission('rental', 'create'), rentalController.createShop.bind(rentalController));
 router.get('/shops/:id', authorizePermission('rental', 'view'), rentalController.getShopById.bind(rentalController));
 router.get('/shops/:id/status', authorizePermission('rental', 'view'), rentalController.getShopMonthlyStatus.bind(rentalController));
+router.get('/shops/:id/settlement', authorizePermission('rental', 'view'), rentalController.getShopSettlement.bind(rentalController));
+router.post('/shops/:id/close', authorizePermission('rental', 'update'), rentalController.closeShop.bind(rentalController));
+router.delete('/shops/:id', authorizeRoles('ADMIN'), rentalController.deleteShop.bind(rentalController));
 router.put('/shops/:id', authorizePermission('rental', 'update'), rentalController.updateShop.bind(rentalController));
+
 
 // Rent Payments
 router.get('/payments', authorizePermission('rental', 'view'), rentalController.getPayments.bind(rentalController));
@@ -42,9 +46,16 @@ router.get('/reports/monthly', authorizePermission('rental', 'view'), rentalCont
 router.get('/reports/expenses', authorizePermission('rental', 'view'), rentalController.getExpenseReport.bind(rentalController));
 router.get('/reports/payment-modes', authorizePermission('rental', 'view'), rentalController.getPaymentModeReport.bind(rentalController));
 
-// Admin-only Summary & Sync Control
+// Pending Rent
+router.get('/pending', authorizePermission('rental', 'view'), rentalController.getPendingRent.bind(rentalController));
+
+// Sync Status & Control (ADMIN, RENTAL_STAFF, or staff with rental permissions)
+router.get('/sync/status', authorizePermission('rental', 'view'), rentalController.getSyncStatus.bind(rentalController));
+router.get('/sync-status', authorizePermission('rental', 'view'), rentalController.getSyncStatus.bind(rentalController));
+router.post('/sync/retry', authorizePermission('rental', 'update'), rentalController.retrySync.bind(rentalController));
+router.post('/sync-retry', authorizePermission('rental', 'update'), rentalController.retrySync.bind(rentalController));
+
+// Admin-only Summary
 router.get('/admin/summary', authorizeRoles('ADMIN'), rentalController.getAdminSummary.bind(rentalController));
-router.get('/sync/status', authorizeRoles('ADMIN'), rentalController.getSyncStatus.bind(rentalController));
-router.post('/sync/retry', authorizeRoles('ADMIN'), rentalController.retrySync.bind(rentalController));
 
 export default router;

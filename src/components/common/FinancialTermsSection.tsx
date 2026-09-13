@@ -52,6 +52,7 @@ export const FinancialTermsSection: React.FC<FinancialTermsSectionProps> = ({
   advanceReceivingMethod,
   onAdvanceReceivingMethodChange,
   cardFeeEnabled,
+  onCardFeeEnabledChange,
   cardFeeAmount,
   cardFeeMode,
   onCardFeeModeChange,
@@ -360,22 +361,45 @@ export const FinancialTermsSection: React.FC<FinancialTermsSectionProps> = ({
         </div>
 
         {/* CARD FEE SECTION */}
-        <div className="fi-accent-box fi-accent-box--green">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '15px' }}>💳</span>
-              <span className="fi-checkbox-label" style={{ fontWeight: 700 }}>CARD PROCESSING FEE</span>
-              <span className="badge badge-info" style={{ fontSize: '10px', padding: '2px 8px' }}>
-                🔒 Master Controlled
-              </span>
+        <div className={`fi-accent-box ${cardFeeEnabled ? 'fi-accent-box--green' : ''}`} style={{ borderColor: cardFeeEnabled ? undefined : 'var(--border-subtle, #e2e8f0)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+              <span style={{ fontSize: '18px', marginTop: '2px' }}>💳</span>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                  CARD PROCESSING FEE
+                </div>
+                <label className="fi-checkbox-row" style={{ margin: 0, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={cardFeeEnabled}
+                    onChange={(e) => onCardFeeEnabledChange && onCardFeeEnabledChange(e.target.checked)}
+                  />
+                  <span className="fi-checkbox-label" style={{ fontWeight: 700, fontSize: '13px' }}>
+                    Apply Card Processing Fee
+                  </span>
+                </label>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', marginLeft: '24px' }}>
+                  🔒 Configured by Master Admin
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: '13.5px', fontWeight: 800, color: cardFeeEnabled && cardFeeAmount > 0 ? 'var(--color-primary-dark, #163f35)' : 'var(--text-muted)' }}>
-              {cardFeeEnabled && cardFeeAmount > 0 ? `₹${cardFeeAmount.toLocaleString('en-IN')}` : '₹0 (Disabled in Master Control)'}
+
+            <div style={{ textAlign: 'right', minWidth: '60px' }}>
+              <div
+                style={{
+                  fontSize: '15px',
+                  fontWeight: 800,
+                  color: cardFeeEnabled ? 'var(--color-primary-dark, #163f35)' : 'var(--text-muted)'
+                }}
+              >
+                {cardFeeEnabled ? `₹${cardFeeAmount.toLocaleString('en-IN')}` : '₹0'}
+              </div>
             </div>
           </div>
 
-          {cardFeeEnabled && cardFeeAmount > 0 ? (
-            <div className="fi-rows" style={{ marginTop: '10px' }}>
+          {cardFeeEnabled ? (
+            <div className="fi-rows" style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle, #e2e8f0)' }}>
               <div className="fi-grid-3">
                 <div className="fi-field">
                   <label className="fi-label">Collection Method</label>
@@ -426,8 +450,9 @@ export const FinancialTermsSection: React.FC<FinancialTermsSectionProps> = ({
               </div>
             </div>
           ) : (
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              Card Processing Fee is currently switched off for this loan type in Master Control.
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>ℹ️</span>
+              <span>Card processing fee will not be deducted for this transaction.</span>
             </div>
           )}
         </div>
@@ -486,7 +511,7 @@ export const FinancialTermsSection: React.FC<FinancialTermsSectionProps> = ({
               </div>
             )}
 
-            {cardFeeEnabled && cardFeeAmount > 0 && (
+            {cardFeeEnabled && effectiveCardFee > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Card Fee Deduction</span>
                 <strong style={{ color: '#EF4444' }}>

@@ -187,6 +187,10 @@ const pageTitles: Record<NavPage, PageMetadata> = {
     title: 'Rental Reports',
     subtitle: 'Monthly rent statements, expense ledgers, Cash vs GPay collections, and property performance'
   },
+  'rental-pending-rent': {
+    title: 'Pending Rent',
+    subtitle: 'Track due and overdue rent across complexes and shops.'
+  },
   notifications: {
     title: 'Notification Center',
     subtitle: 'Real-time due events, interest schedules, renewals, and collections'

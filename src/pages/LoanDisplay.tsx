@@ -530,6 +530,14 @@ export const LoanDisplay: React.FC = () => {
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Total Payments Received:</span>
                 <strong style={{ color: 'var(--color-primary-accent)' }}>₹{totalPaymentsReceived.toLocaleString('en-IN')}</strong>
               </div>
+              {Boolean(inspectingLoan.deductAdvanceInterest && (inspectingLoan.advanceInterestAmount || 0) > 0) && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Advance Interest (Prepaid):</span>
+                  <strong style={{ color: 'var(--color-primary-accent)' }}>
+                    ₹{(inspectingLoan.advanceInterestAmount || 0).toLocaleString('en-IN')} ({inspectingLoan.advanceDays || 30} days)
+                  </strong>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Outstanding Principal:</span>
                 <strong style={{ color: 'var(--color-primary-dark)', fontSize: '15px' }}>

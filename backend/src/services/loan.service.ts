@@ -16,6 +16,61 @@ import { isMongoConnected, ensureMongoConnected } from '../config/database.js';
 const FILE_NAME = 'loans.json';
 const initialLoans: Loan[] = [];
 
+const parseLoanDate = (dateStr?: string): Date => {
+  if (!dateStr) return new Date();
+  const clean = dateStr.trim();
+  const separator = clean.includes('-') ? '-' : clean.includes('/') ? '/' : null;
+  if (separator) {
+    const parts = clean.split(separator);
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      // DD-MM-YYYY
+      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
+  }
+  const parsed = new Date(clean);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+const formatLoanDate = (date: Date): string => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const addMonthsToLoanDate = (baseDate: Date, monthsToAdd: number): Date => {
+  const origDay = baseDate.getDate();
+  const origMonth = baseDate.getMonth();
+  const origYear = baseDate.getFullYear();
+
+  const totalMonths = origMonth + monthsToAdd;
+  const targetYear = origYear + Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+
+  const maxDaysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const targetDay = Math.min(origDay, maxDaysInTargetMonth);
+
+  return new Date(targetYear, targetMonth, targetDay);
+};
+
+const calculateAuthoritativeNextDueDate = (
+  issueDateStr?: string,
+  deductAdvanceInterest: boolean = false,
+  advanceDays: number = 0
+): string => {
+  const baseDate = parseLoanDate(issueDateStr);
+  if (deductAdvanceInterest && advanceDays > 0) {
+    const monthsCovered = Math.max(1, Math.round(advanceDays / 30));
+    const nextDate = addMonthsToLoanDate(baseDate, monthsCovered + 1);
+    return formatLoanDate(nextDate);
+  }
+  const nextDate = addMonthsToLoanDate(baseDate, 1);
+  return formatLoanDate(nextDate);
+};
+
 export class LoanService {
   public async getAllAsync(): Promise<Loan[]> {
     try {
@@ -210,13 +265,23 @@ export class LoanService {
       throw new Error(`Loan type "${matchedType.name}" is not enabled for new loan issuance in Master Control.`);
     }
 
-    // Enforce server-authoritative Card Fee
-    const serverCardFee = matchedType.cardFee !== undefined
+    // Enforce server-authoritative Card Fee configuration
+    const serverCardFeeAmount = matchedType.cardFee !== undefined
       ? matchedType.cardFee
       : (masterSettings.defaultCardFee || 25);
-    const serverCardFeeEnabled = matchedType.cardFeeEnabled !== undefined
+    const masterCardFeePolicyEnabled = matchedType.cardFeeEnabled !== undefined
       ? Boolean(matchedType.cardFeeEnabled)
       : true;
+
+    // Transaction-level card fee selection requested by staff:
+    // If loanData.cardFeeEnabled is explicitly passed, respect the staff selection.
+    // If omitted, fallback to masterCardFeePolicyEnabled.
+    const isTransactionCardFeeEnabled = loanData.cardFeeEnabled !== undefined
+      ? Boolean(loanData.cardFeeEnabled)
+      : masterCardFeePolicyEnabled;
+
+    // Server-calculated effective fee (ignores any custom numeric amount passed from client):
+    const effectiveCardFee = isTransactionCardFeeEnabled ? serverCardFeeAmount : 0;
     const configVersion = matchedType.configurationVersion || 1;
 
     // Server-authoritative Interest Rate resolution per product configuration
@@ -415,9 +480,25 @@ export class LoanService {
       };
     }
 
-    const effectiveCardFee = serverCardFeeEnabled ? serverCardFee : 0;
-    const advanceInterest = loanData.deductAdvanceInterest
-      ? (loanData.advanceInterestAmount || 0)
+    const effectiveIssueDateStr = loanData.date || formatLoanDate(new Date());
+    const baseIssueDate = parseLoanDate(effectiveIssueDateStr);
+    const effectiveAdvanceDays = loanData.advanceDays || (loanData.deductAdvanceInterest ? 30 : 0);
+    const hasAdvance = Boolean(loanData.deductAdvanceInterest && effectiveAdvanceDays > 0);
+    const monthsCovered = hasAdvance ? Math.max(1, Math.round(effectiveAdvanceDays / 30)) : 0;
+
+    const authoritativeNextDueDate = loanData.nextDueDate && loanData.nextDueDate.trim().length > 0
+      ? loanData.nextDueDate
+      : calculateAuthoritativeNextDueDate(effectiveIssueDateStr, loanData.deductAdvanceInterest, effectiveAdvanceDays);
+
+    const coveredInterestStartDate = hasAdvance ? formatLoanDate(baseIssueDate) : undefined;
+    const coveredInterestEndDate = hasAdvance ? formatLoanDate(addMonthsToLoanDate(baseIssueDate, monthsCovered)) : undefined;
+
+    const authoritativeLastInterestPaidDate = hasAdvance
+      ? (coveredInterestEndDate || formatLoanDate(baseIssueDate))
+      : formatLoanDate(baseIssueDate);
+
+    const advanceInterest = hasAdvance
+      ? (loanData.advanceInterestAmount || Math.round(((calc.monthlyInterest || 0) / 30) * effectiveAdvanceDays))
       : 0;
     const netDisbursed = new Decimal(effectivePrincipal).minus(advanceInterest).minus(effectiveCardFee).toNumber();
 
@@ -510,7 +591,7 @@ export class LoanService {
       loanTypeNameSnapshot: matchedType ? matchedType.name : loanData.loanType,
       interestRateSnapshot: interestRate,
       interestProfileSnapshot: interestProfileName,
-      cardFeeSnapshot: serverCardFee,
+      cardFeeSnapshot: serverCardFeeAmount,
       interestProfileIdSnapshot: matchedType?.interestProfileId || 'gold-bands',
       interestProfileNameSnapshot: interestProfileName,
       interestConfigurationSnapshot: {
@@ -524,8 +605,10 @@ export class LoanService {
       rateEffectiveAt: loanData.date || new Date().toISOString(),
 
       interestRate,
-      cardFee: serverCardFee,
-      cardFeeEnabled: serverCardFeeEnabled,
+      cardFee: effectiveCardFee,
+      cardFeeEnabled: isTransactionCardFeeEnabled,
+      cardFeePaymentMode: isTransactionCardFeeEnabled ? (loanData.cardFeePaymentMode || 'Cash') : 'Cash',
+      cardFeeBankMode: isTransactionCardFeeEnabled && loanData.cardFeePaymentMode === 'Bank' ? loanData.cardFeeBankMode : undefined,
       items: calc.normalizedItems,
       monthlyInterest: calc.monthlyInterest,
       totalGrossWeight: calc.totalGrossWeight,
@@ -538,9 +621,12 @@ export class LoanService {
       outstandingPrincipal: effectivePrincipal,
       accruedInterest: calc.monthlyInterest,
       status: 'ACTIVE',
-      date: loanData.date || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      lastInterestPaidDate: loanData.date || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
+      date: formatLoanDate(baseIssueDate),
+      coveredInterestStartDate,
+      coveredInterestEndDate,
+      advanceInterestCollectedAt: hasAdvance ? new Date().toISOString() : undefined,
+      lastInterestPaidDate: authoritativeLastInterestPaidDate,
+      nextDueDate: authoritativeNextDueDate,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -599,8 +685,9 @@ export class LoanService {
     try {
       const isCash = newLoan.bankMode === 'Cash';
       const isSplit = newLoan.bankMode === 'Split';
-      const cashDisbursed = isCash ? effectivePrincipal : isSplit ? (newLoan.cashAmount || 0) : 0;
-      const bankDisbursed = isCash ? 0 : isSplit ? (newLoan.bankAmount || 0) : effectivePrincipal;
+      const actualDisbursed = newLoan.netDisbursed !== undefined ? newLoan.netDisbursed : effectivePrincipal;
+      const cashDisbursed = isCash ? actualDisbursed : isSplit ? (newLoan.cashAmount || 0) : 0;
+      const bankDisbursed = isCash ? 0 : isSplit ? (newLoan.bankAmount || 0) : actualDisbursed;
 
       await accountingService.addEntryAsync({
         time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -616,6 +703,28 @@ export class LoanService {
         loanNo,
         date: newLoan.date || new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
       });
+
+      if (effectiveCardFee > 0) {
+        const isFeeBank = newLoan.cardFeePaymentMode === 'Bank';
+        const feeMode: 'Cash' | 'UPI' | 'Bank' = isFeeBank
+          ? (newLoan.cardFeeBankMode === 'UPI' ? 'UPI' : 'Bank')
+          : 'Cash';
+
+        await accountingService.addEntryAsync({
+          time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          billNo: String(seq),
+          particulars: `Card Processing Fee (${loanNo}) - ${newLoan.customerName}`,
+          accountHead: 'Processing Fees',
+          mode: feeMode,
+          cashIn: isFeeBank ? 0 : effectiveCardFee,
+          cashOut: 0,
+          bankIn: isFeeBank ? effectiveCardFee : 0,
+          bankOut: 0,
+          customerName: newLoan.customerName,
+          loanNo,
+          date: newLoan.date || new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
+        });
+      }
     } catch (e) {
       console.warn('[LoanService] Accounting entry note:', e);
     }
@@ -745,6 +854,108 @@ export class LoanService {
     }
 
     return true;
+  }
+
+  public async getPendingLoansAsync(customerId?: string, asOfDateStr?: string): Promise<{ loan: Loan; metrics: any }[]> {
+    const allLoans = await this.getAllAsync();
+    const allReceipts = await receiptService.getAllAsync();
+
+    const asOfDate = asOfDateStr ? parseLoanDate(asOfDateStr) : new Date();
+    const todayMidnight = new Date(asOfDate.getFullYear(), asOfDate.getMonth(), asOfDate.getDate());
+
+    const result: { loan: Loan; metrics: any }[] = [];
+
+    for (const loan of allLoans) {
+      if (loan.isDeleted || loan.status === 'CLOSED') continue;
+      const outstanding = Number(loan.outstandingPrincipal ?? loan.principal ?? 0);
+      if (outstanding <= 0) continue;
+
+      if (customerId) {
+        const cId = (loan.customerId || '').trim().toLowerCase();
+        const targetId = customerId.trim().toLowerCase();
+        if (cId !== targetId && (loan as any).id !== targetId) continue;
+      }
+
+      // Compute authoritative due date if not present
+      let rawDueDate = loan.nextDueDate;
+      if (!rawDueDate) {
+        rawDueDate = calculateAuthoritativeNextDueDate(
+          loan.date || (loan as any).issueDate,
+          loan.deductAdvanceInterest,
+          loan.advanceDays ?? (loan as any).advanceInterestDays ?? 0
+        );
+      }
+      const dueDate = parseLoanDate(rawDueDate);
+      const dueDateMidnight = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+
+      // Interest calculation
+      const monthlyRate = Number(loan.interestRate ?? 0) / 100;
+      const monthlyInterest = Math.round(outstanding * monthlyRate);
+      const scheduledDue = monthlyInterest > 0 ? monthlyInterest : 0;
+
+      // Receipts for this loan
+      const loanReceipts = allReceipts.filter(
+        (r) =>
+          (r.loanNo === loan.loanNo || r.loanId === loan.id || r.loanId === loan.loanNo) &&
+          (r.kind === 'INTEREST PAYMENT' ||
+            (r.kind as string) === 'INTEREST + PRINCIPAL' ||
+            r.kind === 'PART PAYMENT' ||
+            r.kind === 'REPAYMENT' ||
+            r.kind === 'LOAN CLOSURE')
+      );
+
+      // Period paid amount
+      const relevantReceipts = loanReceipts.filter((r) => {
+        if (!r.date) return false;
+        const rDate = parseLoanDate(r.date);
+        const rDateMidnight = new Date(rDate.getFullYear(), rDate.getMonth(), rDate.getDate());
+
+        if (loan.lastInterestPaidDate) {
+          const lastPaid = parseLoanDate(loan.lastInterestPaidDate);
+          const lastPaidMidnight = new Date(lastPaid.getFullYear(), lastPaid.getMonth(), lastPaid.getDate());
+          if (rDateMidnight <= lastPaidMidnight) return false;
+        }
+
+        if (r.currentDueDate) {
+          const rDueDate = parseLoanDate(r.currentDueDate);
+          return (
+            rDueDate.getFullYear() === dueDate.getFullYear() &&
+            rDueDate.getMonth() === dueDate.getMonth() &&
+            rDueDate.getDate() === dueDate.getDate()
+          );
+        }
+
+        return true;
+      });
+
+      const periodPaidAmount = relevantReceipts.reduce((sum, r) => {
+        const intComp = Number(r.interestComponent ?? 0);
+        const amt = Number(r.amount ?? 0);
+        return sum + (intComp > 0 ? intComp : amt > 0 && r.kind === 'INTEREST PAYMENT' ? amt : 0);
+      }, 0);
+
+      const remainingDue = Math.max(0, scheduledDue - periodPaidAmount);
+      const isDue = todayMidnight.getTime() >= dueDateMidnight.getTime();
+      const isPending = isDue && remainingDue > 0;
+
+      if (isPending) {
+        const diffDays = Math.max(0, Math.floor((todayMidnight.getTime() - dueDateMidnight.getTime()) / (1000 * 60 * 60 * 24)));
+        const statusText = diffDays > 0 ? 'OVERDUE' : periodPaidAmount > 0 ? 'PARTIALLY PAID' : 'DUE TODAY';
+        result.push({
+          loan,
+          metrics: {
+            dueDate: formatLoanDate(dueDate),
+            scheduledDue,
+            paidAmount: periodPaidAmount,
+            remainingDue,
+            daysOverdue: diffDays,
+            statusText
+          }
+        });
+      }
+    }
+
+    return result;
   }
 }
 

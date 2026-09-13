@@ -28,7 +28,7 @@ import {
   getDaysDifference,
   addCalendarMonths
 } from '../utils/fdInterestUtils';
-import { getOverdueEscalationDetails } from '../utils/loanCalculationUtils';
+import { getOverdueEscalationDetails, calculateNextDueDate } from '../utils/loanCalculationUtils';
 import { PageHeader, StatGrid, StatCard } from '../components/ui';
 
 export const PendingLoans: React.FC = () => {
@@ -81,98 +81,11 @@ export const PendingLoans: React.FC = () => {
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
   const [viewingLoanHistory, setViewingLoanHistory] = useState<Loan | null>(null);
 
-  // ── Requirement 17: Display-Only Summary Cards Metrics ──────────────────────
-  const summaryMetrics = useMemo(() => {
-    const activeLoans = loans.filter((l) => l.status !== 'CLOSED');
-    let overdueCount = 0;
-    let overdueAmount = 0;
-
-    activeLoans.forEach((l) => {
-      const rawDueDate = l.nextDueDate || l.renewalDate || l.date;
-      const dueDateStr = normalizeDateString(rawDueDate);
-      const comp = compareFDDates(todayStr, dueDateStr);
-      if (comp > 0) {
-        overdueCount++;
-        const baseMonthly =
-          l.monthlyInterest > 0
-            ? l.monthlyInterest
-            : Math.round(((l.outstandingPrincipal ?? l.principal) * (l.interestRate || 1.5)) / 100);
-        overdueAmount += baseMonthly;
-      }
-    });
-
-    const collectedToday = receipts
-      .filter((r) => r.date === todayStr)
-      .reduce((sum, r) => sum + r.amount, 0);
-
-    return {
-      totalPending: activeLoans.length,
-      overdueAccounts: overdueCount,
-      totalOverdueAmount: overdueAmount,
-      collectedToday
-    };
-  }, [loans, receipts, todayStr]);
-
-  // ── Customer Search Filter (Customer ID prioritized) ───────────────────────
-  const matchingCustomers = useMemo(() => {
-    const q = customerSearchQuery.trim().toLowerCase();
-    if (!q) return [];
-
-    return customers.filter((c) => {
-      if (c.isDeleted) return false;
-      const canonicalId = getCanonicalCustomerId(c).toLowerCase();
-      const numIdStr = c.customerId ? c.customerId.toString() : '';
-      const name = (c.name || '').toLowerCase();
-      const phone = (c.phone || '').toLowerCase();
-
-      // Check if user searched for a loan number directly (e.g. GL-001)
-      const matchesLoanNo = loans.some(
-        (l) => isMatchingCustomerId(l.customerId, c) && l.loanNo.toLowerCase().includes(q)
-      );
-
-      return (
-        canonicalId.includes(q) ||
-        numIdStr.includes(q) ||
-        isMatchingCustomerId(q, c) ||
-        name.includes(q) ||
-        phone.includes(q) ||
-        matchesLoanNo
-      );
-    });
-  }, [customerSearchQuery, customers, loans]);
-
-  // ── Quick Select Chips for Testing ─────────────────────────────────────────
-  const sampleCustomerChips = useMemo(() => {
-    return customers
-      .filter((c) => !c.isDeleted)
-      .slice(0, 4)
-      .map((c) => ({
-        id: c.id,
-        canonicalId: getCanonicalCustomerId(c),
-        name: c.name,
-        phone: c.phone,
-        customer: c
-      }));
-  }, [customers]);
-
-  // ── Helper: Resolve Customer Details for a Loan ───────────────────────────
-  const resolveLoanCustomer = (l: Loan) => {
-    const found = customers.find((c) => isMatchingCustomerId(l.customerId, c));
-    return {
-      name: found ? found.name : l.customerName,
-      custId: found ? getCanonicalCustomerId(found) : (l.customerId || 'CUST-XXXX'),
-      phone: found ? found.phone : (l.customerPhone || 'N/A'),
-      address: found ? found.currentAddress : (l.customerCurrentAddress || 'N/A'),
-      photo: found?.customerPhoto || null,
-      customer: found || null
-    };
-  };
-
   // ── Helper: Calculate Due Metrics for a Loan ───────────────────────────────
   const getLoanDueMetrics = (l: Loan) => {
-    const rawDueDate = l.nextDueDate || l.renewalDate || l.date;
+    const rawDueDate = l.nextDueDate || calculateNextDueDate(l.date, l.deductAdvanceInterest, l.advanceDays) || l.renewalDate || l.date;
     const dueDateStr = normalizeDateString(rawDueDate);
-    const outstanding = l.outstandingPrincipal ?? l.principal;
+    const outstanding = l.outstandingPrincipal ?? l.principal ?? 0;
     const baseMonthlyInterest =
       l.monthlyInterest > 0
         ? l.monthlyInterest
@@ -181,16 +94,15 @@ export const PendingLoans: React.FC = () => {
     const periodReceipts = receipts.filter(
       (r) =>
         (r.loanNo === l.loanNo || r.loanId === l.id) &&
-        (r.kind === 'INTEREST PAYMENT' || r.kind === 'REPAYMENT' || r.kind === 'PART PAYMENT' || r.kind === 'LOAN CLOSURE') &&
-        (r.date === dueDateStr ||
-          compareFDDates(r.date, dueDateStr) >= 0 ||
-          (r.currentDueDate && normalizeDateString(r.currentDueDate) === dueDateStr))
+        (r.kind === 'INTEREST PAYMENT' || r.kind === 'REPAYMENT' || r.kind === 'PART PAYMENT' || r.kind === 'LOAN CLOSURE' || r.kind === 'INTEREST + PRINCIPAL') &&
+        (r.currentDueDate ? normalizeDateString(r.currentDueDate) === dueDateStr : compareFDDates(normalizeDateString(r.date), dueDateStr) >= 0)
     );
 
     const interestAlreadyPaid = periodReceipts.reduce((sum, r) => sum + (r.interestComponent || 0), 0);
-    const isInterestFullyPaid =
+    const isInterestFullyPaid = Boolean(
       interestAlreadyPaid >= baseMonthlyInterest ||
-      (l.lastInterestPaidDate && compareFDDates(normalizeDateString(l.lastInterestPaidDate), dueDateStr) >= 0);
+      (l.lastInterestPaidDate && compareFDDates(normalizeDateString(l.lastInterestPaidDate), dueDateStr) >= 0)
+    );
 
     let daysOverdue = 0;
     let statusText: 'CLOSED' | 'PAID' | 'PARTIALLY PAID' | 'OVERDUE' | 'DUE TODAY' | 'UPCOMING' | 'NOT DUE' = 'UPCOMING';
@@ -249,11 +161,111 @@ export const PendingLoans: React.FC = () => {
     };
   };
 
-  // ── Selected Customer's Loans List ─────────────────────────────────────────
+  // ── Helper: Strictly evaluate whether a loan has a pending/due collectible installment ──
+  const isLoanPending = (l: Loan): boolean => {
+    if (!l || l.status === 'CLOSED') return false;
+    const outstanding = l.outstandingPrincipal ?? l.principal ?? 0;
+    if (outstanding <= 0) return false;
+
+    const metrics = getLoanDueMetrics(l);
+    if (metrics.isInterestFullyPaid) return false;
+    const isDueStatus = metrics.statusText === 'OVERDUE' || metrics.statusText === 'DUE TODAY' || metrics.statusText === 'PARTIALLY PAID';
+    const hasPendingAmount = (metrics.totalDue > 0 || metrics.remainingInterestDue > 0);
+    return isDueStatus && hasPendingAmount;
+  };
+
+  // ── Requirement 17: Display-Only Summary Cards Metrics (Genuinely Pending Only) ──
+  const summaryMetrics = useMemo(() => {
+    let pendingCount = 0;
+    let overdueCount = 0;
+    let overdueAmount = 0;
+
+    loans.forEach((l) => {
+      if (l.status === 'CLOSED' || (l.outstandingPrincipal !== undefined && l.outstandingPrincipal <= 0)) {
+        return;
+      }
+      if (isLoanPending(l)) {
+        pendingCount++;
+        const metrics = getLoanDueMetrics(l);
+        if (metrics.statusText === 'OVERDUE') {
+          overdueCount++;
+          overdueAmount += (metrics.totalDue || metrics.remainingInterestDue);
+        }
+      }
+    });
+
+    const collectedToday = receipts
+      .filter((r) => r.date === todayStr)
+      .reduce((sum, r) => sum + r.amount, 0);
+
+    return {
+      totalPending: pendingCount,
+      overdueAccounts: overdueCount,
+      totalOverdueAmount: overdueAmount,
+      collectedToday
+    };
+  }, [loans, receipts, todayStr, masterControlSettings]);
+
+  // ── Selected Customer's Pending Loans List (STRICTLY GENUINELY DUE/UNPAID) ─────
   const customerLoans = useMemo(() => {
     if (!selectedCustomer) return [];
-    return loans.filter((l) => isMatchingCustomerId(l.customerId, selectedCustomer));
-  }, [loans, selectedCustomer]);
+    return loans.filter((l) => isMatchingCustomerId(l.customerId, selectedCustomer) && isLoanPending(l));
+  }, [loans, selectedCustomer, receipts, todayStr, masterControlSettings]);
+
+  // ── Customer Search Filter (Customer ID prioritized) ───────────────────────
+  const matchingCustomers = useMemo(() => {
+    const q = customerSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    return customers.filter((c) => {
+      if (c.isDeleted) return false;
+      const canonicalId = getCanonicalCustomerId(c).toLowerCase();
+      const numIdStr = c.customerId ? c.customerId.toString() : '';
+      const name = (c.name || '').toLowerCase();
+      const phone = (c.phone || '').toLowerCase();
+
+      // Check if user searched for a loan number directly (e.g. GL-001)
+      const matchesLoanNo = loans.some(
+        (l) => isMatchingCustomerId(l.customerId, c) && l.loanNo.toLowerCase().includes(q)
+      );
+
+      return (
+        canonicalId.includes(q) ||
+        numIdStr.includes(q) ||
+        isMatchingCustomerId(q, c) ||
+        name.includes(q) ||
+        phone.includes(q) ||
+        matchesLoanNo
+      );
+    });
+  }, [customerSearchQuery, customers, loans]);
+
+  // ── Quick Select Chips for Testing ─────────────────────────────────────────
+  const sampleCustomerChips = useMemo(() => {
+    return customers
+      .filter((c) => !c.isDeleted)
+      .slice(0, 4)
+      .map((c) => ({
+        id: c.id,
+        canonicalId: getCanonicalCustomerId(c),
+        name: c.name,
+        phone: c.phone,
+        customer: c
+      }));
+  }, [customers]);
+
+  // ── Helper: Resolve Customer Details for a Loan ───────────────────────────
+  const resolveLoanCustomer = (l: Loan) => {
+    const found = customers.find((c) => isMatchingCustomerId(l.customerId, c));
+    return {
+      name: found ? found.name : l.customerName,
+      custId: found ? getCanonicalCustomerId(found) : (l.customerId || 'CUST-XXXX'),
+      phone: found ? found.phone : (l.customerPhone || 'N/A'),
+      address: found ? found.currentAddress : (l.customerCurrentAddress || 'N/A'),
+      photo: found?.customerPhoto || null,
+      customer: found || null
+    };
+  };
 
   // ── Helper: Calculate Unpaid & Historical Periods for Selected Loan ────────
   const loanPeriodsBreakdown = useMemo(() => {
@@ -560,7 +572,14 @@ export const PendingLoans: React.FC = () => {
         receiptType === 'Full Loan Closure' ||
         (collectionMetrics.outstanding - numPrin <= 0 && collectionMetrics.outstanding > 0);
 
-      const calculatedNextDueDate = addCalendarMonths(collectionMetrics.dueDateStr, 1);
+      const isInterestFullPayment =
+        numInt >= collectionMetrics.remainingInterestDue && collectionMetrics.remainingInterestDue > 0;
+
+      const calculatedNextDueDate = isFullClosure
+        ? undefined
+        : isInterestFullPayment
+        ? addCalendarMonths(collectionMetrics.dueDateStr, 1)
+        : collectionMetrics.dueDateStr;
 
       const receiptRecord = addReceipt({
         loanId: selectedLoan.id,
@@ -589,7 +608,7 @@ export const PendingLoans: React.FC = () => {
         upiId: paymentMethod === 'UPI' ? upiId.trim() : undefined,
         date: collectionMetrics.normalizedPaymentDate,
         currentDueDate: collectionMetrics.dueDateStr,
-        nextDueDate: isFullClosure ? undefined : calculatedNextDueDate,
+        nextDueDate: calculatedNextDueDate,
         outstandingBefore: collectionMetrics.outstanding,
         outstandingAfter: Math.max(0, collectionMetrics.outstanding - numPrin),
         notes: notes.trim() || `${receiptType} collection via ${paymentMethod}`
@@ -898,7 +917,6 @@ export const PendingLoans: React.FC = () => {
               </span>
               {matchingCustomers.map((cust) => {
                 const custCanonicalId = getCanonicalCustomerId(cust);
-                const activeLoansCount = loans.filter((l) => isMatchingCustomerId(l.customerId, cust) && l.status !== 'CLOSED').length;
 
                 return (
                   <div
@@ -929,7 +947,14 @@ export const PendingLoans: React.FC = () => {
                           <span>+91 {cust.phone}</span>
                           <span style={{ color: '#059669', fontWeight: 600 }}>✓ Verified</span>
                           <span>&bull;</span>
-                          <span style={{ fontWeight: 600, color: 'var(--color-primary-dark)' }}>{activeLoansCount} Active Loan(s)</span>
+                          {(() => {
+                            const pCount = loans.filter((l) => isMatchingCustomerId(l.customerId, cust) && isLoanPending(l)).length;
+                            return (
+                              <span style={{ fontWeight: 700, color: pCount > 0 ? '#dc2626' : 'var(--color-primary-dark)' }}>
+                                {pCount} Pending Loan(s)
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -1001,7 +1026,9 @@ export const PendingLoans: React.FC = () => {
                     <span>&bull;</span>
                     <span>Address: {selectedCustomer.currentAddress || 'N/A'}</span>
                     <span>&bull;</span>
-                    <span style={{ fontWeight: 700, color: 'var(--color-primary-accent, #059669)' }}>{customerLoans.length} Loan(s) Found</span>
+                    <span style={{ fontWeight: 700, color: customerLoans.length > 0 ? '#dc2626' : 'var(--color-primary-accent, #059669)' }}>
+                      {customerLoans.length} Pending Loan(s) Found
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1108,7 +1135,7 @@ export const PendingLoans: React.FC = () => {
                             </div>
                           </div>
                           <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Monthly Interest:</span>
+                            <span style={{ color: 'var(--text-muted)' }}>Scheduled Interest:</span>
                             <div style={{ fontWeight: 700, color: metrics.isEscalated ? '#dc2626' : 'var(--color-primary-accent, #059669)' }}>
                               ₹{metrics.baseMonthlyInterest.toLocaleString('en-IN')}{' '}
                               <span style={{ fontSize: '11px', fontWeight: 600 }}>
@@ -1119,7 +1146,26 @@ export const PendingLoans: React.FC = () => {
                           <div>
                             <span style={{ color: 'var(--text-muted)' }}>Due Date:</span>
                             <div style={{ fontWeight: 800, color: isOverdue ? '#dc2626' : 'var(--text-dark)' }}>
-                              {metrics.dueDateStr}
+                              {metrics.dueDateStr} {isOverdue && <span style={{ fontSize: '11px', fontWeight: 700 }}>({metrics.daysOverdue}d late)</span>}
+                            </div>
+                          </div>
+                          {metrics.interestAlreadyPaid > 0 && (
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>Paid for Period:</span>
+                              <div style={{ fontWeight: 700, color: '#059669' }}>
+                                ₹{metrics.interestAlreadyPaid.toLocaleString('en-IN')}
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ gridColumn: metrics.interestAlreadyPaid > 0 ? 'auto' : 'span 2', borderTop: '1px dashed var(--border-subtle)', paddingTop: '6px', marginTop: '2px' }}>
+                            <span style={{ color: '#dc2626', fontWeight: 700 }}>Pending Amount Due:</span>
+                            <div style={{ fontWeight: 900, fontSize: '14.5px', color: '#dc2626' }}>
+                              ₹{(metrics.totalDue || metrics.remainingInterestDue).toLocaleString('en-IN')}
+                              {metrics.penaltyAmount > 0 && (
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#b91c1c', marginLeft: '6px' }}>
+                                  (incl. ₹{metrics.penaltyAmount} penalty)
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1195,8 +1241,16 @@ export const PendingLoans: React.FC = () => {
                 })}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                No active loans registered under {selectedCustomer.name}.
+              <div style={{ textAlign: 'center', padding: '40px 24px', backgroundColor: 'var(--bg-surface-secondary)', borderRadius: '12px', border: '1px dashed var(--border-light)' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--badge-success-bg)', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px auto' }}>
+                  <CheckCircle2 size={24} />
+                </div>
+                <h4 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--color-primary-dark)', margin: '0 0 4px 0' }}>
+                  NO PENDING LOANS
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+                  No pending or overdue payments found for <strong>{selectedCustomer.name}</strong>. All loan payments are up to date.
+                </p>
               </div>
             )}
           </div>

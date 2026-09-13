@@ -1,4 +1,4 @@
-export type RentalStatus = 'ACTIVE' | 'INACTIVE';
+export type RentalStatus = 'ACTIVE' | 'INACTIVE' | 'CLOSED';
 export type PaymentStatus = 'PAID' | 'PARTIAL' | 'PENDING' | 'UNPAID';
 export type PaymentMode = 'CASH' | 'GPAY' | 'BOTH';
 export type ExpenseScope = 'COMPLEX' | 'SHOP' | 'RENTAL';
@@ -47,17 +47,50 @@ export interface RentalShop {
   complexId: string; // CMP-0001
   complexName?: string;
   shopNumber: string;
+  doorNumber?: string;
   shopName: string;
   tenantName: string;
   mobileNumber: string;
+  ebNumber?: string;
   monthlyRent: number;
+  rentDueDay?: number;
+  advanceAmount?: number;
   availableAdvance: number;
   status: RentalStatus;
+  closedAt?: string;
+  closedBy?: string;
+  closingReason?: string;
+  settlementNotes?: string;
+  refundableAdvanceAtClose?: number;
+  closingPendingRent?: number;
   createdAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;
   lastSyncedAt?: string;
   syncError?: string;
+}
+
+export interface ShopSettlementSummary {
+  shopId: string;
+  shopNumber: string;
+  shopName: string;
+  tenantName: string;
+  mobileNumber: string;
+  complexId: string;
+  complexName: string;
+  monthlyRent: number;
+  rentDueDay?: number;
+  status: RentalStatus;
+  originalAdvance: number;
+  advanceAdjusted: number;
+  availableAdvance: number;
+  pendingRent: number;
+  otherOutstanding: number;
+  totalOutstanding: number;
+  refundableAdvance: number;
+  settlementStatus: 'NO_BALANCE' | 'REFUNDABLE' | 'OUTSTANDING_DUE';
+  canClose: boolean;
+  blockReason?: string;
 }
 
 export interface RentalPayment {
@@ -222,8 +255,12 @@ export interface AdminRentalSummary {
     collectedThisMonth: number;
     advanceUsed: number;
     pendingBalance: number;
+    pendingDueNow?: number;
     availableAdvance: number;
     paymentStatus: string;
+    dueDate?: string;
+    isDue?: boolean;
+    daysOverdue?: number;
   }[];
   recentPayments?: {
     paymentId: string;
@@ -366,4 +403,45 @@ export interface RentalDayBookResponse {
   limit: number;
   totalPages: number;
 }
+
+export interface PendingRentItem {
+  id: string;
+  complexId: string;
+  complexName: string;
+  location?: string;
+  shopId: string;
+  shopNumber: string;
+  doorNumber?: string;
+  shopName: string;
+  tenantName: string;
+  mobileNumber: string;
+  ebNumber?: string;
+  dueDate: string; // YYYY-MM-DD
+  rentDueDay: number;
+  monthlyRent: number;
+  paidAmount: number;
+  advanceUsed: number;
+  totalCovered: number;
+  pendingAmount: number;
+  daysOverdue: number;
+  status: 'DUE' | 'OVERDUE' | 'PARTIAL';
+  availableAdvance: number;
+}
+
+export interface PendingRentSummary {
+  totalPendingRent: number;
+  totalOverdueRent: number;
+  totalDueTodayRent: number;
+  totalPendingShops: number;
+  totalOverdueShops: number;
+  totalDueTodayShops: number;
+  totalPartialShops: number;
+}
+
+export interface PendingRentResponse {
+  summary: PendingRentSummary;
+  items: PendingRentItem[];
+  month: string;
+}
+
 

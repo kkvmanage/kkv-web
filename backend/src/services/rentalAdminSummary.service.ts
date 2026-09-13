@@ -66,8 +66,12 @@ export interface AdminRentalSummary {
     collectedThisMonth: number;
     advanceUsed: number;
     pendingBalance: number;
+    pendingDueNow?: number;
     availableAdvance: number;
     paymentStatus: string;
+    dueDate?: string;
+    isDue?: boolean;
+    daysOverdue?: number;
   }[];
   recentPayments: {
     paymentId: string;
@@ -159,13 +163,31 @@ class RentalAdminSummaryService {
     }));
   }
 
-  public getSummary(options?: { month?: string; complexId?: string; search?: string }): AdminRentalSummary {
-    const currentMonth = options?.month || new Date().toISOString().substring(0, 7);
-    const filterComplexId = options?.complexId;
-    const searchQuery = (options?.search || '').toLowerCase().trim();
+  private calculateRentDueDate(monthStr: string, rentDueDay: number = 10): { dueDateStr: string; dueDate: Date } {
+    const cleanMonth = (monthStr || new Date().toISOString().substring(0, 7)).slice(0, 7);
+    const [yearStr, monthPart] = cleanMonth.split('-');
+    const year = parseInt(yearStr, 10) || new Date().getFullYear();
+    const monthIndex = (parseInt(monthPart, 10) || (new Date().getMonth() + 1)) - 1;
+    const maxDays = new Date(year, monthIndex + 1, 0).getDate();
+    const dueDay = Math.min(Math.max(1, Math.round(Number(rentDueDay) || 10)), maxDays);
+    const dueDateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+    const dueDate = new Date(year, monthIndex, dueDay);
+    dueDate.setHours(0, 0, 0, 0);
+    return { dueDateStr, dueDate };
+  }
+
+  public getSummary(params?: { month?: string; complexId?: string; search?: string }): AdminRentalSummary {
+    const currentMonth = params?.month || new Date().toISOString().substring(0, 7);
+    const filterComplexId = params?.complexId && params.complexId !== 'ALL' ? params.complexId : undefined;
+    const searchQuery = params?.search ? params.search.toLowerCase().trim() : undefined;
+
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
     const todayISO = new Date().toISOString().substring(0, 10);
 
-    const { complexes: allComplexes, shops: allShops, payments: allPayments, expenses: allExpenses, syncQueue, mtime, version } = this.loadRawRentalData();
+    // 1. Try to read active synchronized rental store
+    const { complexes: allComplexes, shops: allShops, payments: allPayments, expenses: allExpenses, syncQueue, mtime, version } =
+      this.loadRawRentalData();
 
     // Map helpers
     const complexMap = new Map(allComplexes.map((c) => [c.complexId, c]));
@@ -208,7 +230,7 @@ class RentalAdminSummaryService {
     const collectedThisMonth = monthPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
     const advanceUsedThisMonth = monthPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
 
-    // Calculate pending rent per shop
+    // Calculate pending rent per shop (date-aware)
     let pendingRent = 0;
     const pendingRentList: AdminRentalSummary['pendingRentList'] = [];
 
@@ -219,13 +241,21 @@ class RentalAdminSummaryService {
       const shopExpected = Number(shop.monthlyRent) || 0;
       const shopBalance = Math.max(0, shopExpected - (shopCollected + shopAdvanceUsed));
       
+      const { dueDateStr, dueDate } = this.calculateRentDueDate(currentMonth, shop.rentDueDay || 10);
+      const isDue = todayDate.getTime() >= dueDate.getTime();
+      const diffMs = todayDate.getTime() - dueDate.getTime();
+      const daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+      const pendingDueNow = isDue ? shopBalance : 0;
+      pendingRent += pendingDueNow;
+
       const comp = complexMap.get(shop.complexId);
       let pStatus = 'UNPAID';
       if (shopBalance === 0 && shopExpected > 0) pStatus = 'PAID';
       else if (shopCollected > 0 || shopAdvanceUsed > 0) pStatus = 'PARTIAL';
+      else if (!isDue) pStatus = 'UPCOMING';
 
       if (shopBalance > 0) {
-        pendingRent += shopBalance;
         pendingRentList.push({
           shopId: shop.shopId,
           shopNumber: shop.shopNumber,
@@ -238,14 +268,18 @@ class RentalAdminSummaryService {
           collectedThisMonth: shopCollected,
           advanceUsed: shopAdvanceUsed,
           pendingBalance: shopBalance,
+          pendingDueNow,
           availableAdvance: Number(shop.availableAdvance) || 0,
-          paymentStatus: pStatus
+          paymentStatus: pStatus,
+          dueDate: dueDateStr,
+          isDue,
+          daysOverdue
         });
       }
     });
 
     // Sort pending rent list highest outstanding first
-    pendingRentList.sort((a, b) => b.pendingBalance - a.pendingBalance);
+    pendingRentList.sort((a, b) => (b.pendingDueNow || b.pendingBalance) - (a.pendingDueNow || a.pendingBalance));
 
     // Expenses in selected month
     let monthExpenses = allExpenses.filter((e) => (e.expenseDate || '').startsWith(currentMonth));
@@ -274,7 +308,7 @@ class RentalAdminSummaryService {
     const gpayCount = monthPayments.filter((p) => p.paymentMode === 'GPAY').length;
     const bothCount = monthPayments.filter((p) => p.paymentMode === 'BOTH').length;
 
-    // Complex Performance Breakdown
+    // Complex Performance Breakdown - Date-Aware
     const complexPerformance = complexes.map((c) => {
       const cShops = allShops.filter((s) => s.complexId === c.complexId);
       const cActiveShops = cShops.filter((s) => s.status === 'ACTIVE');
@@ -284,7 +318,19 @@ class RentalAdminSummaryService {
       const cPayments = allPayments.filter((p) => p.complexId === c.complexId && p.paymentMonth === currentMonth);
       const cCollected = cPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
       const cAdvanceUsed = cPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
-      const cPending = Math.max(0, cExpected - (cCollected + cAdvanceUsed));
+
+      let cPending = 0;
+      cActiveShops.forEach((s) => {
+        const sPayments = cPayments.filter((p) => p.shopId === s.shopId);
+        const sCollected = sPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
+        const sAdvUsed = sPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
+        const sRent = Number(s.monthlyRent) || 0;
+        const sBalance = Math.max(0, sRent - (sCollected + sAdvUsed));
+        const { dueDate } = this.calculateRentDueDate(currentMonth, s.rentDueDay || 10);
+        if (todayDate.getTime() >= dueDate.getTime()) {
+          cPending += sBalance;
+        }
+      });
 
       const cExpenses = allExpenses
         .filter((e) => e.complexId === c.complexId && (e.expenseDate || '').startsWith(currentMonth))
@@ -423,10 +469,26 @@ class RentalAdminSummaryService {
     const monthPayments = payments.filter((p) => p.complexId === complexId && p.paymentMonth === currentMonth);
     const monthExpenses = expenses.filter((e) => e.complexId === complexId && (e.expenseDate || '').startsWith(currentMonth));
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const expectedRent = cActiveShops.reduce((sum, s) => sum + (Number(s.monthlyRent) || 0), 0);
     const collected = monthPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
     const advanceUsed = monthPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
-    const pending = Math.max(0, expectedRent - (collected + advanceUsed));
+
+    let pending = 0;
+    cActiveShops.forEach((s) => {
+      const sPayments = monthPayments.filter((p) => p.shopId === s.shopId);
+      const sCollected = sPayments.reduce((sum, p) => sum + (Number(p.amountReceived) || 0), 0);
+      const sAdvUsed = sPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
+      const sRent = Number(s.monthlyRent) || 0;
+      const sBalance = Math.max(0, sRent - (sCollected + sAdvUsed));
+      const { dueDate } = this.calculateRentDueDate(currentMonth, s.rentDueDay || 10);
+      if (today.getTime() >= dueDate.getTime()) {
+        pending += sBalance;
+      }
+    });
+
     const advance = cActiveShops.reduce((sum, s) => sum + (Number(s.availableAdvance) || 0), 0);
     const expenseTotal = monthExpenses.reduce((sum, e) => sum + (Number(e.expenseAmount) || 0), 0);
     const netCollection = collected - expenseTotal;
@@ -438,9 +500,16 @@ class RentalAdminSummaryService {
       const sAdvUsed = sPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
       const sRent = Number(s.monthlyRent) || 0;
       const sBalance = Math.max(0, sRent - (sCollected + sAdvUsed));
+
+      const { dueDateStr, dueDate } = this.calculateRentDueDate(currentMonth, s.rentDueDay || 10);
+      const isDue = today.getTime() >= dueDate.getTime();
+      const diffMs = today.getTime() - dueDate.getTime();
+      const daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
       let pStatus = 'UNPAID';
       if (sBalance === 0 && sRent > 0) pStatus = 'PAID';
       else if (sCollected > 0 || sAdvUsed > 0) pStatus = 'PARTIAL';
+      else if (!isDue) pStatus = 'UPCOMING';
 
       return {
         shopId: s.shopId,
@@ -449,6 +518,11 @@ class RentalAdminSummaryService {
         tenantName: s.tenantName,
         mobileNumber: s.mobileNumber,
         monthlyRent: sRent,
+        rentDueDay: s.rentDueDay || 10,
+        dueDate: dueDateStr,
+        isDue,
+        daysOverdue,
+        pendingDueNow: isDue ? sBalance : 0,
         availableAdvance: Number(s.availableAdvance) || 0,
         status: s.status,
         currentMonthPaid: sCollected,
@@ -502,9 +576,18 @@ class RentalAdminSummaryService {
     const advanceUsed = thisMonthPayments.reduce((sum, p) => sum + (Number(p.advanceUsed) || 0), 0);
     const rent = Number(shop.monthlyRent) || 0;
     const balance = Math.max(0, rent - (paid + advanceUsed));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { dueDateStr, dueDate } = this.calculateRentDueDate(currentMonth, shop.rentDueDay || 10);
+    const isDue = today.getTime() >= dueDate.getTime();
+    const diffMs = today.getTime() - dueDate.getTime();
+    const daysOverdue = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
     let status = 'UNPAID';
     if (balance === 0 && rent > 0) status = 'PAID';
     else if (paid > 0 || advanceUsed > 0) status = 'PARTIAL';
+    else if (!isDue) status = 'UPCOMING';
 
     return {
       shopId: shop.shopId,
@@ -515,6 +598,11 @@ class RentalAdminSummaryService {
       tenantName: shop.tenantName,
       mobileNumber: shop.mobileNumber,
       monthlyRent: rent,
+      rentDueDay: shop.rentDueDay || 10,
+      dueDate: dueDateStr,
+      isDue,
+      daysOverdue,
+      pendingDueNow: isDue ? balance : 0,
       availableAdvance: Number(shop.availableAdvance) || 0,
       shopStatus: shop.status,
       currentMonth: {
@@ -523,7 +611,10 @@ class RentalAdminSummaryService {
         paid,
         advanceUsed,
         balance,
-        status
+        status,
+        dueDate: dueDateStr,
+        isDue,
+        daysOverdue
       },
       payments: shopPayments,
       expenses: shopExpenses

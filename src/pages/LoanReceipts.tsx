@@ -16,6 +16,7 @@ import {
 import { Customer, Loan, Receipt, OrnamentItem } from '../types';
 import { isMatchingCustomerId, getCanonicalCustomerId } from '../utils/customerUtils';
 import { addCalendarMonths } from '../utils/fdInterestUtils';
+import { parseLoanDate } from '../utils/loanCalculationUtils';
 import { KKVLogo } from '../components/common/KKVLogo';
 
 export const LoanReceipts: React.FC = () => {
@@ -130,14 +131,14 @@ export const LoanReceipts: React.FC = () => {
   const isInterestAlreadyPaid = useMemo(() => {
     if (!currentLoan) return false;
     const currentDueDate = currentLoan.nextDueDate || currentLoan.date;
-    if (currentLoan.lastInterestPaidDate && currentLoan.lastInterestPaidDate >= currentDueDate) {
+    if (currentLoan.lastInterestPaidDate && parseLoanDate(currentLoan.lastInterestPaidDate) >= parseLoanDate(currentDueDate)) {
       return true;
     }
     // Check if there is an interest payment recorded on/after currentDueDate
     const matchingReceipt = loanReceipts.find(
       (r) =>
         r.kind === 'INTEREST PAYMENT' &&
-        (r.date >= currentDueDate || (r.currentDueDate && r.currentDueDate === currentDueDate))
+        (r.currentDueDate === currentDueDate || parseLoanDate(r.date) >= parseLoanDate(currentDueDate))
     );
     return Boolean(matchingReceipt);
   }, [currentLoan, loanReceipts]);

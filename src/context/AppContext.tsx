@@ -452,7 +452,6 @@ const validNavPages: Set<NavPage> = new Set([
   'accounts',
   'daily-reminders',
   'notifications',
-  'backup-restore',
   'admin-panel',
   'settings',
   'rental',
@@ -479,6 +478,7 @@ function resolveInitialPage(): NavPage {
   try {
     const params = new URLSearchParams(window.location.search);
     const p = params.get('page') || params.get('view');
+    if (p === 'backup-restore' || p === 'backup' || p === 'restore' || p === 'backup_restore') return 'admin-panel';
     if (isValidNavPage(p)) return p;
     if (p === 'pending-rent' || p === 'rental-pending') return 'rental-pending-rent';
   } catch (e) {}
@@ -487,7 +487,9 @@ function resolveInitialPage(): NavPage {
   try {
     const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
     if (rawPath) {
+      if (rawPath === 'backup-restore' || rawPath === 'backup' || rawPath === 'restore' || rawPath === 'backup_restore') return 'admin-panel';
       const normalized = rawPath.replace(/\//g, '-');
+      if (normalized === 'backup-restore' || normalized === 'backup' || normalized === 'restore') return 'admin-panel';
       if (isValidNavPage(normalized)) return normalized;
       if (rawPath === 'rental' || rawPath === 'rental-dashboard') return 'rental-dashboard';
       if (rawPath.startsWith('rental-complex') || rawPath.startsWith('rental/complex')) return 'rental-complexes';
@@ -507,12 +509,14 @@ function resolveInitialPage(): NavPage {
   // 3. URL hash e.g. #customers or #/search-customer
   try {
     const hash = window.location.hash.replace(/^#[/]?/, '').toLowerCase();
+    if (hash === 'backup-restore' || hash === 'backup' || hash === 'restore') return 'admin-panel';
     if (isValidNavPage(hash)) return hash;
   } catch (e) {}
 
   // 4. Session storage
   try {
     const saved = sessionStorage.getItem('kkv_current_page');
+    if (saved === 'backup-restore' || saved === 'backup' || saved === 'restore') return 'admin-panel';
     if (isValidNavPage(saved)) return saved;
   } catch (e) {}
 
@@ -536,13 +540,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const setCurrentPage = (page: NavPage) => {
-    setCurrentPageRaw(page);
+    const targetPage: NavPage = ((page as any) === 'backup-restore' || (page as any) === 'backup' || (page as any) === 'restore') ? 'admin-panel' : page;
+    setCurrentPageRaw(targetPage);
     setIsMobileMenuOpen(false);
     try {
-      sessionStorage.setItem('kkv_current_page', page);
+      sessionStorage.setItem('kkv_current_page', targetPage);
       const url = new URL(window.location.href);
-      url.searchParams.set('page', page);
-      window.history.replaceState({ page }, '', url.toString());
+      url.searchParams.set('page', targetPage);
+      window.history.replaceState({ page: targetPage }, '', url.toString());
     } catch (e) {}
   };
 
@@ -920,8 +925,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return next;
               });
             }
-          } else if (key === 'waTemplates' && val) setWhatsAppTemplates(val);
-          else if (key === 'tgConfig' && val) setTelegramConfig(val);
+          } else if (key === 'waTemplates' && val) {
+            const waData = (val && typeof val === 'object' && val.data) ? val.data : val;
+            if (waData && typeof waData === 'object') setWhatsAppTemplates(waData);
+          } else if (key === 'tgConfig' && val) {
+            const tgData = (val && typeof val === 'object' && val.data) ? val.data : val;
+            if (tgData && typeof tgData === 'object') setTelegramConfig(tgData);
+          }
         }
       });
     } catch (err) {

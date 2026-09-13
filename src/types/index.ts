@@ -31,7 +31,6 @@ export type NavPage =
   | 'accounts'
   | 'daily-reminders'
   | 'notifications'
-  | 'backup-restore'
   | 'admin-panel'
   | 'settings'
   | 'rental'

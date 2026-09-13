@@ -9,13 +9,10 @@ import {
   Landmark,
   BookOpen,
   Bell,
-  HardDriveDownload,
   Shield,
   Settings,
   ChevronDown,
   ChevronRight,
-  Power,
-  RotateCcw,
   Moon,
   Sun,
   LogOut,
@@ -30,8 +27,6 @@ import {
 } from 'lucide-react';
 
 import { KKVLogo } from '../common/KKVLogo';
-import { BackupCloseModal } from '../common/BackupCloseModal';
-import { RestoreModal } from '../common/RestoreModal';
 import { ChangePasswordModal } from '../common/ChangePasswordModal';
 
 export const Sidebar: React.FC = () => {
@@ -65,8 +60,18 @@ export const Sidebar: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMobileMenuOpen, closeMobileMenu]);
 
+  // Expand parent accordion when active sublink changes
   useEffect(() => {
-    if (['customers', 'customers-add', 'add-customer-form', 'edit-customer', 'search-customer'].includes(currentPage)) {
+    if (
+      [
+        'customers',
+        'customers-add',
+        'add-customer-form',
+        'edit-customer',
+        'search-customer',
+        'customer-profile'
+      ].includes(currentPage)
+    ) {
       setCustomersOpen(true);
     }
     if (
@@ -123,17 +128,7 @@ export const Sidebar: React.FC = () => {
     }
   }, [currentPage]);
 
-  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
-  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-
-  const handleBackupAndClose = () => {
-    setIsBackupModalOpen(true);
-  };
-
-  const handleFinishCloseSession = () => {
-    logoutUser();
-  };
 
   const isAdmin = userRole === 'ADMIN';
   const isRentalStaff = userRole === 'RENTAL_STAFF';
@@ -147,7 +142,6 @@ export const Sidebar: React.FC = () => {
   const canViewRental = hasPermission('rental', 'view');
   const canViewStaffMgmt = hasPermission('staffManagement', 'view') || isAdmin;
   const canViewSettings = hasPermission('settings', 'view') || isAdmin;
-  const canViewBackups = hasPermission('backupRestore', 'view') || isAdmin;
 
   const hasAnyFinanceModule = canViewCustomers || canViewLoans || canViewFD || canViewAccounting;
 
@@ -582,20 +576,6 @@ export const Sidebar: React.FC = () => {
             </>
           )}
 
-          {/* ── DATA ── */}
-          {canViewBackups && (
-            <>
-              <div className="sidebar-section-label">DATA</div>
-              <button
-                className={`sidebar-link ${currentPage === 'backup-restore' ? 'active' : ''}`}
-                onClick={() => setCurrentPage('backup-restore')}
-              >
-                <HardDriveDownload size={17} />
-                <span>Backup &amp; Restore</span>
-              </button>
-            </>
-          )}
-
           {/* ── SYSTEM ── */}
           {(canViewStaffMgmt || canViewSettings) && (
             <>
@@ -624,29 +604,6 @@ export const Sidebar: React.FC = () => {
 
         {/* Footer Controls */}
         <div className="sidebar-footer" style={{ padding: '10px 10px 14px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid var(--border-subtle)' }}>
-          {canViewBackups && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
-              <button
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', gap: '6px', fontSize: '11.5px', padding: '7px 8px', height: '34px' }}
-                onClick={handleBackupAndClose}
-                title="Backup & Close Session"
-              >
-                <Power size={13} />
-                <span>Backup &amp; Close</span>
-              </button>
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', justifyContent: 'center', gap: '6px', fontSize: '11.5px', padding: '7px 8px', height: '34px', borderColor: 'rgba(59, 130, 246, 0.4)', color: '#2563eb' }}
-                onClick={() => setIsRestoreModalOpen(true)}
-                title="Restore Latest Backup"
-              >
-                <RotateCcw size={13} />
-                <span>Restore</span>
-              </button>
-            </div>
-          )}
-
           <button
             className="btn btn-secondary"
             style={{ width: '100%', justifyContent: 'center', gap: '7px', fontSize: '12.5px', padding: '7px 12px', height: '34px' }}
@@ -696,19 +653,6 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
       </aside>
-
-      {/* Backup & Close Workflow Modal */}
-      <BackupCloseModal
-        isOpen={isBackupModalOpen}
-        onClose={() => setIsBackupModalOpen(false)}
-        onFinishCloseSession={handleFinishCloseSession}
-      />
-
-      {/* Restore Database Workflow Modal */}
-      <RestoreModal
-        isOpen={isRestoreModalOpen}
-        onClose={() => setIsRestoreModalOpen(false)}
-      />
 
       {/* Change Password Modal */}
       <ChangePasswordModal

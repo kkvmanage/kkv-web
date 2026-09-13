@@ -214,7 +214,7 @@ export const AdminPanel: React.FC = () => {
   const [showroomsVal, setShowroomsVal] = useState<string[]>(masterControlSettings?.showrooms || []);
 
   // Sub-tabs navigation states inside master control
-  const [operationsSubTab, setOperationsSubTab] = useState<'areas-showrooms' | 'toggles' | 'backup-restore'>('areas-showrooms');
+  const [operationsSubTab, setOperationsSubTab] = useState<'areas-showrooms' | 'toggles'>('areas-showrooms');
   const [securitySubTab, setSecuritySubTab] = useState<'account' | 'change-pass'>('account');
 
   // Stored password change states

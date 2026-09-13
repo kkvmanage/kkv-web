@@ -53,6 +53,7 @@ router.use('/search', searchRoutes);
 router.use('/location', locationRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/sync', syncRoutes);
+router.use('/telegram', telegramRoutes);
 router.use('/reminders', reminderRoutes);
 
 // Global Notifications endpoint with module scoping

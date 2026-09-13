@@ -202,15 +202,31 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-content" style={{ maxWidth: '580px', padding: 0 }}>
+      <div
+        className="modal-content"
+        style={{
+          maxWidth: '580px',
+          width: '100%',
+          padding: 0,
+          borderRadius: 'var(--radius-lg, 12px)',
+          overflow: 'hidden',
+          boxShadow: 'var(--shadow-xl, 0 20px 30px rgba(0,0,0,0.25))',
+          backgroundColor: 'var(--bg-card, #ffffff)',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
         {/* Header */}
         <div
           style={{
             padding: '16px 20px',
-            borderBottom: '1px solid var(--border-subtle)',
+            borderBottom: '1px solid var(--border-subtle, #e2e8f0)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            backgroundColor: 'var(--bg-surface, #f8fafc)',
+            flexShrink: 0
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -222,34 +238,64 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              padding: '6px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '20px' }}>
-          {error && (
-            <div
-              style={{
-                padding: '10px 14px',
-                marginBottom: '16px',
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: 'var(--radius-md)',
-                color: '#dc2626',
-                fontSize: '12px',
-                fontWeight: 600
-              }}
-            >
-              {error}
-            </div>
-          )}
+        {/* Form Container */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+            margin: 0
+          }}
+        >
+          {/* Scrollable Form Body */}
+          <div
+            style={{
+              padding: '20px',
+              overflowY: 'auto',
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}
+          >
+            {error && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  color: '#dc2626',
+                  fontSize: '12px',
+                  fontWeight: 600
+                }}
+              >
+                {error}
+              </div>
+            )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* Complex & Shop Selectors */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
                   COMPLEX *
@@ -304,7 +350,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  fontSize: '12px'
+                  fontSize: '12px',
+                  flexWrap: 'wrap',
+                  gap: '8px'
                 }}
               >
                 <div>
@@ -328,7 +376,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             )}
 
             {/* Month & Date */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 700 }}>
                   PAYMENT MONTH *
@@ -366,7 +414,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 step="any"
                 className="input-control"
                 placeholder="e.g. 15000"
-                min="0"
+                min="0.01"
                 value={amountReceived}
                 onChange={(e) => setAmountReceived(e.target.value)}
                 required
@@ -378,7 +426,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <label className="form-label" style={{ fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>
                 PAYMENT MODE
               </label>
-              <div style={{ display: 'flex', gap: '16px' }}>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer' }}>
                   <input
                     type="radio"
@@ -417,7 +465,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                   gap: '12px',
                   padding: '12px',
                   backgroundColor: 'rgba(23, 107, 82, 0.04)',
@@ -471,7 +519,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 borderRadius: 'var(--radius-md)',
                 border: '1px solid rgba(23, 107, 82, 0.2)',
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
                 gap: '8px',
                 fontSize: '11.5px'
               }}
@@ -512,26 +560,46 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
           </div>
 
-          {/* Footer Actions */}
+          {/* Fixed Footer Actions */}
           <div
             style={{
+              padding: '16px 20px',
+              borderTop: '1px solid var(--border-subtle, #e2e8f0)',
               display: 'flex',
               justifyContent: 'flex-end',
+              alignItems: 'center',
               gap: '10px',
-              marginTop: '20px',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-subtle)'
+              backgroundColor: 'var(--bg-surface, #f8fafc)',
+              flexShrink: 0
             }}
           >
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              disabled={isSubmitting}
+              style={{
+                padding: '8px 18px',
+                fontSize: '13px',
+                fontWeight: 600,
+                borderRadius: '8px'
+              }}
+            >
               Cancel
             </button>
             <button
               type="submit"
               className="btn btn-primary"
               disabled={isSubmitting || (paymentMode === 'BOTH' && isSplitMismatch)}
+              style={{
+                padding: '8px 22px',
+                fontSize: '13px',
+                fontWeight: 700,
+                borderRadius: '8px',
+                backgroundColor: 'var(--color-primary-accent, #0f766e)'
+              }}
             >
-              {isSubmitting ? 'Recording Payment...' : `Save Payment (₹${numAmountReceived.toLocaleString('en-IN')})`}
+              {isSubmitting ? 'Recording Payment...' : 'Record Payment'}
             </button>
           </div>
         </form>

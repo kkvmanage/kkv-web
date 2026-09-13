@@ -83,12 +83,6 @@ export const PERMISSION_MODULES = [
     label: 'Branch Settings',
     description: 'Branch configuration, interest rates, master controls',
     actions: ['view', 'update']
-  },
-  {
-    key: 'backupRestore',
-    label: 'Backup & Recovery',
-    description: 'Data backups, system exports, disaster recovery',
-    actions: ['view', 'create', 'restore', 'delete']
   }
 ];
 

@@ -269,12 +269,6 @@ export const App: React.FC = () => {
         return <RentalPendingRent />;
 
       // ── System & Admin Domain ──
-      case 'backup-restore':
-        if (!hasPermission('backupRestore', 'view') && !isAdminRole(userRole)) {
-          return <AccessDenied requestedArea="Backup & Restore" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;
-        }
-        return <AdminPanel />;
-
       case 'admin-panel':
         if (!hasPermission('staffManagement', 'view') && !isAdminRole(userRole)) {
           return <AccessDenied requestedArea="Admin Panel" onNavigateHome={() => setCurrentPage(getHomeRoute())} />;

@@ -9,7 +9,9 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "seed:admin": "tsx src/scripts/seedAdmin.ts",
-    "reset:rental": "tsx src/scripts/resetRentalData.ts"
+    "reset:rental": "tsx src/scripts/resetRentalData.ts",
+    "reset:dev": "tsx src/scripts/resetDevelopmentData.ts",
+    "reset:all": "tsx src/scripts/resetDevelopmentData.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
